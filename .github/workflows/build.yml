@@ -21,6 +21,116 @@ jobs:
       - name: Install bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
+      - name: Apply left toolbar patch
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem src -Recurse -Filter *.cpp
+          $toolbarFile = $files | Where-Object { (Get-Content $_.FullName -Raw) -match 'struct ToolbarVirt' -and (Get-Content $_.FullName -Raw) -match 'ToolbarAtBottom\(' } | Select-Object -First 1
+          if (-not $toolbarFile) { throw 'Could not locate the virtual toolbar implementation' }
+          $p = $toolbarFile.FullName
+          $s = Get-Content $p -Raw
+          if ($s -notmatch 'ToolbarAtLeft\(') {
+            $needle = 'static int ToolbarRowDy\(int iconSize\) \{\r?\n    return iconSize \+ \(2 \* ToolbarCyPad\(\)\);\r?\n\}'
+            $insert = @'
+$&
+
+// Left toolbar is a vertical, pinned toolbar. This reuses the existing
+// ToolbarPosition advanced setting; top/bottom retain their normal behavior.
+static bool ToolbarAtLeft() {
+    return str::EqI(gSettings->toolbarPosition, StrL("left"));
+}
+'@
+            $s2 = [regex]::Replace($s, $needle, $insert, 1)
+            if ($s2 -eq $s) { throw 'ToolbarRowDy anchor not found' }
+            $s = $s2
+          }
+          $old = @'
+    int dx = host->layout->MinIntrinsicWidth(tb->rowDy);
+    if (dx <= 0) {
+        dx = tb->rowDy * 8;
+    }
+    return dx + DpiScale(12);
+'@
+          $new = @'
+    if (ToolbarAtLeft()) {
+        return tb->rowDy + DpiScale(12);
+    }
+    int dx = host->layout->MinIntrinsicWidth(tb->rowDy);
+    if (dx <= 0) {
+        dx = tb->rowDy * 8;
+    }
+    return dx + DpiScale(12);
+'@
+          if ($s.Contains($old)) { $s = $s.Replace($old, $new) }
+          $oldRect = @'
+    int x = canvas.x + ((canvas.dx - natW) / 2);
+    int y = canvas.y;
+    if (ToolbarAtBottom()) {
+        y = canvas.y + canvas.dy - h - OverlayToolbarBottomScrollbarOffset();
+    }
+    return {x, y, natW, h};
+'@
+          $newRect = @'
+    int x = canvas.x + ((canvas.dx - natW) / 2);
+    int y = canvas.y;
+    if (ToolbarAtLeft()) {
+        x = canvas.x;
+        y = canvas.y;
+        return {x, y, natW, canvas.dy};
+    }
+    if (ToolbarAtBottom()) {
+        y = canvas.y + canvas.dy - h - OverlayToolbarBottomScrollbarOffset();
+    }
+    return {x, y, natW, h};
+'@
+          if ($s.Contains($oldRect)) { $s = $s.Replace($oldRect, $newRect) }
+          $oldBand = '    int bandY = ToolbarAtBottom() ? (tb.y - my) : tb.y;\r?\n    Rect band(canvas.x, bandY, canvas.dx, tb.dy + my);'
+          $newBand = @'
+    if (ToolbarAtLeft()) {
+        Rect band(tb.x - my, canvas.y, tb.dx + my, canvas.dy);
+        return band.Contains(Point(ptFrame.x, ptFrame.y)) || ToolbarHost(win)->ContainsScreenPoint(pt);
+    }
+    int bandY = ToolbarAtBottom() ? (tb.y - my) : tb.y;
+    Rect band(canvas.x, bandY, canvas.dx, tb.dy + my);
+'@
+          $s2 = [regex]::Replace($s, $oldBand, $newBand, 1)
+          if ($s2 -eq $s -and $s -notmatch 'ToolbarAtLeft\(\).*Rect band') { throw 'Overlay reveal-band anchor not found' }
+          $s = $s2
+          $oldShow = @'
+    bool show = ShouldShowToolbar(win);
+    bool overlay = ShouldOverlayToolbar(win);
+'@
+          $newShow = @'
+    bool left = ToolbarAtLeft();
+    bool show = ShouldShowToolbar(win);
+    bool overlay = ShouldOverlayToolbar(win) || left;
+    if (left) {
+        show = true;
+    }
+'@
+          if ($s.Contains($oldShow)) { $s = $s.Replace($oldShow, $newShow) }
+          $oldHide = @'
+    if (enteredOverlay) {
+        // reveal immediately on entering overlay mode (e.g. via F8) so the
+        // change is visible; it auto-hides after kDelayToolbarHide
+        win->toolbarOverlayShown = true;
+    }
+'@
+          $newHide = @'
+    if (enteredOverlay) {
+        // reveal immediately on entering overlay mode (e.g. via F8) so the
+        // change is visible; it auto-hides after kDelayToolbarHide
+        win->toolbarOverlayShown = true;
+    }
+    if (ToolbarAtLeft()) {
+        win->toolbarOverlayShown = true;
+        win->toolbarOverlayHidePending = false;
+    }
+'@
+          if ($s.Contains($oldHide)) { $s = $s.Replace($oldHide, $newHide) }
+          Set-Content $p $s -NoNewline
+          Write-Host "Patched $p"
+
       - name: Build release
         run: bun .\cmd\build.ts -release
 
