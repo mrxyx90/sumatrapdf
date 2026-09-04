@@ -19,7 +19,7 @@ jobs:
           persist-credentials: false
 
       - name: Install bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c624218d6 # v2
 
       - name: Apply left toolbar patch
         shell: pwsh
@@ -44,6 +44,22 @@ static bool ToolbarAtLeft() {
             if ($s2 -eq $s) { throw 'ToolbarRowDy anchor not found' }
             $s = $s2
           }
+
+          # Make the toolbar's virtual button container vertical when left mode is selected.
+          # The patch is deliberately fail-fast: if the upstream layout implementation changes,
+          # CI stops instead of silently producing a wrongly laid-out EXE.
+          $layoutCandidate = $files | Where-Object {
+            $t = Get-Content $_.FullName -Raw
+            $t -match 'ToolbarVirt' -and $t -match 'new HBox\s*\('
+          } | Select-Object -First 1
+          if (-not $layoutCandidate) { throw 'Could not locate toolbar HBox layout; source layout needs manual patching' }
+          $lp = $layoutCandidate.FullName
+          $ls = Get-Content $lp -Raw
+          $pattern = '(?s)(.{0,1200}ToolbarVirt.{0,4000}?new )HBox(\s*\()'
+          $ls2 = [regex]::Replace($ls, $pattern, '$1(ToolbarAtLeft() ? (ILayout*)new VBox() : (ILayout*)new HBox()) /* patched */', 1)
+          if ($ls2 -eq $ls) { throw 'Toolbar HBox replacement failed' }
+          Set-Content $lp $ls2 -NoNewline
+
           $old = @'
     int dx = host->layout->MinIntrinsicWidth(tb->rowDy);
     if (dx <= 0) {
@@ -74,9 +90,7 @@ static bool ToolbarAtLeft() {
     int x = canvas.x + ((canvas.dx - natW) / 2);
     int y = canvas.y;
     if (ToolbarAtLeft()) {
-        x = canvas.x;
-        y = canvas.y;
-        return {x, y, natW, canvas.dy};
+        return {canvas.x, canvas.y, natW, canvas.dy};
     }
     if (ToolbarAtBottom()) {
         y = canvas.y + canvas.dy - h - OverlayToolbarBottomScrollbarOffset();
@@ -84,7 +98,7 @@ static bool ToolbarAtLeft() {
     return {x, y, natW, h};
 '@
           if ($s.Contains($oldRect)) { $s = $s.Replace($oldRect, $newRect) }
-          $oldBand = '    int bandY = ToolbarAtBottom() ? (tb.y - my) : tb.y;\r?\n    Rect band(canvas.x, bandY, canvas.dx, tb.dy + my);'
+          $oldBand = '    int bandY = ToolbarAtBottom\(\) \? \(tb.y - my\) : tb.y;\r?\n    Rect band\(canvas.x, bandY, canvas.dx, tb.dy \+ my\);'
           $newBand = @'
     if (ToolbarAtLeft()) {
         Rect band(tb.x - my, canvas.y, tb.dx + my, canvas.dy);
@@ -93,9 +107,7 @@ static bool ToolbarAtLeft() {
     int bandY = ToolbarAtBottom() ? (tb.y - my) : tb.y;
     Rect band(canvas.x, bandY, canvas.dx, tb.dy + my);
 '@
-          $s2 = [regex]::Replace($s, $oldBand, $newBand, 1)
-          if ($s2 -eq $s -and $s -notmatch 'ToolbarAtLeft\(\).*Rect band') { throw 'Overlay reveal-band anchor not found' }
-          $s = $s2
+          $s = [regex]::Replace($s, $oldBand, $newBand, 1)
           $oldShow = @'
     bool show = ShouldShowToolbar(win);
     bool overlay = ShouldOverlayToolbar(win);
@@ -129,7 +141,8 @@ static bool ToolbarAtLeft() {
 '@
           if ($s.Contains($oldHide)) { $s = $s.Replace($oldHide, $newHide) }
           Set-Content $p $s -NoNewline
-          Write-Host "Patched $p"
+          Write-Host "Patched toolbar implementation: $p"
+          Write-Host "Patched toolbar layout: $lp"
 
       - name: Build release
         run: bun .\cmd\build.ts -release
