@@ -31,15 +31,7 @@ jobs:
           $s = Get-Content $p -Raw
           if ($s -notmatch 'static bool ToolbarAtLeft\(') {
             $needle = 'static int ToolbarRowDy\(int iconSize\) \{\r?\n    return iconSize \+ \(2 \* ToolbarCyPad\(\)\);\r?\n\}'
-            $insert = @'
-$&
-
-// Left toolbar is a vertical, pinned toolbar. This reuses the existing
-// ToolbarPosition advanced setting; top/bottom retain their normal behavior.
-static bool ToolbarAtLeft() {
-    return str::EqI(gSettings->toolbarPosition, StrL("left"));
-}
-'@
+            $insert = "`$&`r`n`r`n// Left toolbar is a vertical, pinned toolbar. This reuses the existing`r`n// ToolbarPosition advanced setting; top/bottom retain their normal behavior.`r`nstatic bool ToolbarAtLeft() {`r`n    return str::EqI(gSettings->toolbarPosition, StrL(\"left\"));`r`n}`r`n"
             $s2 = [regex]::Replace($s, $needle, $insert, 1)
             if ($s2 -eq $s) { throw 'ToolbarRowDy anchor not found' }
             $s = $s2
@@ -60,85 +52,83 @@ static bool ToolbarAtLeft() {
           if ($ls2 -eq $ls) { throw 'Toolbar HBox replacement failed' }
           Set-Content $lp $ls2 -NoNewline
 
-          $old = @'
-    int dx = host->layout->MinIntrinsicWidth(tb->rowDy);
-    if (dx <= 0) {
-        dx = tb->rowDy * 8;
-    }
-    return dx + DpiScale(12);
-'@
-          $new = @'
-    if (ToolbarAtLeft()) {
-        return tb->rowDy + DpiScale(12);
-    }
-    int dx = host->layout->MinIntrinsicWidth(tb->rowDy);
-    if (dx <= 0) {
-        dx = tb->rowDy * 8;
-    }
-    return dx + DpiScale(12);
-'@
+          $nl = [Environment]::NewLine
+          $old = @(
+            '    int dx = host->layout->MinIntrinsicWidth(tb->rowDy);',
+            '    if (dx <= 0) {',
+            '        dx = tb->rowDy * 8;',
+            '    }',
+            '    return dx + DpiScale(12);'
+          ) -join $nl
+          $new = @(
+            '    if (ToolbarAtLeft()) {',
+            '        return tb->rowDy + DpiScale(12);',
+            '    }',
+            '    int dx = host->layout->MinIntrinsicWidth(tb->rowDy);',
+            '    if (dx <= 0) {',
+            '        dx = tb->rowDy * 8;',
+            '    }',
+            '    return dx + DpiScale(12);'
+          ) -join $nl
           if ($s.Contains($old)) { $s = $s.Replace($old, $new) }
-          $oldRect = @'
-    int x = canvas.x + ((canvas.dx - natW) / 2);
-    int y = canvas.y;
-    if (ToolbarAtBottom()) {
-        y = canvas.y + canvas.dy - h - OverlayToolbarBottomScrollbarOffset();
-    }
-    return {x, y, natW, h};
-'@
-          $newRect = @'
-    int x = canvas.x + ((canvas.dx - natW) / 2);
-    int y = canvas.y;
-    if (ToolbarAtLeft()) {
-        return {canvas.x, canvas.y, natW, canvas.dy};
-    }
-    if (ToolbarAtBottom()) {
-        y = canvas.y + canvas.dy - h - OverlayToolbarBottomScrollbarOffset();
-    }
-    return {x, y, natW, h};
-'@
+
+          $oldRect = @(
+            '    int x = canvas.x + ((canvas.dx - natW) / 2);',
+            '    int y = canvas.y;',
+            '    if (ToolbarAtBottom()) {',
+            '        y = canvas.y + canvas.dy - h - OverlayToolbarBottomScrollbarOffset();',
+            '    }',
+            '    return {x, y, natW, h};'
+          ) -join $nl
+          $newRect = @(
+            '    int x = canvas.x + ((canvas.dx - natW) / 2);',
+            '    int y = canvas.y;',
+            '    if (ToolbarAtLeft()) {',
+            '        return {canvas.x, canvas.y, natW, canvas.dy};',
+            '    }',
+            '    if (ToolbarAtBottom()) {',
+            '        y = canvas.y + canvas.dy - h - OverlayToolbarBottomScrollbarOffset();',
+            '    }',
+            '    return {x, y, natW, h};'
+          ) -join $nl
           if ($s.Contains($oldRect)) { $s = $s.Replace($oldRect, $newRect) }
+
           $oldBand = '    int bandY = ToolbarAtBottom\(\) \? \(tb.y - my\) : tb.y;\r?\n    Rect band\(canvas.x, bandY, canvas.dx, tb.dy \+ my\);'
-          $newBand = @'
-    if (ToolbarAtLeft()) {
-        Rect band(tb.x - my, canvas.y, tb.dx + my, canvas.dy);
-        return band.Contains(Point(ptFrame.x, ptFrame.y)) || ToolbarHost(win)->ContainsScreenPoint(pt);
-    }
-    int bandY = ToolbarAtBottom() ? (tb.y - my) : tb.y;
-    Rect band(canvas.x, bandY, canvas.dx, tb.dy + my);
-'@
+          $newBand = "    if (ToolbarAtLeft()) {`r`n        Rect band(tb.x - my, canvas.y, tb.dx + my, canvas.dy);`r`n        return band.Contains(Point(ptFrame.x, ptFrame.y)) || ToolbarHost(win)->ContainsScreenPoint(pt);`r`n    }`r`n    int bandY = ToolbarAtBottom() ? (tb.y - my) : tb.y;`r`n    Rect band(canvas.x, bandY, canvas.dx, tb.dy + my);"
           $s = [regex]::Replace($s, $oldBand, $newBand, 1)
-          $oldShow = @'
-    bool show = ShouldShowToolbar(win);
-    bool overlay = ShouldOverlayToolbar(win);
-'@
-          $newShow = @'
-    bool left = ToolbarAtLeft();
-    bool show = ShouldShowToolbar(win);
-    bool overlay = ShouldOverlayToolbar(win) || left;
-    if (left) {
-        show = true;
-    }
-'@
+
+          $oldShow = @(
+            '    bool show = ShouldShowToolbar(win);',
+            '    bool overlay = ShouldOverlayToolbar(win);'
+          ) -join $nl
+          $newShow = @(
+            '    bool left = ToolbarAtLeft();',
+            '    bool show = ShouldShowToolbar(win);',
+            '    bool overlay = ShouldOverlayToolbar(win) || left;',
+            '    if (left) {',
+            '        show = true;',
+            '    }'
+          ) -join $nl
           if ($s.Contains($oldShow)) { $s = $s.Replace($oldShow, $newShow) }
-          $oldHide = @'
-    if (enteredOverlay) {
-        // reveal immediately on entering overlay mode (e.g. via F8) so the
-        // change is visible; it auto-hides after kDelayToolbarHide
-        win->toolbarOverlayShown = true;
-    }
-'@
-          $newHide = @'
-    if (enteredOverlay) {
-        // reveal immediately on entering overlay mode (e.g. via F8) so the
-        // change is visible; it auto-hides after kDelayToolbarHide
-        win->toolbarOverlayShown = true;
-    }
-    if (ToolbarAtLeft()) {
-        win->toolbarOverlayShown = true;
-        win->toolbarOverlayHidePending = false;
-    }
-'@
+
+          $oldHide = @(
+            '    if (enteredOverlay) {',
+            '        // reveal immediately on entering overlay mode (e.g. via F8) so the',
+            '        // change is visible; it auto-hides after kDelayToolbarHide',
+            '        win->toolbarOverlayShown = true;',
+            '    }'
+          ) -join $nl
+          $newHide = @(
+            '    if (enteredOverlay) {',
+            '        // reveal immediately on entering overlay mode (e.g. via F8) so the',
+            '        // change is visible; it auto-hides after kDelayToolbarHide',
+            '        win->toolbarOverlayShown = true;',
+            '    }',
+            '    if (ToolbarAtLeft()) {',
+            '        win->toolbarOverlayShown = true;',
+            '        win->toolbarOverlayHidePending = false;',
+            '    }'
+          ) -join $nl
           if ($s.Contains($oldHide)) { $s = $s.Replace($oldHide, $newHide) }
           Set-Content $p $s -NoNewline
           Write-Host "Patched toolbar implementation: $p"
