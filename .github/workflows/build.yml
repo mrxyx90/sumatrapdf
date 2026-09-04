@@ -29,7 +29,7 @@ jobs:
           if (-not $toolbarFile) { throw 'Could not locate the virtual toolbar implementation' }
           $p = $toolbarFile.FullName
           $s = Get-Content $p -Raw
-          if ($s -notmatch 'ToolbarAtLeft\(') {
+          if ($s -notmatch 'static bool ToolbarAtLeft\(') {
             $needle = 'static int ToolbarRowDy\(int iconSize\) \{\r?\n    return iconSize \+ \(2 \* ToolbarCyPad\(\)\);\r?\n\}'
             $insert = @'
 $&
@@ -45,18 +45,18 @@ static bool ToolbarAtLeft() {
             $s = $s2
           }
 
-          # Make the toolbar's virtual button container vertical when left mode is selected.
-          # The patch is deliberately fail-fast: if the upstream layout implementation changes,
-          # CI stops instead of silently producing a wrongly laid-out EXE.
+          # Switch only the toolbar's own horizontal container to VBox.
+          # Fail fast if the source layout has changed so CI never ships a partial patch.
           $layoutCandidate = $files | Where-Object {
             $t = Get-Content $_.FullName -Raw
-            $t -match 'ToolbarVirt' -and $t -match 'new HBox\s*\('
+            $t -match 'ToolbarVirt' -and $t -match 'new HBox\s*\(\s*\)'
           } | Select-Object -First 1
           if (-not $layoutCandidate) { throw 'Could not locate toolbar HBox layout; source layout needs manual patching' }
           $lp = $layoutCandidate.FullName
           $ls = Get-Content $lp -Raw
-          $pattern = '(?s)(.{0,1200}ToolbarVirt.{0,4000}?new )HBox(\s*\()'
-          $ls2 = [regex]::Replace($ls, $pattern, '$1(ToolbarAtLeft() ? (ILayout*)new VBox() : (ILayout*)new HBox()) /* patched */', 1)
+          $pattern = 'new HBox\s*\(\s*\)'
+          $replacement = 'ToolbarAtLeft() ? (ILayout*)new VBox() : (ILayout*)new HBox()'
+          $ls2 = [regex]::Replace($ls, $pattern, $replacement, 1)
           if ($ls2 -eq $ls) { throw 'Toolbar HBox replacement failed' }
           Set-Content $lp $ls2 -NoNewline
 
