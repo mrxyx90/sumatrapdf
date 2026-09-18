@@ -69,6 +69,7 @@ static Color FloatingHover() {
 struct FloatingIconButton : VirtIconButton {
     int sideLen = 0;
     Color hoverBg = kColorUnset;
+    FloatingToolbar* toolbar = nullptr;
 
     Size GetIdealSize() override {
         return {sideLen, sideLen};
@@ -79,6 +80,11 @@ struct FloatingIconButton : VirtIconButton {
             ctx.gfx->FillRoundedRect(ctx.bounds, DpiScale(6), hoverBg);
         }
         VirtIconButton::Paint(ctx);
+
+        if (toolbar && toolbar->activeCmdId == id) {
+            // Keep the active-tool indication as a blue border only.
+            ctx.gfx->DrawRect(ctx.bounds, 0xff0078d4, DpiScale(2));
+        }
     }
 };
 
@@ -91,9 +97,11 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
         return;
     }
 
-    // The floating toolbar is a command launcher, not a toggle-state toolbar.
-    // Clicking the same button again must execute the command normally instead
-    // of changing a persistent visual state.
+    // Remember the last selected tool for the blue selector border. Clicking
+    // the same button again keeps it selected; the command still executes.
+    tb->activeCmdId = cmd;
+    tb->host->Invalidate(false);
+
     if (cmd == CmdCreateAnnotHighlight || cmd == CmdCreateAnnotUnderline || cmd == CmdCreateAnnotSquiggly ||
         cmd == CmdCreateAnnotStrikeOut) {
         HwndSendCommand(tb->win->hwndFrame, cmd, 0);
@@ -219,6 +227,7 @@ static void BuildFloatingToolbar(FloatingToolbar* tb) {
         auto* button = new FloatingIconButton();
         button->sideLen = buttonSize;
         button->hoverBg = FloatingHover();
+        button->toolbar = tb;
         button->pixmap = GetCachedPixmapForSvg(Str(b.icon), iconSize, iconSize,
                                                 ThemeWindowTextColor(), FloatingBg());
         button->SetTooltip(Str(b.tip));
