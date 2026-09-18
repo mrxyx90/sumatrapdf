@@ -21,13 +21,13 @@ LPCOLESTR myGuid = kPdfPreviewClsid;
 typedef HRESULT ourDllGetClassObjectT(REFCLSID rclsid, REFIID riid, void** ppv);
 
 void log(Str s) {
-    if (!s) {
+    if (len(s) == 0) {
         return;
     }
     OutputDebugStringA(s.s);
     fwrite(s.s, 1, (size_t)s.len, stdout);
 }
-void _uploadDebugReport(Str, Str, bool, bool) {}
+void _uploadDebugReport(Str, Str, bool) {}
 
 static Str kPdfPreviewDllName = StrL("PdfPreview.dll");
 

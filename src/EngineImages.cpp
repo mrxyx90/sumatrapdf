@@ -8,7 +8,8 @@
 #include "base/File.h"
 #include "base/GuessFileType.h"
 #include "base/Pixmap.h"
-#include "GumboHelpers.h"
+#include "base/HtmlTags.h"
+#include "GumboHtmlParser.h"
 #include "base/JsonParser.h"
 #include "base/Timer.h"
 #include "base/DirScan.h"
@@ -28,6 +29,7 @@ extern "C" {
 #include "gui/UIModels.h"
 #include "EngineBase.h"
 #include "EngineAll.h"
+#include "CachedObjects.h"
 
 Kind kindEngineImage = "engineImage";
 Kind kindEngineImageDir = "engineImageDir";
@@ -635,10 +637,10 @@ Pixmap* EngineImages::RenderPage(RenderPageArgs& args) {
         fz_irect subarea;
         fz_irect* subPtr = nullptr;
         if (!isFullPage && pageRect) {
-            subarea.x0 = pageRc.x;
-            subarea.y0 = pageRc.y;
-            subarea.x1 = pageRc.x + pageRc.dx;
-            subarea.y1 = pageRc.y + pageRc.dy;
+            subarea.x0 = (int)pageRc.x;
+            subarea.y0 = (int)pageRc.y;
+            subarea.x1 = (int)(pageRc.x + pageRc.dx);
+            subarea.y1 = (int)(pageRc.y + pageRc.dy);
             if (subarea.x0 < 0) {
                 subarea.x0 = 0;
             }
@@ -943,6 +945,32 @@ bool EngineImages::SaveFileAs(Str dstPath) {
     return SaveFileOrData(FilePath(), sourceData, dstPath);
 }
 
+static bool ImagePageCanFree(WindowTab* currTab, CachedObject* o) {
+    (void)currTab;
+    auto* page = (ImagePage*)o->id;
+    if (!page || page->loading) {
+        return false;
+    }
+    if (AtomicIntGet(&page->refs) > 1) {
+        return false;
+    }
+    return page->ownPixmap && page->pixmap;
+}
+
+static bool ImagePageFree(WindowTab* currTab, CachedObject* o) {
+    (void)currTab;
+    auto* page = (ImagePage*)o->id;
+    auto* eng = (EngineImages*)o->engine;
+    if (!page || !eng) {
+        return false;
+    }
+    if (AtomicIntGet(&page->refs) > 1) {
+        return false;
+    }
+    eng->DropPage(page, true);
+    return true;
+}
+
 ImagePage* EngineImages::GetPage(int pageNo, bool tryOnly) {
     ImagePage* result = nullptr;
     bool isLoader = false;
@@ -1007,6 +1035,17 @@ ImagePage* EngineImages::GetPage(int pageNo, bool tryOnly) {
                 result->failedToLoad = true;
             }
         }
+        if (pixmap && ownPixmap) {
+            CachedObject o{};
+            o.id = (uintptr_t)result;
+            o.size = (u64)PixmapByteSize(pixmap);
+            o.kind = kindCachedImage;
+            o.pageNo = result->pageNo;
+            o.engine = this;
+            o.canFree = ImagePageCanFree;
+            o.free = ImagePageFree;
+            DidAllocateCachedObject(&o);
+        }
         {
             ScopedMutex scope(&result->loadLock);
             result->loading = false;
@@ -1040,6 +1079,7 @@ void EngineImages::DropPage(ImagePage* page, bool forceRemove) {
     }
 
     if (newRefs == 0) {
+        UnregisterCachedObject((uintptr_t)page);
         if (page->ownPixmap) {
             FreePixmap(page->pixmap);
         }
@@ -1211,7 +1251,7 @@ EngineBase* EngineImage::Clone() {
 }
 
 bool EngineImage::LoadSingleFile(Str path) {
-    if (!path) {
+    if (len(path) == 0) {
         return false;
     }
     SetFilePath(path);
@@ -1229,15 +1269,15 @@ bool EngineImage::LoadSingleFile(Str path) {
     // TODO: maybe default to file extension and only use detected from content
     // if no extension?
     TempStr fileExt = GfxFileExtFromDataTemp(data);
-    if (!fileExt) {
+    if (len(fileExt) == 0) {
         // imageFormat already holds the Kind we resolved above; skip the
         // redundant GuessFileTypeFromName call.
         fileExt = GfxFileExtFromTypeTemp(imageFormat);
     }
-    if (!fileExt) {
+    if (len(fileExt) == 0) {
         fileExt = path::GetExtTemp(path);
     }
-    if (!fileExt) {
+    if (len(fileExt) == 0) {
         fileExt = StrL("");
     }
     SetDefaultExt(defaultExt, fileExt);
@@ -1266,7 +1306,7 @@ bool EngineImage::LoadFromData(Str data) {
     sourceData = str::Dup(data);
 
     Str fileExt = GfxFileExtFromDataTemp(data);
-    if (!fileExt) {
+    if (len(fileExt) == 0) {
         return false;
     }
     SetDefaultExt(defaultExt, path::GetExtTemp(fileExt));
@@ -1324,7 +1364,9 @@ static void AddExifStringProp(Props& propsOut, DocProp docProp, const ExifParser
 }
 
 TempStr EngineImage::GetPropertyTemp(DocProp prop) {
-    Str data = file::ReadFile(FilePath());
+    // loaded from memory (e.g. a PDF file attachment) has no file path
+    Str path = FilePath();
+    Str data = len(path) > 0 ? file::ReadFile(path) : str::Dup(sourceData);
     if (len(data) == 0) {
         return {};
     }
@@ -1758,10 +1800,9 @@ i64 EngineImage::GetImageByteSize(int /*pageNo*/) {
 }
 
 fz_image* EngineImage::LoadFzImageForPage(fz_context* ctx, int pageNo) {
-    // mupdf decodes the file's first frame lazily at render scale. Additional
-    // frames of multi-page TIFFs / animated GIFs come from the pre-decoded
-    // `frames` list via LoadPixmapForPage, so opt out of the mupdf path for them.
-    if (pageNo != 1) {
+    // mupdf's GIF loader composites every frame onto one pixmap (the last).
+    // Multi-frame TIFF/GIF/ICO pages come from `frames` via LoadPixmapForPage.
+    if (len(frames) > 1 || pageNo != 1) {
         return nullptr;
     }
     return EngineImages::LoadFzImageForPage(ctx, pageNo);
@@ -1843,7 +1884,7 @@ class EngineImageDir : public EngineImages {
         hasPageLabels = true;
     }
 
-    ~EngineImageDir() override { delete tocTree; }
+    ~EngineImageDir() override { DestroyTocTree(tocTree); }
 
     EngineBase* Clone() override {
         Str path = FilePath();
@@ -1925,7 +1966,7 @@ TempStr EngineImageDir::GetPageLabeTemp(int pageNo) const {
     Str path = pageFileNames[pageNo - 1];
     TempStr fileName = path::GetBaseNameTemp(path);
     TempStr ext = path::GetExtTemp(fileName);
-    if (!ext) {
+    if (len(ext) == 0) {
         return str::DupTemp(fileName);
     }
     int n = str::IndexOf(fileName, ext);
@@ -1944,7 +1985,7 @@ int EngineImageDir::GetPageByLabel(Str label) const {
         if (!str::TrimPrefix(maybeExt, label)) {
             continue;
         }
-        if (str::Eq(maybeExt, ext) || !maybeExt) {
+        if (str::Eq(maybeExt, ext) || len(maybeExt) == 0) {
             return i + 1;
         }
     }
@@ -1952,8 +1993,8 @@ int EngineImageDir::GetPageByLabel(Str label) const {
     return EngineBase::GetPageByLabel(label);
 }
 
-static TocItem* newImageDirTocItem(TocItem* parent, Str title, int pageNo) {
-    auto* res = AllocTocItem(nullptr, title, pageNo);
+static TocItem* newImageDirTocItem(Arena* arena, TocItem* parent, Str title, int pageNo) {
+    auto* res = AllocTocItem(arena, title, pageNo);
     res->parent = parent;
     return res;
 };
@@ -1963,17 +2004,17 @@ TocTree* EngineImageDir::GetToc() {
         return tocTree;
     }
     TempStr label = GetPageLabeTemp(1);
-    TocItem* root = newImageDirTocItem(nullptr, label, 1);
+    TocItem* root = newImageDirTocItem(arena, nullptr, label, 1);
     root->id = 1;
     for (int i = 2; i <= PageCount(); i++) {
         label = GetPageLabeTemp(i);
-        TocItem* item = newImageDirTocItem(root, label, i);
+        TocItem* item = newImageDirTocItem(arena, root, label, i);
         item->id = i;
         root->AddSiblingAtEnd(item);
     }
-    auto* realRoot = AllocTocItem(nullptr, {}, 0);
+    auto* realRoot = AllocTocItem(arena, {}, 0);
     realRoot->child = root;
-    tocTree = new TocTree(realRoot);
+    tocTree = AllocTocTree(arena, realRoot);
     return tocTree;
 }
 
@@ -1994,7 +2035,7 @@ bool EngineImageDir::SaveFileAs(Str dstPath) {
 Pixmap* EngineImageDir::LoadPixmapForPage(int pageNo, bool& deleteAfterUse) {
     Str path = pageFileNames[pageNo - 1];
     Str bmpData = file::ReadFile(path);
-    if (!bmpData) {
+    if (len(bmpData) == 0) {
         return nullptr;
     }
     deleteAfterUse = true;
@@ -2103,7 +2144,7 @@ static void ComicInfoVisit(ComicInfoParser* cip, StrNode* path, Str value, json:
 }
 
 void ComicInfoParser::AddBookmark(int imageIdx, Str title) {
-    if (!title || imageIdx < 0) {
+    if (len(title) == 0 || imageIdx < 0) {
         return;
     }
     VecAppend(bookmarkImageIdx, imageIdx);
@@ -2198,7 +2239,7 @@ void ComicInfoParser::Parse(Str xmlData) {
     // UTF-8 input). Handles UTF-8, UTF-16 LE, and UTF-16 BE BOMs; if there's
     // no BOM the data is treated as UTF-8 (ComicInfo.xml's spec encoding).
     TempStr utf8 = strconv::UnknownToUtf8Temp(xmlData);
-    if (!utf8) {
+    if (len(utf8) == 0) {
         return;
     }
     int utf8Len = len(utf8);
@@ -2312,7 +2353,7 @@ EngineCbx::EngineCbx(Archive* archive) {
 }
 
 EngineCbx::~EngineCbx() {
-    delete tocTree;
+    DestroyTocTree(tocTree);
     delete cbxArchive;
     str::Free(physicalPath);
 }
@@ -2343,7 +2384,7 @@ EngineBase* EngineCbx::Clone() {
 }
 
 bool EngineCbx::LoadFromFile(Str file) {
-    if (!file) {
+    if (len(file) == 0) {
         return false;
     }
     SetFilePath(file);
@@ -2419,7 +2460,7 @@ static void TocAppendChild(TocItem* parent, TocItem* child) {
 // shared by every file (e.g. all images in "images/") is stripped so a
 // single-folder comic stays a flat list. Remaining chapter folders become
 // tree nodes; clicking a folder goes to its first page.
-static TocItem* BuildCbxFolderToc(const Vec<Archive::FileInfo*>& files) {
+static TocItem* BuildCbxFolderToc(Arena* arena, const Vec<Archive::FileInfo*>& files) {
     int nFiles = len(files);
     if (nFiles <= 0) {
         return nullptr;
@@ -2449,7 +2490,7 @@ static TocItem* BuildCbxFolderToc(const Vec<Archive::FileInfo*>& files) {
         return nullptr;
     }
 
-    auto* realRoot = AllocTocItem(nullptr, {}, 0);
+    auto* realRoot = AllocTocItem(arena, {}, 0);
     Vec<TocItem*> stack;
     Vec<Str> stackNames;
     int idCounter = 0;
@@ -2470,7 +2511,7 @@ static TocItem* BuildCbxFolderToc(const Vec<Archive::FileInfo*>& files) {
 
         for (int k = common + match; k < nDir; k++) {
             TocItem* parent = len(stack) == 0 ? realRoot : VecLast(stack);
-            TocItem* folder = AllocTocItem(nullptr, parts[k], i + 1);
+            TocItem* folder = AllocTocItem(arena, parts[k], i + 1);
             folder->isOpenDefault = true;
             folder->id = ++idCounter;
             TocAppendChild(parent, folder);
@@ -2479,13 +2520,13 @@ static TocItem* BuildCbxFolderToc(const Vec<Archive::FileInfo*>& files) {
         }
 
         TocItem* parent = len(stack) == 0 ? realRoot : VecLast(stack);
-        TocItem* leaf = AllocTocItem(nullptr, parts[n - 1], i + 1);
+        TocItem* leaf = AllocTocItem(arena, parts[n - 1], i + 1);
         leaf->id = ++idCounter;
         TocAppendChild(parent, leaf);
     }
 
     if (!realRoot->child) {
-        FreeTocItemRec(nullptr, realRoot);
+        FreeTocItemRec(arena, realRoot);
         return nullptr;
     }
     return realRoot;
@@ -2519,7 +2560,7 @@ bool EngineCbx::FinishLoading() {
     for (int i = 0; i < n; i++) {
         auto* fileInfo = fileInfos[i];
         Str fileName = fileInfo->name;
-        if (!fileName) {
+        if (len(fileName) == 0) {
             continue;
         }
         if (Archive::Format::Zip == cbxArchive->format && str::StartsWithI(fileName, StrL("_rels/.rels"))) {
@@ -2563,7 +2604,7 @@ bool EngineCbx::FinishLoading() {
     }
 
     // encrypted archives list entries but can't extract data without password
-    if (cbxArchive->isEncrypted && !cbxArchive->password) {
+    if (cbxArchive->isEncrypted && len(cbxArchive->password) == 0) {
         delete cbxArchive;
         cbxArchive = nullptr;
         return false;
@@ -2598,7 +2639,7 @@ bool EngineCbx::FinishLoading() {
     TocItem* tocBuildRoot = nullptr;
     TocItem* tocBuildCurr = nullptr;
     auto addTocItem = [&](Str title, int pageNo) {
-        TocItem* ti = AllocTocItem(nullptr, title, pageNo);
+        TocItem* ti = AllocTocItem(arena, title, pageNo);
         if (!tocBuildRoot) {
             tocBuildRoot = ti;
         } else if (tocBuildCurr) {
@@ -2624,14 +2665,14 @@ bool EngineCbx::FinishLoading() {
             addTocItem(cip.bookmarkTitles[bi], pageNo);
         }
         if (tocBuildRoot) {
-            auto* realRoot = AllocTocItem(nullptr, {}, 0);
+            auto* realRoot = AllocTocItem(arena, {}, 0);
             realRoot->child = tocBuildRoot;
-            tocTree = new TocTree(realRoot);
+            tocTree = AllocTocTree(arena, realRoot);
         }
     } else {
-        TocItem* folderRoot = BuildCbxFolderToc(files);
+        TocItem* folderRoot = BuildCbxFolderToc(arena, files);
         if (folderRoot) {
-            tocTree = new TocTree(folderRoot);
+            tocTree = AllocTocTree(arena, folderRoot);
         } else {
             for (int i = 0; i < pageCount; i++) {
                 Str fname = files[i]->name;
@@ -2639,9 +2680,9 @@ bool EngineCbx::FinishLoading() {
                 addTocItem(baseName, i + 1);
             }
             if (tocBuildRoot) {
-                auto* realRoot = AllocTocItem(nullptr, {}, 0);
+                auto* realRoot = AllocTocItem(arena, {}, 0);
                 realRoot->child = tocBuildRoot;
-                tocTree = new TocTree(realRoot);
+                tocTree = AllocTocTree(arena, realRoot);
             }
         }
     }
@@ -2891,7 +2932,7 @@ EngineBase* CreateEngineCbxFromFile(Str path, PasswordUI* pwdUI, FileType hintTy
     bool saveKey = false;
     for (;;) {
         Str pwd = pwdUI->GetPassword(path, nullptr, nullptr, &saveKey);
-        if (!pwd) {
+        if (len(pwd) == 0) {
             return {}; // user cancelled
         }
         engine = EngineCbx::CreateFromFile(path, pwd, nullptr, nullptr, hintType, realPath);
@@ -2932,7 +2973,7 @@ bool EngineImagesGetPageFileInfo(EngineBase* engine, int pageNo, TempStr* nameOu
         TempStr pathOrName = e->GetImagePathTemp(pageNo);
         *nameOut = pathOrName ? path::GetBaseNameTemp(pathOrName) : TempStr{};
         // single-image engine: path is the document itself; still report the base name
-        if (!*nameOut) {
+        if (len(*nameOut) == 0) {
             Str fp = engine->FilePath();
             *nameOut = fp ? path::GetBaseNameTemp(fp) : TempStr{};
         }

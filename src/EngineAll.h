@@ -31,7 +31,7 @@ void SetDefaultEbookFont(Str name, float size);
 void SetDefaultChmFont(Str name);
 // Reject characters that would break out of a quoted CSS font-family value.
 inline bool IsSafeEbookFontName(Str name) {
-    if (!name) {
+    if (len(name) == 0) {
         return false;
     }
     for (int i = 0; i < len(name); i++) {
@@ -104,10 +104,12 @@ Annotation* EngineMupdfCreateAnnotation(EngineBase*, int pageNo, PointF pos, Ann
 void EngineMupdfGetAnnotations(EngineBase*, Vec<Annotation*>&);
 void EngineMupdfGetLoadedAnnotations(EngineBase*, Vec<Annotation*>&);
 bool EngineMupdfTryGetLoadedAnnotations(EngineBase*, Vec<Annotation*>&);
+bool EngineMupdfAnnotsLoadDone(EngineBase*);
 void EngineMupdfStartLoadAllAnnotations(EngineBase*, const Vec<int>& firstPages, const Func0& onProgress);
 void EngineMupdfCancelLoadAllAnnotations(EngineBase*);
 bool EngineMupdfHasUnsavedAnnotations(EngineBase*);
 bool EngineMupdfHasRedactMarks(EngineBase*);
+bool EngineMupdfHasUserRedactMarks(EngineBase*);
 bool EngineMupdfApplyRedactions(EngineBase*, Vec<Annotation*>& deletedOut);
 void EngineMupdfBeginOperation(EngineBase*, const char* name);
 void EngineMupdfEndOperation(EngineBase*);
@@ -157,13 +159,15 @@ bool EngineMupdfSignDocument(EngineBase*, const PdfSignArgs&, Str* errOut);
 void ListWindowsSigningCertificates(StrVec& thumbprints, StrVec& labels);
 void SetEutlLookupFn(bool (*fn)(const u8* der, int derLen));
 struct PdfSigCert {
+    PdfSigCert* next = nullptr;
     Str label;
     Str der;
+    ~PdfSigCert();
 };
-void EngineMupdfGetSignatureCerts(EngineBase*, Vec<PdfSigCert>& out);
-void FreePdfSigCerts(Vec<PdfSigCert>&);
+PdfSigCert* EngineMupdfGetSignatureCerts(EngineBase*);
+void FreePdfSigCerts(PdfSigCert*);
 #endif
-Annotation* EngineMupdfGetAnnotationAtPos(EngineBase*, int pageNo, PointF pos, Annotation*);
+Annotation* EngineMupdfGetAnnotationAtPos(EngineBase*, int pageNo, PointF pos, float padding, Annotation*);
 Annotation* EngineMupdfGetWidgetAtPos(EngineBase*, int pageNo, PointF pos);
 Annotation* EngineMupdfGetAdjacentWidget(EngineBase*, Annotation* cur, bool forward);
 void EngineMupdfGetFormFieldHighlightRects(EngineBase*, int pageNo, Annotation* skip, Vec<RectF>& out);
@@ -200,5 +204,6 @@ bool EngineSupportsAnnotations(EngineBase*);
 bool EngineGetAnnotations(EngineBase*, Vec<Annotation*>&);
 bool EngineHasUnsavedAnnotations(EngineBase*);
 bool EngineHasRedactMarks(EngineBase*);
-Annotation* EngineGetAnnotationAtPos(EngineBase*, int pageNo, PointF pos, Annotation*);
+bool EngineHasUserRedactMarks(EngineBase*);
+Annotation* EngineGetAnnotationAtPos(EngineBase*, int pageNo, PointF pos, float padding, Annotation*);
 Annotation* EngineGetWidgetAtPos(EngineBase*, int pageNo, PointF pos);

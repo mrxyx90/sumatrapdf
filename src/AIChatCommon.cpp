@@ -34,7 +34,7 @@ bool IsAIChatAvailable() {
 }
 
 bool IsAIChatSupportedForFile(Str filePath, Kind engineKind) {
-    if (!filePath) {
+    if (len(filePath) == 0) {
         return false;
     }
     // Comics, image folders, single images, and DjVu have no useful text/agent
@@ -48,14 +48,14 @@ bool IsAIChatSupportedForFile(Str filePath, Kind engineKind) {
 }
 
 bool IsAIChatSupportedForTab(WindowTab* tab) {
-    if (!tab || tab->IsAboutTab() || !tab->filePath) {
+    if (!tab || tab->IsAboutTab() || len(tab->filePath) == 0) {
         return false;
     }
     return IsAIChatSupportedForFile(tab->filePath, tab->GetEngineType());
 }
 
 TempStr AIChatJsEscapeTemp(Str s) {
-    if (!s) {
+    if (len(s) == 0) {
         return str::DupTemp(StrL(""));
     }
     str::Builder buf;
@@ -175,7 +175,7 @@ TempStr AIChatDebugGetTemp() {
 }
 
 void AIChatLog(AIChatLogger* logger, Str direction, Str text) {
-    if (!text) {
+    if (len(text) == 0) {
         text = StrL("");
     }
 
@@ -205,11 +205,11 @@ void AIChatLog(AIChatLogger* logger, Str direction, Str text) {
     }
 
     TempStr dir = GetSumatraDataDirTemp();
-    if (!dir || !logger->logFileName) {
+    if (len(dir) == 0 || len(logger->logFileName) == 0) {
         return;
     }
     TempStr path = path::JoinTemp(dir, logger->logFileName);
-    if (!path || !logger->mutex) {
+    if (len(path) == 0 || !logger->mutex) {
         return;
     }
 
@@ -243,15 +243,15 @@ static HRESULT CALLBACK AIChatNotInstalledDialogCallback(HWND /*hwnd*/, UINT msg
 }
 
 void AIChatShowNotInstalledDialog(const AIChatNotInstalledDialogArgs& args) {
-    Str linkLabel = _TRA("AI Chat documentation");
+    Str linkLabel = Tr("AI Chat documentation");
     TempStr link = fmt(R"(<a href="#">%s</a>)", linkLabel);
-    TempStr content = fmt(_TRA("See %s for setup instructions.").s, link);
+    TempStr content = fmt(Tr("See %s for setup instructions.").s, link);
 
     TASKDIALOG_BUTTON buttons[2];
     buttons[0].nButtonID = IDOK;
-    buttons[0].pszButtonText = CWStrTemp(_TRA("OK"));
+    buttons[0].pszButtonText = CWStrTemp(Tr("OK"));
     buttons[1].nButtonID = kBtnIdAIChatLearnMore;
-    buttons[1].pszButtonText = CWStrTemp(_TRA("Learn more"));
+    buttons[1].pszButtonText = CWStrTemp(Tr("Learn more"));
 
     TASKDIALOGCONFIG dialogConfig{};
     DWORD flags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT | TDF_ENABLE_HYPERLINKS;
@@ -294,14 +294,11 @@ TempStr AIChatFindExecutableTemp(const StrVec& fullPathCandidates, WStr searchEx
 }
 
 void AIChatAppendModelUnique(StrVec& models, Str model) {
+    str::TrimWsBoth(model);
     if (len(model) == 0) {
         return;
     }
     TempStr norm = str::DupTemp(model);
-    str::SkipWs(norm);
-    if (norm.len == 0) {
-        return;
-    }
     str::ToLowerInPlace(norm);
     for (int i = 0; i < len(models); i++) {
         if (str::EqI(models[i], norm)) {

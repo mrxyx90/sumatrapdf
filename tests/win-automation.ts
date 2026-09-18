@@ -12,13 +12,14 @@
 // These are for *ad-hoc* tests (not checked in). Put reusable helpers here, not
 // in the individual ad-hoc scripts.
 
-import { cmdId, EXE } from "./util.ts";
+import { cmdId, EXE, setFailureContext } from "./util.ts";
 import {
   testWindowPos,
   waitForWindowIdle,
   enumWindows,
   getClassName,
   findChildWindow,
+  findVisibleChildWindow,
   waitForTopWindow,
   packCoords,
   sleep,
@@ -39,8 +40,10 @@ import {
   VK_RETURN,
   VK_TAB,
   VK_ESCAPE,
+  ensureModifierKeysUp,
   getClientRect,
   clientToScreen,
+  getCursorPos,
   setCursorPos,
   sendCopyDataW,
   getPopupMenuHandle,
@@ -51,6 +54,8 @@ import {
   killProcessesNamed,
   type MenuItem,
 } from "./winapi.ts";
+
+export { ensureModifierKeysUp };
 import { ControlClient, uniquePipeName } from "./control.ts";
 
 export { captureWindowToPng, killProcessesNamed };
@@ -63,6 +68,45 @@ type SharedControlledSession = {
 
 let sharedSessionRequested = false;
 let sharedSession: SharedControlledSession | null = null;
+
+// keep drain promises alive: `void new Response().text()` can be GC'd, the
+// pipe fills, ASan's next stderr write kills the process, tests see EPIPE
+const gStderrDrains = new Set<Promise<string>>();
+const gStderrByProc = new WeakMap<Bun.Subprocess, Promise<string>>();
+
+function drainStderr(proc: Bun.Subprocess): Promise<string> {
+  if (!proc.stderr) {
+    return Promise.resolve("");
+  }
+  const p = new Response(proc.stderr).text();
+  gStderrDrains.add(p);
+  gStderrByProc.set(proc, p);
+  void p.finally(() => gStderrDrains.delete(p));
+  return p;
+}
+
+export async function takeStderr(proc: Bun.Subprocess): Promise<string> {
+  const p = gStderrByProc.get(proc);
+  return p ? (await p).trim() : "";
+}
+
+// the process the current test launched last; its stderr is attached to a
+// test failure. stderr only closes when the process exits, so a still-running
+// app yields nothing rather than hanging the report.
+let gLastProc: Bun.Subprocess | null = null;
+const STDERR_GRACE_MS = 1500;
+const STDERR_TAIL_CHARS = 4000;
+
+async function lastProcStderrTail(): Promise<string> {
+  if (!gLastProc) {
+    return "";
+  }
+  const timeout = new Promise<string>((resolve) => setTimeout(() => resolve(""), STDERR_GRACE_MS));
+  const s = await Promise.race([takeStderr(gLastProc), timeout]);
+  return s.length > STDERR_TAIL_CHARS ? "..." + s.slice(-STDERR_TAIL_CHARS) : s;
+}
+
+setFailureContext(lastProcStderrTail);
 
 export function beginSharedControlledSession(): void {
   if (sharedSession || sharedSessionRequested) {
@@ -117,6 +161,8 @@ export async function launchControlled(
   args: string[],
   opts?: { defaultWindowPos?: boolean; saveSettings?: boolean },
 ): Promise<{ proc: Bun.Subprocess; client: ControlClient; frame: number }> {
+  // many tests post keys and clicks directly; a held modifier would chord them
+  await ensureModifierKeysUp();
   if (sharedSession) {
     const path = args[args.length - 1];
     if (!path || path.startsWith("-")) {
@@ -135,10 +181,14 @@ export async function launchControlled(
   const pipe = uniquePipeName();
   const posArgs = opts?.defaultWindowPos || args.includes("-window-pos") ? [] : windowPosArgs();
   const testing = opts?.saveSettings ? [] : ["-for-testing"];
+  // drain stderr: ASan writes reports there, and with stderr:"ignore" those
+  // writes hit a closed pipe and kill the process (EPIPE in the test client)
   const proc = Bun.spawn([EXE, ...testing, ...posArgs, "-dbg-control", pipe, ...args], {
     stdout: "ignore",
-    stderr: "ignore",
+    stderr: "pipe",
   });
+  drainStderr(proc);
+  gLastProc = proc;
   try {
     const client = await ControlClient.connect(pipe);
     const frame = await waitForFrame(proc.pid!);
@@ -226,10 +276,12 @@ export function findChildByClass(parent: number, className: string): number {
   return findChildWindow(parent, className);
 }
 
-// the floating in-place form-field editor: a standard "Edit" child of the canvas
+// the floating in-place form-field editor: a visible "Edit" child of the canvas
 // that appears while editing a text/choice field. 0 if none is active.
+// Must skip hidden children: the home-page search box is an Edit under the
+// canvas even after a document is open.
 export function findFormEditor(canvas: number): number {
-  return findChildWindow(canvas, "Edit");
+  return findVisibleChildWindow(canvas, "Edit");
 }
 
 // poll until the form editor overlay appears (after clicking a text field)
@@ -257,13 +309,21 @@ export async function clickAt(hwnd: number, x: number, y: number, settleMs = 350
   const lp = packCoords(x, y);
   sendMessage(hwnd, WM_LBUTTONDOWN, MK_LBUTTON | extraMk, lp);
   sendMessage(hwnd, WM_LBUTTONUP, extraMk, lp);
+
+  // someone moving the real mouse (e.g. over RDP) mid-click turns it into a drag
+  const at = getCursorPos();
+  if (at.x !== screen.x || at.y !== screen.y) {
+    console.log(`⚠ clickAt: real mouse moved during the click (to ${at.x},${at.y}, click at ${screen.x},${screen.y})`);
+  }
   await sleep(settleMs);
 }
 
 // Press a key (WM_KEYDOWN). Posted (not sent) so it flows through the app's
 // PreTranslateMessage like real key input would (needed for canvas shortcuts /
 // arrow keys; also fine for the form editor's Enter/Tab/Esc handling).
+// a held Ctrl/Shift/Alt on the machine would turn this into a chord
 export async function pressKey(hwnd: number, vk: number, settleMs = 250): Promise<void> {
+  await ensureModifierKeysUp();
   postMessage(hwnd, WM_KEYDOWN, vk, 0);
   await sleep(settleMs);
 }

@@ -181,7 +181,7 @@ HWND SimpleBrowserWindow::Create(const SimpleBrowserCreateArgs& args) {
             cargs.pos = {CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT};
         }
         cargs.title = args.title;
-        if (!cargs.title) {
+        if (len(cargs.title) == 0) {
             cargs.title = StrL("Browser Window");
         }
         HMODULE h = GetModuleHandleW(nullptr);
@@ -200,10 +200,10 @@ HWND SimpleBrowserWindow::Create(const SimpleBrowserCreateArgs& args) {
     {
         // Back | Forward | url, the whole row inset by kNavRowPadding. All
         // three are virtual controls, so the window paints them itself
-        btnBack = NewThemedButton(frameHwnd, _TRA("Back"), font, false);
+        btnBack = NewThemedButton(frameHwnd, Tr("Back"), font, false);
         btnBack->onClick = MkMethod1<SimpleBrowserWindow, VirtMouseEvent*, &SimpleBrowserWindow::OnBack>(this);
         btnBack->SetIsEnabled(false);
-        btnForward = NewThemedButton(frameHwnd, _TRA("Forward"), font, false);
+        btnForward = NewThemedButton(frameHwnd, Tr("Forward"), font, false);
         btnForward->onClick = MkMethod1<SimpleBrowserWindow, VirtMouseEvent*, &SimpleBrowserWindow::OnForward>(this);
         btnForward->SetIsEnabled(false);
         urlText = NewVirtText({
@@ -226,7 +226,7 @@ HWND SimpleBrowserWindow::Create(const SimpleBrowserCreateArgs& args) {
     {
         webView = new WebviewWnd();
         Str dataDir = args.dataDir;
-        if (!dataDir) {
+        if (len(dataDir) == 0) {
             dataDir = GetWebViewDataDirTemp();
         }
         webView->dataDir = str::Dup(dataDir);
@@ -276,7 +276,7 @@ SimpleBrowserWindow* SimpleBrowserWindowCreate(const SimpleBrowserCreateArgs& ar
     }
     auto* res = new SimpleBrowserWindow();
     auto* hwnd = res->Create(args);
-    ReportIfFast(!hwnd);
+    ReportIf(!hwnd);
     if (!hwnd) {
         delete res;
         return nullptr;

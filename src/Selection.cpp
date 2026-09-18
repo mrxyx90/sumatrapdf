@@ -91,7 +91,7 @@ Vec<SelectionOnPage>* SelectionOnPage::FromRectangle(DisplayModel* dm, Rect rect
 
 Vec<SelectionOnPage>* SelectionOnPage::FromTextSelect(TextSel* textSel) {
     Vec<SelectionOnPage>* sel = new Vec<SelectionOnPage>();
-    VecReserve(*sel, textSel->len);
+    VecGrow(*sel, textSel->len);
 
     for (int i = textSel->len - 1; i >= 0; i--) {
         RectF rect = ToRectF(textSel->rects[i]);
@@ -109,6 +109,7 @@ Vec<SelectionOnPage>* SelectionOnPage::FromTextSelect(TextSel* textSel) {
 
 void DeleteOldSelectionInfo(MainWindow* win, bool alsoTextSel) {
     HideSelectionToolbar(win);
+    ResetSelectionToolbarDismissed(win);
     win->showSelection = false;
     win->selectionMeasure = SizeF();
     win->selectionDragEdge = SelectionDragEdge::None;
@@ -468,7 +469,7 @@ static void PaintTransparentQuads(Gfx* gfx, Rect screenRc, Vec<Point>& pts, Colo
     screenRc.Inflate(1, 1);
     Vec<Point> painted;
     for (int i = 0; i < nQuads; i++) {
-        Point* q = pts.els + i * 4;
+        Point* q = pts.els + (i * 4);
         if (QuadScreenBounds(q).Intersect(screenRc).IsEmpty()) {
             continue;
         }
@@ -759,20 +760,65 @@ RenderedBitmap* RenderSelectionsAsRenderedBitmap(DisplayModel* dm, const Vec<Sel
         return nullptr;
     }
     for (int y = 0; y < combined->height; y++) {
-        u8* row = combined->data + (size_t)y * combined->stride;
+        u8* row = combined->data + ((size_t)y * combined->stride);
         memset(row, 0xff, (size_t)combined->width * 4);
     }
 
     int y = 0;
     for (Pixmap* pixmap : pixmaps) {
         for (int row = 0; row < pixmap->height; row++) {
-            memcpy(combined->data + (size_t)(y + row) * combined->stride, pixmap->data + (size_t)row * pixmap->stride,
-                   (size_t)pixmap->width * 4);
+            memcpy(combined->data + ((size_t)(y + row) * combined->stride),
+                   pixmap->data + ((size_t)row * pixmap->stride), (size_t)pixmap->width * 4);
         }
         y += pixmap->height;
         FreePixmap(pixmap);
     }
     return RenderedBitmapFromPixmap(combined);
+}
+
+static bool CopySelectionImageToOpenClipboard(WindowTab* tab, bool appendOnly) {
+    DisplayModel* dm = tab->AsFixed();
+    if (!dm || !tab->selectionOnPage || len(*tab->selectionOnPage) == 0) {
+        return false;
+    }
+    SelectionOnPage* selOnPage = &(*tab->selectionOnPage)[0];
+    if (!dm->ValidPageNo(selOnPage->pageNo)) {
+        return false;
+    }
+    float zoom = dm->GetZoomReal(selOnPage->pageNo);
+    int rotation = dm->GetRotation();
+    RenderPageArgs args(selOnPage->pageNo, zoom, rotation, &selOnPage->rect, RenderTarget::Export);
+    Pixmap* bmp = dm->GetEngine()->RenderPage(args);
+    if (!bmp) {
+        logf("CopySelectionImageToOpenClipboard: RenderPage(page %d) failed\n", selOnPage->pageNo);
+        return false;
+    }
+    // EngineImages (image files, cbz/cbr) renders sub-rects through GDI+ and
+    // returns a malloc-backed Pixmap with no DIB section, so bmp->hbmp is null.
+    // RenderedBitmapFromPixmap() makes one when needed (and consumes bmp).
+    RenderedBitmap* rbmp = RenderedBitmapFromPixmap(bmp);
+    if (!rbmp) {
+        logf("CopySelectionImageToOpenClipboard: RenderedBitmapFromPixmap() failed\n");
+        return false;
+    }
+    bool ok = CopyImageToClipboard(rbmp->GetBitmap(), appendOnly);
+    if (!ok) {
+        logf("CopySelectionImageToOpenClipboard: CopyImageToClipboard() failed\n");
+    }
+    delete rbmp;
+    return ok;
+}
+
+void CopySelectionAsImageToClipboard(MainWindow* win) {
+    WindowTab* tab = win->CurrentTab();
+    if (!tab || !HasPermission(Perm::CopySelection)) {
+        return;
+    }
+    if (!OpenClipboardForUpdate()) {
+        return;
+    }
+    AutoCall closeClipboard(CloseClipboardAfterUpdate);
+    CopySelectionImageToOpenClipboard(tab, false);
 }
 
 void CopySelectionToClipboard(MainWindow* win) {
@@ -790,7 +836,7 @@ void CopySelectionToClipboard(MainWindow* win) {
     if (!gDisableDocumentRestrictions && (dm && !dm->GetEngine()->AllowsCopyingText())) {
         NotificationCreateArgs args;
         args.hwndParent = win->hwndCanvas;
-        args.msg = _TRA("Copying text was denied (copying as image only)");
+        args.msg = Tr("Copying text was denied (copying as image only)");
         ShowNotification(args);
     } else {
         selText = GetSelectedTextTemp(tab, StrL("\r\n"), isTextOnlySelectionOut);
@@ -805,34 +851,7 @@ void CopySelectionToClipboard(MainWindow* win) {
         return;
     }
 
-    if (!dm || !tab->selectionOnPage || len(*tab->selectionOnPage) == 0) {
-        return;
-    }
-    /* also copy a screenshot of the current selection to the clipboard */
-    SelectionOnPage* selOnPage = &(*tab->selectionOnPage)[0];
-    if (!dm->ValidPageNo(selOnPage->pageNo)) {
-        return;
-    }
-    float zoom = dm->GetZoomReal(selOnPage->pageNo);
-    int rotation = dm->GetRotation();
-    RenderPageArgs args(selOnPage->pageNo, zoom, rotation, &selOnPage->rect, RenderTarget::Export);
-    Pixmap* bmp = dm->GetEngine()->RenderPage(args);
-    if (!bmp) {
-        logf("CopySelectionToClipboard: RenderPage(page %d) failed\n", selOnPage->pageNo);
-        return;
-    }
-    // EngineImages (image files, cbz/cbr) renders sub-rects through GDI+ and
-    // returns a malloc-backed Pixmap with no DIB section, so bmp->hbmp is null.
-    // RenderedBitmapFromPixmap() makes one when needed (and consumes bmp).
-    RenderedBitmap* rbmp = RenderedBitmapFromPixmap(bmp);
-    if (!rbmp) {
-        logf("CopySelectionToClipboard: RenderedBitmapFromPixmap() failed\n");
-        return;
-    }
-    if (!CopyImageToClipboard(rbmp->GetBitmap(), true)) {
-        logf("CopySelectionToClipboard: CopyImageToClipboard() failed\n");
-    }
-    delete rbmp;
+    CopySelectionImageToOpenClipboard(tab, true);
 }
 
 void OnSelectAll(MainWindow* win, bool textOnly) {

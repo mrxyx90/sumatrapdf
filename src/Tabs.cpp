@@ -22,12 +22,14 @@
 #include "EngineAll.h"
 #include "DisplayModel.h"
 #include "SumatraPDF.h"
-#include "SumatraProperties.h"
+#include "DocumentProperties.h"
 #include "MainWindow.h"
 #include "WindowTab.h"
 #include "Commands.h"
 #include "CommandAvailability.h"
 #include "FindBar.h"
+#include "ReadingAutoScroll.h"
+#include "ReadingBar.h"
 #include "SelectionToolbar.h"
 #include "Menu.h"
 #include "TableOfContents.h"
@@ -41,7 +43,7 @@
 // Used by Tabs and Toolbar (toolbar was overwriting tooltips with path-only).
 // full path + size (if available); optional dirty suffix for unsaved annotations
 TempStr MakeTabTooltipTemp(Str path, bool dirty) {
-    if (!path) {
+    if (len(path) == 0) {
         return Str{};
     }
     TempStr tip;
@@ -52,7 +54,7 @@ TempStr MakeTabTooltipTemp(Str path, bool dirty) {
         tip = path;
     }
     if (dirty) {
-        tip = str::JoinTemp(tip, StrL(" "), _TRA("(unsaved annotations)"));
+        tip = str::JoinTemp(tip, StrL(" "), Tr("(unsaved annotations)"));
     }
     return tip;
 }
@@ -185,9 +187,11 @@ void RemoveTab(WindowTab* tab) {
     }
     UpdateTabFileDisplayStateForTab(tab);
     VecRemove(*win->tabSelectionHistory, tab);
+    // ask before removing: afterwards CurrentTab() follows the strip's new
+    // selection unless currentTabTemp happens to be set
+    bool closedCurrentTab = (tab == win->CurrentTab());
     WindowTab* tab2 = win->tabsCtrl->RemoveTab<WindowTab*>(idx);
     ReportIf(tab != tab2);
-    bool closedCurrentTab = (tab == win->CurrentTab());
     if (closedCurrentTab) {
         win->ctrl = nullptr;
         win->currentTabTemp = nullptr;
@@ -363,15 +367,15 @@ static MenuDef menuDefContextTab[] = {
     // these top items are removed unless the document has unsaved changes;
     // text matches the "Unsaved changes" close dialog
     {
-        _TRN("&Save changes to existing PDF"),
+        TrN("&Save changes to existing PDF"),
         CmdSaveAnnotations,
     },
     {
-        _TRN("Save changes to &new PDF"),
+        TrN("Save changes to &new PDF"),
         CmdSaveAnnotationsNewFile,
     },
     {
-        _TRN("&Discard changes"),
+        TrN("&Discard changes"),
         CmdDiscardChanges,
     },
     {
@@ -379,23 +383,23 @@ static MenuDef menuDefContextTab[] = {
         0,
     },
     {
-        _TRN("Properties..."),
+        TrN("Properties..."),
         CmdProperties,
     },
     {
-        _TRN("Show in folder"),
+        TrN("Show in folder"),
         CmdShowInFolder,
     },
     {
-        _TRN("Copy File Path"),
+        TrN("Copy File Path"),
         CmdCopyFilePath,
     },
     {
-        _TRN("Open In New Window"),
+        TrN("Open In New Window"),
         CmdDuplicateInNewWindow,
     },
     {
-        _TRN("Change Tab Color"),
+        TrN("Change Tab Color"),
         CmdSetTabColor,
     },
     {
@@ -403,23 +407,23 @@ static MenuDef menuDefContextTab[] = {
         0,
     },
     {
-        _TRN("Close"),
+        TrN("Close"),
         CmdClose,
     },
     {
-        _TRN("Close Other Tabs"),
+        TrN("Close Other Tabs"),
         CmdCloseOtherTabs,
     },
     {
-        _TRN("Close Tabs To The Right"),
+        TrN("Close Tabs To The Right"),
         CmdCloseTabsToTheRight,
     },
     {
-        _TRN("Close Tabs To The Left"),
+        TrN("Close Tabs To The Left"),
         CmdCloseTabsToTheLeft,
     },
     {
-        _TRN("Close All Tabs"),
+        TrN("Close All Tabs"),
         CmdCloseAllTabs,
     },
     {
@@ -427,11 +431,11 @@ static MenuDef menuDefContextTab[] = {
         0,
     },
     {
-        _TRN("Save Tab Group"),
+        TrN("Save Tab Group"),
         CmdTabGroupSave,
     },
     {
-        _TRN("Restore Tab Group"),
+        TrN("Restore Tab Group"),
         CmdTabGroupRestore,
     },
     {
@@ -740,6 +744,8 @@ void SaveCurrentWindowTab(MainWindow* win) {
     // matches)
     HideFindBar(win);
     HideSelectionToolbar(win);
+    ReadingAutoScrollHideBar(win);
+    ReadingBarCancelDrag(win);
 
     int current = win->tabsCtrl->GetSelected();
     if (-1 == current) {
@@ -876,8 +882,10 @@ void TabsOnCloseWindow(MainWindow* win) {
     win->ctrl = nullptr;
     win->currentTabTemp = nullptr;
     auto tabs = win->Tabs();
-    DeleteVecMembers(tabs);
+    // drop TabsCtrl userData first so CurrentTab() is null while WindowTab
+    // dtors run (they refresh the annotation filter via CurrentTab)
     win->tabsCtrl->RemoveAllTabs();
+    DeleteVecMembers(tabs);
     VecReset(*win->tabSelectionHistory);
 }
 

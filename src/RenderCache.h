@@ -98,6 +98,7 @@ struct PageRenderRequest {
     bool abort = false;
     AbortCookie* abortCookie = nullptr;
     u32 darkModeEpoch = 0;
+    bool grayscale = false;
     u64 timestamp = 0;
 
     // set by render thread before calling renderFinishedCb
@@ -124,22 +125,9 @@ extern int gMaxRenderThreads;
 // keep a small history of recently finished render requests for the
 // render-info debug window
 constexpr int kFinishedHistorySize = 32;
-constexpr int kCacheHistorySize = 32;
 
 // snapshot of a finished render request (kept after the request is gone, so it
 // copies the file name instead of holding on to a DisplayModel pointer)
-// snapshot of a cache add/remove for the cache-info debug window
-struct CacheChangeInfo {
-    bool isAdd = false;
-    int pageNo = 0;
-    float zoom = 0;
-    int rotation = 0;
-    TilePosition tile;
-    i64 bytes = 0;
-    u64 timestamp = 0;
-    char fileName[128]{};
-};
-
 struct FinishedRequestInfo {
     int pageNo = 0;
     float zoom = 0;
@@ -170,11 +158,6 @@ struct RenderCache {
     int finishedHistoryCount = 0; // number of valid entries (capped at size)
     int finishedHistoryNext = 0;  // next slot to write
 
-    // ring buffer of recent cache adds/removals (for the cache-info window),
-    // protected by cacheAccess
-    CacheChangeInfo cacheHistory[kCacheHistorySize]{};
-    int cacheHistoryCount = 0;
-    int cacheHistoryNext = 0;
     // per-thread current request tracking (index matches thread index)
     PageRenderRequest* curReqs[kMaxRenderThreads]{};
     RecursiveMutex requestAccess;
@@ -196,6 +179,10 @@ struct RenderCache {
     Color textColor = 0;
     Color backgroundColor = 0;
     Color linkColor = 0;
+
+    // FixedPageUI.Grayscale, copied by UpdateDocumentColors() for render threads
+    AtomicBool grayscalePageColors = 0;
+
     // bumped by UpdateDocumentColors when page render colors / the PDF
     // document color mode change; renders started under an older epoch are
     // discarded instead of cached
@@ -262,10 +249,6 @@ struct RenderCache {
     void RecordFinishedRequest(PageRenderRequest* req);
     void SerializeQueueState(str::Builder& s);
     void UpdateRenderInfo();
-
-    void RecordCacheChange(bool isAdd, BitmapCacheEntry* entry);
-    void SerializeCacheState(str::Builder& s);
-    void UpdateCacheInfo();
 };
 
 void ToggleRenderInfoWindow();

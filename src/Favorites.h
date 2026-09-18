@@ -29,6 +29,7 @@ void AddFavoriteForCurrentPage(MainWindow* win);
 // ctrl, when it's the DocController for filePath, lets a chaptered doc's
 // favorite be matched by (chapter, page) instead of the stale flat pageNo
 void DelFavorite(Str filePath, int pageNo, DocController* ctrl = nullptr);
+void DelFavorite(FileState* fs, Favorite* fav);
 void RebuildFavMenu(MainWindow* win, HMENU menu);
 void CreateFavorites(MainWindow* win);
 void ToggleFavorites(MainWindow* win); // sidebar
@@ -36,7 +37,7 @@ void ToggleFavoritesTab(MainWindow* win);
 WindowTab* FindFavoritesTab(MainWindow* win);
 void PopulateFavTreeIfNeeded(MainWindow* win);
 void LayoutFavoritesContainer(MainWindow* win);
-void GoToFavoriteByMenuId(MainWindow* win, int cmdId);
+void GoToFavoriteByCmd(MainWindow* win, CustomCommand* cmd);
 void UpdateFavoritesTree(MainWindow* win);
 void UpdateFavoritesTreeForAllWindows();
 bool IsPageInFavorites(Str filePath, int pageNo, DocController* ctrl = nullptr);

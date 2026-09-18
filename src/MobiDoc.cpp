@@ -8,7 +8,8 @@
 
 #include "gui/UIModels.h"
 
-#include "GumboHelpers.h"
+#include "base/HtmlTags.h"
+#include "GumboHtmlParser.h"
 
 #include "DocProperties.h"
 #include "DocController.h"
@@ -181,7 +182,7 @@ constexpr int kBaseTableItemCount = 64;
 constexpr int kBaseTableDataLen = kBaseTableItemCount * (int)sizeof(u32);
 
 constexpr int kHuffRecordMinLen = kHuffHeaderLen + kCacheDataLen + kBaseTableDataLen;
-constexpr int kHuffRecordLen = kHuffHeaderLen + 2 * kCacheDataLen + 2 * kBaseTableDataLen;
+constexpr int kHuffRecordLen = kHuffHeaderLen + (2 * kCacheDataLen) + (2 * kBaseTableDataLen);
 
 constexpr int kCdicsMax = 32;
 
@@ -547,7 +548,9 @@ bool MobiDoc::ParseHeader() {
     }
     textEncoding = (int)mobiHdr.textEncoding;
 
-    if (pdbReader->GetRecordCount() > (int)mobiHdr.imageFirstRec) {
+    // compare unsigned: a bogus imageFirstRec of e.g. 0xfffffff0 would pass as
+    // a negative int and index records before the first one
+    if (mobiHdr.imageFirstRec < (u32)pdbReader->GetRecordCount()) {
         imageFirstRec = (int)mobiHdr.imageFirstRec;
         if (0 == imageFirstRec) {
             // I don't think this should ever happen but I've seen it
@@ -556,7 +559,9 @@ bool MobiDoc::ParseHeader() {
             imagesCount = pdbReader->GetRecordCount() - imageFirstRec;
         }
     }
-    if (kPalmDocHeaderLen + (int)mobiHdr.hdrLen > recSize) {
+    // compare unsigned: a hdrLen >= 0x80000000 would pass as a negative int
+    // and the EXTH header would be read far past the end of the record
+    if (mobiHdr.hdrLen > (u32)(recSize - kPalmDocHeaderLen)) {
         logf("MobiHeader too big\n");
         return false;
     }
@@ -575,6 +580,9 @@ bool MobiDoc::ParseHeader() {
 
     if (kCompressionHuff == compressionType) {
         ReportIf(PdbDocType::Mobipocket != docType);
+        if (mobiHdr.huffmanFirstRec > (u32)INT_MAX - (u32)kCdicsMax) {
+            return false;
+        }
         rec = pdbReader->GetRecord((int)mobiHdr.huffmanFirstRec);
         int huffRecSize = rec.len;
         u8* recData = (u8*)rec.s;
@@ -586,12 +594,11 @@ bool MobiDoc::ParseHeader() {
         if (!huffDic->SetHuffData(recData, huffRecSize)) {
             return false;
         }
-        int cdicsCount = (int)mobiHdr.huffmanRecCount - 1;
-        if (cdicsCount > kCdicsMax) {
-            logf("MobiDoc::ParseHeader: cdicsCount: %d, kCdicsMax: %d\n", cdicsCount, kCdicsMax);
-            ReportDebugIf(true);
+        if (mobiHdr.huffmanRecCount < 1 || mobiHdr.huffmanRecCount > (u32)kCdicsMax + 1) {
+            logf("MobiDoc::ParseHeader: huffmanRecCount: %u\n", mobiHdr.huffmanRecCount);
             return false;
         }
+        int cdicsCount = (int)mobiHdr.huffmanRecCount - 1;
         for (int i = 0; i < cdicsCount; i++) {
             rec = pdbReader->GetRecord((int)mobiHdr.huffmanFirstRec + 1 + i);
             recData = (u8*)rec.s;
@@ -680,7 +687,7 @@ bool MobiDoc::DecodeExthHeader(const u8* data, int dataLen) {
     return true;
 }
 
-constexpr int kEofRec = 0xe98e0d0a;
+constexpr u32 kEofRec = 0xe98e0d0a;
 constexpr int kFlisRec = 0x464c4953; // 'FLIS'
 constexpr int kFcisRec = 0x46434953; // 'FCIS
 constexpr int kFdstRec = 0x46445354; // 'FDST'
@@ -949,7 +956,7 @@ int KindleEmbedToRecIndex(Str src) {
         } else {
             break;
         }
-        n = n * 32 + digit;
+        n = (n * 32) + digit;
         any = true;
         p++;
     }
@@ -1058,42 +1065,88 @@ Str MobiDoc::GetHtmlData() const {
 
 TempStr MobiDoc::GetPropertyTemp(DocProp prop) {
     Str v = GetPropValueTemp(props, prop);
-    if (!v) {
+    if (len(v) == 0) {
         return {};
     }
     return strconv::StrToUtf8Temp(v, textEncoding);
 }
 
-static const GumboNode* FindMobiTocReference(const GumboNode* root) {
-    // iterative pre-order traversal. Avoids recursion so a deeply nested
-    // document (e.g. a huge MOBI dictionary) can't overflow the stack
-    Vec<const GumboNode*> toVisit;
-    VecAppend(toVisit, root);
-    while (len(toVisit) > 0) {
-        const GumboNode* node = VecPop(toVisit);
-        if (!node) {
-            continue;
+// First <reference type="toc" filepos="N"/>; scan, don't gumbo-parse the book.
+static int FindMobiTocFilepos(Str html) {
+    Str kTag = StrL("<reference");
+    int pos = 0;
+    while (pos < len(html)) {
+        Str rest(html.s + pos, len(html) - pos);
+        int idx = str::IndexOfI(rest, kTag);
+        if (idx < 0) {
+            return -1;
         }
-        if (node->type == GUMBO_NODE_ELEMENT && GumboTagNameIs(node, StrL("reference"))) {
-            const GumboAttribute* type = gumbo_get_attribute(&node->v.element.attributes, "type");
-            if (type && str::EqI(Str(type->value), StrL("toc"))) {
-                return node;
+        int attrsStart = pos + idx + len(kTag);
+        Str after(html.s + attrsStart, len(html) - attrsStart);
+        int gt = str::IndexOfChar(after, '>');
+        if (gt < 0) {
+            return -1;
+        }
+        Str attrs(html.s + attrsStart, gt);
+        bool isToc = false;
+        int filepos = -1;
+        int i = 0;
+        while (i < len(attrs)) {
+            while (i < len(attrs) && str::IsWs(attrs.s[i])) {
+                i++;
+            }
+            if (i >= len(attrs) || attrs.s[i] == '/') {
+                break;
+            }
+            int nameStart = i;
+            while (i < len(attrs) && !str::IsWs(attrs.s[i]) && attrs.s[i] != '=') {
+                i++;
+            }
+            Str name(attrs.s + nameStart, i - nameStart);
+            while (i < len(attrs) && str::IsWs(attrs.s[i])) {
+                i++;
+            }
+            if (i >= len(attrs) || attrs.s[i] != '=') {
+                continue;
+            }
+            i++;
+            while (i < len(attrs) && str::IsWs(attrs.s[i])) {
+                i++;
+            }
+            char quote = 0;
+            if (i < len(attrs) && (attrs.s[i] == '"' || attrs.s[i] == '\'')) {
+                quote = attrs.s[i];
+                i++;
+            }
+            int valStart = i;
+            if (quote) {
+                while (i < len(attrs) && attrs.s[i] != quote) {
+                    i++;
+                }
+            } else {
+                while (i < len(attrs) && !str::IsWs(attrs.s[i]) && attrs.s[i] != '/') {
+                    i++;
+                }
+            }
+            Str val(attrs.s + valStart, i - valStart);
+            if (quote && i < len(attrs) && attrs.s[i] == quote) {
+                i++;
+            }
+            if (str::EqI(name, StrL("type")) && str::EqI(val, StrL("toc"))) {
+                isToc = true;
+            } else if (str::EqI(name, StrL("filepos"))) {
+                unsigned int n = 0;
+                if (!str::IsNull(str::Parse(val, "%u%$", &n))) {
+                    filepos = (int)n;
+                }
             }
         }
-        const GumboVector* children = nullptr;
-        if (node->type == GUMBO_NODE_ELEMENT) {
-            children = &node->v.element.children;
-        } else if (node->type == GUMBO_NODE_DOCUMENT) {
-            children = &node->v.document.children;
+        if (isToc && filepos >= 0) {
+            return filepos;
         }
-        if (children) {
-            // push in reverse so children are visited in document order
-            for (unsigned int i = children->length; i > 0; i--) {
-                VecAppend(toVisit, (const GumboNode*)children->data[i - 1]);
-            }
-        }
+        pos = attrsStart + gt + 1;
     }
-    return nullptr;
+    return -1;
 }
 
 bool MobiDoc::HasToc() {
@@ -1101,24 +1154,10 @@ bool MobiDoc::HasToc() {
         return docTocIndex < len(doc);
     }
     docTocIndex = len(doc); // no ToC
-
-    // search for <reference type="toc" filepos="N"/>
-    GumboOptions opts = GumboMakeOptions();
-    GumboOutput* output = gumbo_parse_with_options(&opts, ToStr(doc).s, len(doc));
-    if (!output) {
-        return false;
+    int filepos = FindMobiTocFilepos(ToStr(doc));
+    if (filepos >= 0 && filepos < len(doc)) {
+        docTocIndex = filepos;
     }
-    const GumboNode* ref = FindMobiTocReference(output->document);
-    if (ref) {
-        const GumboAttribute* filepos = gumbo_get_attribute(&ref->v.element.attributes, "filepos");
-        if (filepos) {
-            unsigned int pos;
-            if (!str::IsNull(str::Parse(Str(filepos->value), "%u%$", &pos))) {
-                docTocIndex = (int)pos;
-            }
-        }
-    }
-    gumbo_destroy_output_iter(&opts, output);
     return docTocIndex < len(doc);
 }
 
@@ -1217,7 +1256,14 @@ bool MobiDoc::ParseToc(EbookTocVisitor* visitor) {
     // determine the author's intentions by looking at commonly used tags
     GumboOptions opts = GumboMakeOptions();
     Str docStr = ToStr(doc);
-    Str tocSlice(docStr.s + docTocIndex, len(doc) - docTocIndex);
+    int tocLen = len(doc) - docTocIndex;
+    Str rest(docStr.s + docTocIndex, tocLen);
+    // walker stops at the first pagebreak; don't gumbo-parse the rest of the book
+    int pb = str::IndexOfI(rest, StrL("<mbp:pagebreak"));
+    if (pb >= 0) {
+        tocLen = pb;
+    }
+    Str tocSlice(docStr.s + docTocIndex, tocLen);
     GumboOutput* output = gumbo_parse_with_options(&opts, tocSlice.s, (size_t)tocSlice.len);
     if (!output) {
         return false;
@@ -1390,7 +1436,7 @@ static Str ExtractPdfFromPrintReplica(PdbReader* pdb) {
 
     str::Builder raw;
 
-    str::BuilderReserve(nullptr, raw, (int)palm.uncompressedDocSize);
+    str::BuilderReserve(raw, (int)palm.uncompressedDocSize);
     for (int i = 1; i <= recCount; i++) {
         auto rec = pdb->GetRecord(i);
         if (len(rec) == 0) {
@@ -1442,13 +1488,13 @@ static bool FileMightBePrintReplica(Str path) {
     u32 off1 = r.UInt32BE(86);
     bool isType8 = false;
     bool sawType = false;
-    if (off0 + 28 <= (u32)n && MemEq(buf + off0 + 16, "MOBI", 4)) {
+    if (n >= 28 && off0 <= (u32)(n - 28) && MemEq(buf + off0 + 16, "MOBI", 4)) {
         sawType = true;
         isType8 = r.UInt32BE((int)off0 + 24) == 8;
     }
     bool sawRec1 = false;
     bool rec1Mop = false;
-    if (off1 + 4 <= (u32)n) {
+    if (n >= 4 && off1 <= (u32)(n - 4)) {
         sawRec1 = true;
         rec1Mop = MemEq(buf + off1, "%MOP", 4);
     }

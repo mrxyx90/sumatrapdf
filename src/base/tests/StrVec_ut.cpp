@@ -4,7 +4,7 @@ License: Simplified BSD (see COPYING.BSD) */
 #include "base/Base.h"
 
 // must be last due to assert() over-write
-#include "base/UtAssert.h"
+#include "base/tests/UtAssert.h"
 
 static void ValidateSize(StrVec* v) {
     int size1 = v->size;
@@ -180,7 +180,7 @@ static void StrVecTest1_3(StrVec* v) {
 
 static void StrVecTest1_4(StrVec* v) {
     v->SetAt(3, Str());
-    utassert(!v->At(3));
+    utassert(len(v->At(3)) == 0);
     TestRemoveAt(v);
 }
 
@@ -336,8 +336,37 @@ static void StrVecTest2_5(StrVec* v2) {
     utassert(str::Eq(s, StrL("a,b,,c,d")));
 }
 
+// Join() skips null strings wherever they sit: leading, trailing, in the
+// middle or several in a row. An empty string is a value, not a null, so it
+// stays and still gets a joint around it.
+static void StrVecTestJoinNulls() {
+    StrVec v;
+    v.Append(Str());
+    v.Append(StrL("a"));
+    v.Append(Str());
+    v.Append(Str());
+    v.Append(StrL("b"));
+    v.Append(Str());
+    utassert(len(v) == 6);
+    utassert(str::Eq(JoinTemp(&v, StrL(";")), StrL("a;b")));
+    utassert(str::Eq(JoinTemp(&v, StrL("")), StrL("ab")));
+
+    v.Reset();
+    v.Append(Str());
+    v.Append(Str());
+    utassert(len(JoinTemp(&v, StrL(";"))) == 0);
+
+    v.Reset();
+    v.Append(StrL(""));
+    v.Append(StrL("a"));
+    v.Append(StrL(""));
+    utassert(str::Eq(JoinTemp(&v, StrL(";")), StrL(";a;")));
+}
+
 static void StrVecTest2() {
     Str s;
+
+    StrVecTestJoinNulls();
 
     StrVec v;
     StrVecTest2_1(&v);
@@ -424,7 +453,7 @@ static void StrVecTest4_1(StrVec* v) {
     v->SetAt(idx, Str(s));
     utassert(str::Eq(s, v->At(idx)));
     v->SetAt(idx, Str());
-    utassert(!v->At(idx));
+    utassert(len(v->At(idx)) == 0);
     v->SetAt(idx, StrL(""));
     utassert(str::Eq(StrL(""), v->At(idx)));
     // StrVec: force allocating in side strings
@@ -536,7 +565,7 @@ static void StrVecTest7_1(StrVec* v) {
     Split(v, StrL(""), StrL(" "), true, 2);
     utassert(len(*v) == 1);
     Str s = v->At(0);
-    utassert(!s || s.s[0] == 0);
+    utassert(len(s) == 0 || s.s[0] == 0);
 }
 
 static void StrVecTest7() {

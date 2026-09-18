@@ -14,7 +14,6 @@
 #include "EngineBase.h"
 #include "EbookBase.h"
 #include "EbookDoc.h"
-#include "GumboHelpers.h"
 #include "GumboHtmlParser.h"
 
 #include "FilterBase.h"
@@ -47,7 +46,7 @@ HRESULT EpubFilter::OnInit() {
     return S_OK;
 }
 
-// copied from SumatraProperties.cpp
+// copied from DocumentProperties.cpp
 static bool IsoDateParse(Str isoDate, SYSTEMTIME* timeOut) {
     ZeroMemory(timeOut, sizeof(SYSTEMTIME));
     int year = 0, month = 0, day = 0;
@@ -69,7 +68,7 @@ static bool IsoDateParse(Str isoDate, SYSTEMTIME* timeOut) {
 }
 
 static void TrimHtmlTextToken(Str& tokText) {
-    tokText = str::TrimWs(tokText);
+    str::TrimWsBoth(tokText);
 }
 
 static WStr ExtractHtmlText(EpubDoc* doc) {
@@ -79,7 +78,7 @@ static WStr ExtractHtmlText(EpubDoc* doc) {
     int dataLen = d.len;
 
     str::Builder text;
-    str::BuilderReserve(nullptr, text, dataLen / 2);
+    str::BuilderReserve(text, dataLen / 2);
     GumboHtmlParser p(d);
     HtmlToken* t;
     Vec<HtmlTag> tagNesting;
@@ -146,7 +145,7 @@ HRESULT EpubFilter::GetNextChunkValue(ChunkValue& chunkValue) {
         case STATE_EPUB_TITLE:
             m_state = STATE_EPUB_DATE;
             str = m_epubDoc->GetPropertyTemp(DocProp::Title);
-            if (!str) {
+            if (len(str) == 0) {
                 str = m_epubDoc->GetPropertyTemp(DocProp::Subject);
             }
             if (len(str) > 0) {
@@ -159,7 +158,7 @@ HRESULT EpubFilter::GetNextChunkValue(ChunkValue& chunkValue) {
         case STATE_EPUB_DATE:
             m_state = STATE_EPUB_CONTENT;
             str = m_epubDoc->GetPropertyTemp(DocProp::ModificationDate);
-            if (!str) {
+            if (len(str) == 0) {
                 str = m_epubDoc->GetPropertyTemp(DocProp::CreationDate);
             }
             if (len(str) > 0) {

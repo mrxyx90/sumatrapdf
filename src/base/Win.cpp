@@ -782,7 +782,7 @@ TempStr LoggedReadRegStrTemp(HKEY keySub, Str keyName, Str valName) {
 
 TempStr ReadRegStr2Temp(Str keyName, Str valName) {
     TempStr res = ReadRegStrTemp(HKEY_LOCAL_MACHINE, keyName, valName);
-    if (!res) {
+    if (len(res) == 0) {
         res = ReadRegStrTemp(HKEY_CURRENT_USER, keyName, valName);
     }
     return res;
@@ -790,7 +790,7 @@ TempStr ReadRegStr2Temp(Str keyName, Str valName) {
 
 TempStr LoggedReadRegStr2Temp(Str keyName, Str valName) {
     TempStr res = LoggedReadRegStrTemp(HKEY_LOCAL_MACHINE, keyName, valName);
-    if (!res) {
+    if (len(res) == 0) {
         res = LoggedReadRegStrTemp(HKEY_CURRENT_USER, keyName, valName);
     }
     return res;
@@ -1016,24 +1016,36 @@ TempStr GetSpecialFolderTemp(int csidl, bool createIfMissing) {
 
 // temp directory
 TempStr GetTempDirTemp() {
-    WCHAR dir[MAX_PATH] = {};
-#if 0 // TODO: only available in 20348, not yet present in SDK
-    DWORD cch = 0;
-    if (DynGetTempPath2W) {
-        cch = DynGetTempPath2W(dimof(dir), dir);
+    // not GetTempPath2W(): it only differs for processes running as SYSTEM,
+    // which we never are
+    return GetTempDirTemp(MAX_PATH);
+}
+
+// GetTempPathW() returns the size the path needs, including the terminator,
+// when the buffer is too small, and writes nothing. Retry with that size.
+// initialCch is a parameter so tests can force the retry.
+TempStr GetTempDirTemp(int initialCch) {
+    int cchBuf = initialCch < 1 ? 1 : initialCch;
+    WCHAR* dir = AllocArrayTemp<WCHAR>(cchBuf + 1);
+    if (!dir) {
+        return {};
     }
-    if (cch == 0) {
-        cch = GetTempPathW(dimof(dir), dir);
-    }
-#else
-    DWORD cch = GetTempPathW(dimof(dir), dir);
-#endif
+    DWORD cch = GetTempPathW((DWORD)cchBuf, dir);
     if (cch == 0) {
         return {};
     }
-    // TODO: should handle this
-    ReportIf(cch >= dimof(dir));
-    return ToUtf8Temp(WStr(dir, (int)cch));
+    if ((int)cch < cchBuf) {
+        return ToUtf8Temp(WStr(dir, (int)cch));
+    }
+    WCHAR* buf = AllocArrayTemp<WCHAR>((int)cch + 1);
+    if (!buf) {
+        return {};
+    }
+    DWORD cch2 = GetTempPathW(cch, buf);
+    if (cch2 == 0 || cch2 >= cch) {
+        return {};
+    }
+    return ToUtf8Temp(WStr(buf, (int)cch2));
 }
 
 //--- OS / process (misc)
@@ -1419,6 +1431,27 @@ bool IsRightButtonPressed() {
     return IsKeyPressed(VK_RBUTTON);
 }
 
+// Mark every key and mouse button up in this thread's key state (what
+// GetKeyState() and TranslateAccelerator() read), keeping the Caps Lock /
+// Num Lock toggles. Returns how many were down.
+int ReleaseThreadKeyState() {
+    BYTE keys[256];
+    if (!GetKeyboardState(keys)) {
+        return 0;
+    }
+    int nDown = 0;
+    for (BYTE& k : keys) {
+        if (k & 0x80) {
+            k &= ~0x80;
+            nDown++;
+        }
+    }
+    if (nDown > 0) {
+        SetKeyboardState(keys);
+    }
+    return nDown;
+}
+
 #if 0
 // The result value contains major and minor version in the high resp. the low WORD
 DWORD GetFileVersion(const WCHAR* path) {
@@ -1536,7 +1569,7 @@ HANDLE LaunchProcessInDir(Str cmdLine, Str currDir, DWORD flags) {
 }
 
 bool CreateProcessHelper(Str exe, Str args) {
-    if (!args) {
+    if (len(args) == 0) {
         args = StrL("");
     }
     TempStr cmd = fmt("\"%s\" %s", exe, args);
@@ -1894,6 +1927,18 @@ HWND HwndThreadFocus() {
     return nullptr;
 }
 
+// True while a menu (popup, menu bar or system menu) runs its nested message
+// loop on this thread. Work dispatched from that loop runs underneath whatever
+// the menu's caller has on its stack, so anything that frees state must wait.
+bool IsThreadInMenuMode() {
+    GUITHREADINFO gti{};
+    gti.cbSize = sizeof(gti);
+    if (!GetGUIThreadInfo(GetCurrentThreadId(), &gti)) {
+        return false;
+    }
+    return (gti.flags & (GUI_INMENUMODE | GUI_POPUPMENUMODE | GUI_SYSTEMMENUMODE)) != 0;
+}
+
 // SetFocus() does not move this thread's focused window when the thread is not
 // foreground. Attach to the foreground thread so Tab can leave a child HWND
 // for a virtual control (posted-key tests, a dialog that is not active).
@@ -1924,6 +1969,37 @@ bool HwndSetFocusForce(HWND hwnd) {
 
 bool HwndIsFocused(HWND hwnd) {
     return GetFocus() == hwnd;
+}
+
+// TabTip / osk / TextInputHost. A Contents or in-place edit that closes on
+// WM_KILLFOCUS would vanish when the tablet keyboard takes focus.
+bool HwndIsOnScreenKeyboard(HWND hwnd) {
+    if (!hwnd) {
+        return false;
+    }
+    WCHAR clsW[64]{};
+    GetClassNameW(hwnd, clsW, dimof(clsW));
+    TempStr cls = ToUtf8Temp(clsW);
+    if (str::StartsWithI(cls, StrL("IPTip")) || str::EqI(cls, StrL("OSKMainClass"))) {
+        return true;
+    }
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (pid == 0) {
+        return false;
+    }
+    AutoCloseHandle hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!hProc.IsValid()) {
+        return false;
+    }
+    WCHAR pathW[MAX_PATH]{};
+    DWORD pathLen = MAX_PATH;
+    if (!QueryFullProcessImageNameW(hProc, 0, pathW, &pathLen)) {
+        return false;
+    }
+    TempStr name = path::GetBaseNameTemp(ToUtf8Temp(pathW));
+    static SeqStrings kOskExes = "TabTip.exe\0osk.exe\0TextInputHost.exe\0";
+    return SeqStrIndexIS(kOskExes, name) >= 0;
 }
 
 bool HwndIsCursorOverWindow(HWND hwnd) {
@@ -2036,7 +2112,7 @@ void CloseClipboardAfterUpdate() {
 }
 
 static bool CopyOrAppendTextToClipboard(WStr text, bool appendOnly) {
-    if (!text) {
+    if (len(text) == 0) {
         return false;
     }
 
@@ -2364,6 +2440,20 @@ void MenuEmpty(HMENU m) {
     }
 }
 
+static bool MenuSetTextRec(HMENU m, int id, MENUITEMINFOW* mii) {
+    if (SetMenuItemInfoW(m, id, FALSE, mii)) {
+        return true;
+    }
+    int n = GetMenuItemCount(m);
+    for (int i = 0; i < n; i++) {
+        HMENU sub = GetSubMenu(m, i);
+        if (sub && MenuSetTextRec(sub, id, mii)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void MenuSetText(HMENU m, int id, WStr s) {
     ReportIf(id < 0);
     MENUITEMINFOW mii{};
@@ -2372,14 +2462,14 @@ void MenuSetText(HMENU m, int id, WStr s) {
     mii.fType = MFT_STRING;
     mii.dwTypeData = s.s;
     mii.cch = (uint)s.len;
-    BOOL ok = SetMenuItemInfoW(m, id, FALSE, &mii);
-    if (!ok) {
-        // setting text on a menu item that isn't present is benign (e.g. the
-        // item was filtered out by command visibility): log it, don't assert
-        TempStr tmp = len(s) == 0 ? StrL("(null)") : ToUtf8Temp(s);
-        logf("MenuSetText(): id=%d, s='%s'\n", id, tmp);
-        LogLastError();
+    if (MenuSetTextRec(m, id, &mii)) {
+        return;
     }
+    // setting text on a menu item that isn't present is benign (e.g. the
+    // item was filtered out by command visibility): log it, don't assert
+    TempStr tmp = len(s) == 0 ? StrL("(null)") : ToUtf8Temp(s);
+    logf("MenuSetText(): id=%d, s='%s'\n", id, tmp);
+    LogLastError();
 }
 
 void MenuSetText(HMENU m, int id, Str s) {
@@ -2535,7 +2625,7 @@ bool RegisterOrUnregisterServerDLL(Str dllPath, bool install, Str args) {
         }
     }
 
-    if (!args) {
+    if (len(args) == 0) {
         Str func = install ? StrL("DllRegisterServer") : StrL("DllUnregisterServer");
         DllRegUnregProc DllRegUnreg = (DllRegUnregProc)GetProcAddress(lib, func.s);
         if (DllRegUnreg) {
@@ -3165,25 +3255,26 @@ Size ButtonGetIdealSize(HWND hwnd) {
 
 constexpr int kResourceNotFound = -1;
 
-bool LockDataResource(int resId, LoadedDataResource* res) {
+// mod: the module holding the resource, the process exe when null
+bool LockDataResource(int resId, LoadedDataResource* res, HMODULE mod) {
     if (res->dataSize != 0) {
         return res->dataSize != kResourceNotFound;
     }
 
-    auto* h = GetModuleHandleW(nullptr);
+    HMODULE h = mod ? mod : GetModuleHandleW(nullptr);
     WCHAR* name = MAKEINTRESOURCEW(resId);
     HRSRC resSrc = FindResourceW(h, name, RT_RCDATA);
     if (!resSrc) {
         res->dataSize = kResourceNotFound;
         return false;
     }
-    HGLOBAL hres = LoadResource(nullptr, resSrc);
+    HGLOBAL hres = LoadResource(h, resSrc);
     if (!hres) {
         res->dataSize = kResourceNotFound;
         return false;
     }
     res->data = (const u8*)LockResource(hres);
-    res->dataSize = (int)SizeofResource(nullptr, resSrc);
+    res->dataSize = (int)SizeofResource(h, resSrc);
     return true;
 }
 
@@ -3377,6 +3468,9 @@ void HwndScheduleRepaint(HWND hwnd) {
 // do WM_PAINT immediately
 void HwndRepaintNow(HWND hwnd) {
     if (!hwnd || !::IsWindow(hwnd)) {
+        return;
+    }
+    if (!IsWindowVisible(hwnd)) {
         return;
     }
     HwndInvalidate(hwnd);
@@ -3666,7 +3760,7 @@ static void AddPathToRecentDocsOnThread(WCHAR* pathW) {
 }
 
 void AddPathToRecentDocs(Str path) {
-    if (!path) {
+    if (len(path) == 0) {
         return;
     }
     if (!path::IsOnNetworkDrive(path)) {
@@ -3957,7 +4051,7 @@ Str GetLastErrorAsStr(Arena* arena) {
     }
     auto ws = WStr(msgBuf);
     Str temp = ToUtf8(GetTempArena(), WStr(msgBuf));
-    temp = str::TrimSuffixWhitespace(temp);
+    str::TrimSuffixWhitespace(temp);
     Str result = fmt("0x%08lX '%s'", err, temp);
     LocalFree(msgBuf);
     return str::Dup(arena, result);

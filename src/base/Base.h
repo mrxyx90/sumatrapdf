@@ -69,7 +69,7 @@
 #define COMPILER_MINGW 0
 #endif
 
-// Always 0 or 1 so `#if IS_DEBUG` / `#if IS_ASAN` compile under /W4 /WX (C4668).
+// Always 0 or 1 so `#if IS_DEBUG` / `#if IS_ASAN` / `#if IS_PERF_LOG` compile under /W4 /WX (C4668).
 // The build may pass IS_DEBUG=1 / IS_ASAN=1; otherwise IS_DEBUG follows DEBUG
 // and IS_ASAN follows the compiler (/fsanitize=address, -fsanitize=address).
 #ifndef IS_DEBUG
@@ -78,6 +78,10 @@
 #else
 #define IS_DEBUG 0
 #endif
+#endif
+
+#ifndef IS_PERF_LOG
+#define IS_PERF_LOG 0
 #endif
 
 #ifndef IS_ASAN
@@ -243,6 +247,8 @@ using AtomicPtr = void* volatile;
 
 bool AtomicBoolGet(AtomicBool* p);
 void AtomicBoolSet(AtomicBool* p, bool v);
+// sets and returns the previous value, so that exactly one racing thread sees false
+bool AtomicBoolSwap(AtomicBool* p, bool v);
 int AtomicIntGet(AtomicInt* p);
 void AtomicIntSet(AtomicInt* p, int v);
 int AtomicIntAdd(AtomicInt* p, int v);
@@ -273,6 +279,7 @@ struct Str {
     constexpr explicit Str(char* s_, int len_) : s(s_), len(len_) {}
 
     explicit operator bool() const { return len > 0 && s; }
+    bool operator!() const = delete;
 };
 
 // exists just to mark the intent, needed by both Str.h and TempAllocator.h
@@ -303,6 +310,7 @@ struct WStr {
     explicit WStr(wchar_t* s_, int len_) : s(s_), len(len_) {}
 
     explicit operator bool() const { return len > 0 && s; }
+    bool operator!() const = delete;
 };
 
 // exists just to mark the intent, needed by both Str.h and TempAllocator.h
@@ -313,7 +321,7 @@ using TempWStr = WStr;
 
 // length of a Str / WStr as int. C strings have a dedicated overload so
 // len(ptr) does not depend on Str's explicit const char* constructor.
-inline int len(Str s) {
+constexpr int len(Str s) {
     return s.len;
 }
 inline int len(WStr s) {
@@ -408,24 +416,23 @@ inline void CrashMe() {
 // rare cases where we really want to know a given condition happens. Before
 // each release we should audit the uses of ReportAlwaysIf()
 
-extern void _uploadDebugReport(Str, Str, bool, bool);
+extern void _uploadDebugReport(Str, Str, bool);
 
 #define STRINGIZE_(x) #x
 #define STRINGIZE(x) STRINGIZE_(x)
 #define FILE_LINE __FILE__ ":" STRINGIZE(__LINE__)
 
-#define ReportIfCond(cond, condStr, fileLine, isCrash, captureCallstack)                  \
-    __analysis_assume(!(cond));                                                           \
-    do {                                                                                  \
-        if (cond) {                                                                       \
-            _uploadDebugReport(StrL(condStr), StrL(fileLine), isCrash, captureCallstack); \
-        }                                                                                 \
+#define ReportIfCond(cond, condStr, fileLine, isCrash)                  \
+    __analysis_assume(!(cond));                                         \
+    do {                                                                \
+        if (cond) {                                                     \
+            _uploadDebugReport(StrL(condStr), StrL(fileLine), isCrash); \
+        }                                                               \
     } while (0)
 
-#define ReportIf(cond) ReportIfCond(cond, #cond, FILE_LINE, false, true)
-#define ReportIfFast(cond) ReportIfCond(cond, #cond, FILE_LINE, false, false)
+#define ReportIf(cond) ReportIfCond(cond, #cond, FILE_LINE, false)
 #if IS_DEBUG
-#define ReportDebugIf(cond) ReportIfCond(cond, #cond, FILE_LINE, false, true)
+#define ReportDebugIf(cond) ReportIfCond(cond, #cond, FILE_LINE, false)
 #else
 // In release the check is gone, but the condition must still be *read*, or a
 // variable whose only consumer is a ReportDebugIf looks unused: the compiler
@@ -862,6 +869,10 @@ int setMinMax(int& v, int minVal, int maxVal);
 #define defer const auto& CONCAT(defer__, __LINE__) = ExitScopeHelp() + [&]()
 
 extern AtomicInt gAllowAllocFailure;
+
+constexpr u64 kLargeAllocationSize = 1024ull * 1024ull;
+extern u64 (*gTryFreeCachedObjects)(u64 newAllocationSize);
+extern u64 (*gFreeCachedObjects)();
 
 //--- Geom.h ------------------------------------------------------------------
 
@@ -1397,6 +1408,14 @@ auto VecReserve(Arena* arena, T& v, int n) -> decltype(v.els);
 template <typename T>
 inline T* VecReserve(Vec<T>& v, int n);
 
+// Ensure capacity for n more elements (cap >= len + n). Same as VecReserve
+// when the vec is empty (just created or after Reset).
+template <typename T>
+auto VecGrow(Arena* arena, T& v, int n) -> decltype(v.els);
+
+template <typename T>
+inline T* VecGrow(Vec<T>& v, int n);
+
 // Set logical length to newSize (std::vector::resize). Grows capacity if
 // needed; zeros unused capacity beyond the new length.
 template <typename T>
@@ -1555,6 +1574,8 @@ struct Vec {
     const_iterator begin() const { return els; }
     iterator end() { return els ? els + len : nullptr; }
     const_iterator end() const { return els ? els + len : nullptr; }
+
+    bool operator!() const = delete;
 };
 
 // VecNT() casts, so the layouts must match. Vec<T> is standard-layout and its
@@ -1598,6 +1619,22 @@ auto VecReserve(Arena* arena, T& v, int n) -> decltype(v.els) {
 template <typename T>
 inline T* VecReserve(Vec<T>& v, int n) {
     return VecReserve(nullptr, v, n);
+}
+
+template <typename T>
+auto VecGrow(Arena* arena, T& v, int n) -> decltype(v.els) {
+    if (n <= 0) {
+        return v.els;
+    }
+    if (v.len > INT_MAX - n) {
+        return nullptr;
+    }
+    return VecReserve(arena, v, v.len + n);
+}
+
+template <typename T>
+inline T* VecGrow(Vec<T>& v, int n) {
+    return VecGrow(nullptr, v, n);
 }
 
 template <typename T>
@@ -1699,7 +1736,7 @@ bool VecInsertAt(Vec<T>& v, int idx, const VecIdentityT<T>& el) {
 
 template <typename T, typename E>
 bool VecPush(Arena* arena, T& v, E el) {
-    if (!VecReserve(arena, v, v.len + 1)) {
+    if (!VecGrow(arena, v, 1)) {
         return false;
     }
     v.els[v.len] = el;
@@ -1734,7 +1771,7 @@ void VecRemoveAtFast(Vec<T>& v, int idx) {
 
 template <typename T>
 void VecRemoveLast(Vec<T>& v) {
-    if (v.len == 0) {
+    if (len(v) == 0) {
         return;
     }
     VecRemoveAt(v, v.len - 1);
@@ -1915,9 +1952,12 @@ inline bool IsNull(const Str& s) {
     return !s.s;
 }
 bool StartsWith(Str str, Str prefix);
-bool TrimPrefix(Str& s, Str prefix);
-
 bool StartsWithI(Str str, Str prefix);
+bool StartsWithAny(Str s, const char* chars);
+
+int TrimPrefix(Str& s, Str prefix);
+int TrimPrefixI(Str& s, Str prefix);
+int TrimAny(Str& s, const char* chars);
 bool EndsWith(Str txt, Str end);
 bool EndsWithI(Str txt, Str end);
 bool EqNIx(Str s, int n, Str s2);
@@ -1948,9 +1988,9 @@ bool ContainsI(Str s, Str sub);
 bool ContainsChar(Str s, char c);
 bool ContainsCharAny(Str s, Str chars);
 
-Str TrimSuffix(Str s, Str suffix);
+int TrimSuffix(Str& s, Str suffix);
 int LastIndexOfChar(Str s, char c);
-Str TrimSuffixWhitespace(Str s); // trims trailing whitespace in place
+int TrimSuffixWhitespace(Str& s);
 
 TempStr ReplaceTemp(Str s, Str toReplace, Str replaceWith);
 TempStr ReplaceNoCaseTemp(Str s, Str toReplace, Str replaceWith);
@@ -1961,8 +2001,8 @@ void TransCharsInPlace(Str& str, Str oldChars, Str newChars);
 
 int NormalizeWSInPlace(Str str);
 TempStr NormalizeWSTemp(Str s);
-int NormalizeNewlinesInPlace(Str s, Str endExclusive);
-int NormalizeNewlinesInPlace(Str s);
+int NormalizeNewlinesToLFInPlace(Str& s);
+TempStr LFToCRLFTemp(Str s);
 int RemoveCharsInPlace(Str str, Str toRemove);
 
 int BufSet(Str dst, Str src);
@@ -1976,11 +2016,11 @@ int Cmp(Str a, Str b);
 int CmpI(Str a, Str b);
 
 bool IsEmptyOrWhiteSpace(Str s);
-bool SkipChar(Str& s, char toSkip);
-int SkipWs(Str& s);
-int SkipNonWs(Str& s);
+int TrimChar(Str& s, char toSkip);
+int TrimWs(Str& s);
+int TrimNonWs(Str& s);
 Str NextWord(Str& s);
-Str TrimWs(Str s, TrimOpt opt = TrimOpt::Both);
+int TrimWsBoth(Str& s);
 
 int BufSet(WCHAR* dst, int dstCchSize, Str src);
 
@@ -2036,6 +2076,7 @@ namespace url {
 
 TempStr DecodeTemp(Str url);
 TempStr EncodeTemp(Str s);
+TempStr EncodePathTemp(Str path);
 TempStr EncodeMayTruncateTemp(Str s, int maxEncodedLen, bool* didTruncateOut = nullptr);
 bool IsAbsolute(Str url);
 TempStr GetFullPathTemp(Str url);
@@ -2045,12 +2086,11 @@ TempStr GetFileNameTemp(Str url);
 
 using SeqStrings = const char*;
 
-TempStr SeqStrAt(SeqStrings strs, int off);
-bool SeqStrAdvance(SeqStrings strs, int& off, int* idxInOut = nullptr);
+Str SeqStrFirst(SeqStrings strs);
+Str SeqStrNext(Str s);
 int SeqStrIndex(SeqStrings strs, Str toFind);
 int SeqStrIndexIS(SeqStrings strs, Str toFind);
 TempStr SeqStrByIndex(SeqStrings strs, int idx);
-int SeqStrCount(SeqStrings strs);
 
 // look up the mime type for a file extension (e.g. ".png" -> "image/png");
 // returns {} for unknown extensions. If the matched type is an image and
@@ -2078,11 +2118,18 @@ namespace str {
 // also a C string. Vec supplies the fields, operator[], begin/end and the
 // destructor; only what needs the terminator or an arena is left here.
 struct Builder : Vec<char> {
+    // growth allocator; null means the heap. Arena storage is never freed by
+    // the Builder (the arena owns it).
+    Arena* a = nullptr;
+
+    Builder() = default;
+    explicit Builder(Arena* arena) : a(arena) {}
+
     void Reset(Str s = {});
-    // these grow on the heap; to grow from an arena use the BuilderAppend*()
-    // free functions below, which take the allocator like VecPush() does
+    bool Reserve(int cap);
     bool AppendChar(char c);
     bool Append(Str src);
+    bool AppendNonEmpty(Str src);
     char RemoveAt(int idx, int count = 1);
     char RemoveLast();
     Str TakeStr();
@@ -2091,21 +2138,16 @@ struct Builder : Vec<char> {
 
 bool Contains(const Builder& b, Str sub);
 
-// Builder does not hold an allocator; like Vec, the arena is passed to the calls
-// that can grow. a == nullptr means the heap. Storage that came from an arena is
-// never freed by the Builder (the arena owns it).
 // Lend b a buffer to start in, instead of its first allocation, the way
 // VecUseExternalBuffer() does. b must be empty and have no storage yet. It
 // appends into buf until buf is full; the append past that allocates and
 // copies, leaving buf alone. Nothing frees buf, so it must outlive b.
 void BuilderUseExternalBuffer(Builder& b, Str buf);
 
-// allocate storage for cap chars up front, instead of on the first append
-bool BuilderReserve(Arena* a, Builder& b, int cap);
-
-bool BuilderAppendChar(Arena* a, Builder& b, char c);
-bool BuilderAppend(Arena* a, Builder& b, Str s);
-Str BuilderTakeStr(Arena* a, Builder& b);
+bool BuilderReserve(Builder& b, int cap);
+bool BuilderAppendChar(Builder& b, char c);
+bool BuilderAppend(Builder& b, Str s);
+Str BuilderTakeStr(Builder& b);
 } // namespace str
 
 void SeqStrNumAppend(str::Builder* b, Str s, i64 num);
@@ -2146,7 +2188,10 @@ WStr ToWStr(const wstr::Builder&);
 
 TempStr ToStrTemp(const str::Builder&);
 
-wchar_t ToLowerW(wchar_t c);
+wchar_t WCharToLower(wchar_t c);
+int FoldCaseRune(int c);
+bool IsCombiningMark(int c);
+int FoldDiacriticsRune(int c);
 int WStrFindSubstr(WStr str, WStr substr);
 int WStrCmpNoCase(WStr a, WStr b);
 
@@ -2386,6 +2431,7 @@ struct StrVec {
     Str operator[](int) const;
 
     Str Append(Str s);
+    Str AppendNonEmpty(Str s);
     Str SetAt(int idx, Str s);
     Str InsertAt(int, Str s);
     Str RemoveAt(int);

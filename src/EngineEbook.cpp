@@ -12,7 +12,6 @@
 #include "base/Pixmap.h"
 #include "gui/Dpi.h"
 
-#include "GumboHelpers.h"
 #include "GumboHtmlParser.h"
 
 #include "DocProperties.h"
@@ -193,7 +192,7 @@ class EngineEbook : public EngineBase {
     virtual HtmlPage* GetHtmlPage2(Location loc);
 };
 
-static IPageElement* NewEbookLink(Rect rect, IPageDestination* dest, int pageNo = 0) {
+static IPageElement* NewEbookLink(Rect rect, IPageDestination* dest, int pageNo = 0, bool destOwned = true) {
     if (!dest) {
         // TODO: this doesn't make sense
         dest = new PageDestination();
@@ -201,9 +200,10 @@ static IPageElement* NewEbookLink(Rect rect, IPageDestination* dest, int pageNo 
         // TODO: not sure about this
         // dest->value = str::Dup(res->value);
         dest->rect = ToRectF(rect);
+        destOwned = true;
     }
 
-    auto res = new PageElementDestination(dest);
+    auto res = new PageElementDestination(dest, destOwned);
     res->pageNo = pageNo;
     res->rect = ToRectF(rect);
 
@@ -218,8 +218,8 @@ static IPageElement* NewImageDataElement(int pageNo, Rect bbox, int imageID) {
     return res;
 }
 
-static TocItem* newEbookTocItem(TocItem* parent, Str title, IPageDestination* dest) {
-    auto res = AllocTocItem(nullptr, title, 0);
+static TocItem* newEbookTocItem(Arena* arena, TocItem* parent, Str title, IPageDestination* dest) {
+    auto res = AllocTocItem(arena, title, 0);
     res->parent = parent;
     res->dest = dest;
     if (dest) {
@@ -580,7 +580,8 @@ IPageElement* EngineEbook::CreatePageLink(DrawInstr* link, Rect rect, int pageNo
     if (!dest) {
         return nullptr;
     }
-    return NewEbookLink(rect, dest, pageNo);
+    // GetNamedDestLazy is engine-owned
+    return NewEbookLink(rect, dest, pageNo, false);
 }
 
 Vec<IPageElement*> EngineEbook::GetElements(int pageNo) {
@@ -672,6 +673,7 @@ IPageElement* EngineEbook::GetElementAtPos(int pageNo, PointF pt) {
     return nullptr;
 }
 
+// engine-owned; do not delete
 IPageDestination* EngineEbook::GetNamedDest(Str name) {
     Str id = name;
     Str hash = str::SliceFromChar(name, '#');
@@ -710,7 +712,7 @@ IPageDestination* EngineEbook::GetNamedDest(Str name) {
         if (id_len == anchor->instr->str.len && str::EqNI(id, anchor->instr->str, id_len)) {
             RectF rect(0, anchor->instr->bbox.y + pageBorder, pageRect.dx, 10);
             rect.Inflate(-pageBorder, 0);
-            return NewSimpleDest(anchor->pageNo, rect);
+            return NewSimpleDest(arena, anchor->pageNo, rect);
         }
     }
 
@@ -718,7 +720,7 @@ IPageDestination* EngineEbook::GetNamedDest(Str name) {
     if (basePageNo != 0) {
         RectF rect(0, pageBorder, pageRect.dx, 10);
         rect.Inflate(-pageBorder, 0);
-        return NewSimpleDest(basePageNo, rect);
+        return NewSimpleDest(arena, basePageNo, rect);
     }
 
     return nullptr;
@@ -826,14 +828,15 @@ struct EbookTocBuilder : EbookTocVisitor {
 };
 
 void EbookTocBuilder::Visit(Str name, Str url, int level) {
+    Arena* arena = engine->arena;
     IPageDestination* dest;
-    if (!url) {
+    if (len(url) == 0) {
         dest = nullptr;
     } else if (url::IsAbsolute(url)) {
-        dest = NewSimpleDest(0, RectF(), 0.f, url);
+        dest = NewSimpleDest(arena, 0, RectF(), 0.f, url);
     } else {
         // GetNamedDestLazy(), not GetNamedDest(): building the ToC must not
-        // lay out a chapter for every entry it points to
+        // lay out a chapter for every entry it points to. Dest is engine-owned.
         dest = engine->GetNamedDestLazy(url);
         if (!dest && str::ContainsChar(url, '%')) {
             TempStr decodedUrl = url::DecodeTemp(url);
@@ -842,7 +845,10 @@ void EbookTocBuilder::Visit(Str name, Str url, int level) {
     }
 
     // TODO: send parent to newEbookTocItem
-    TocItem* item = newEbookTocItem(nullptr, name, dest);
+    TocItem* item = newEbookTocItem(arena, nullptr, name, dest);
+    if (dest && !url::IsAbsolute(url)) {
+        item->destNotOwned = true;
+    }
     item->id = ++idCounter;
     if (isIndex) {
         item->pageNo = 0;
@@ -866,6 +872,7 @@ class EngineEpub : public EngineEbook {
         return doc->GetPropertyTemp(prop);
     }
 
+    bool HasToc() override;
     TocTree* GetToc() override;
 
     static EngineBase* CreateFromFile(Str path);
@@ -874,6 +881,7 @@ class EngineEpub : public EngineEbook {
   protected:
     EpubDoc* doc = nullptr;
     TocTree* tocTree = nullptr;
+    bool tocBuilt = false;
 
     bool Load(Str fileName);
     bool LoadFromData(Str data);
@@ -887,7 +895,7 @@ EngineEpub::EngineEpub() {
 
 EngineEpub::~EngineEpub() {
     delete doc;
-    delete tocTree;
+    DestroyTocTree(tocTree);
 }
 
 EngineBase* EngineEpub::Clone() {
@@ -916,7 +924,7 @@ bool EngineEpub::Load(Str fileName) {
     if (dir::Exists(fileName)) {
         // load uncompressed documents as recompressed ZIP data
         Str data = ZipDirToData(fileName, true);
-        if (!data) {
+        if (len(data) == 0) {
             return false;
         }
         bool ok = LoadFromData(data);
@@ -962,22 +970,31 @@ bool EngineEpub::FinishLoading() {
         preferredLayout.r2l = true;
     }
 
+    GetToc();
     return pageCount > 0;
 }
 
+bool EngineEpub::HasToc() {
+    if (tocBuilt) {
+        return tocTree != nullptr;
+    }
+    return doc && doc->HasToc();
+}
+
 TocTree* EngineEpub::GetToc() {
-    if (tocTree) {
+    if (tocBuilt) {
         return tocTree;
     }
+    tocBuilt = true;
     EbookTocBuilder builder(this);
     doc->ParseToc(&builder);
     TocItem* root = builder.GetRoot();
     if (!root) {
         return nullptr;
     }
-    auto realRoot = AllocTocItem(nullptr, {}, 0);
+    auto realRoot = AllocTocItem(arena, {}, 0);
     realRoot->child = root;
-    tocTree = new TocTree(realRoot);
+    tocTree = AllocTocTree(arena, realRoot);
     return tocTree;
 }
 
@@ -1017,7 +1034,7 @@ class EngineFb2 : public EngineEbook {
         SetDefaultExt(defaultExt, StrL(".fb2"));
     }
     ~EngineFb2() override {
-        delete tocTree;
+        DestroyTocTree(tocTree);
         delete doc;
     }
     EngineBase* Clone() override {
@@ -1038,6 +1055,7 @@ class EngineFb2 : public EngineEbook {
         return doc->GetPropertyTemp(prop);
     }
 
+    bool HasToc() override;
     TocTree* GetToc() override;
 
     static EngineBase* CreateFromFile(Str path);
@@ -1046,6 +1064,7 @@ class EngineFb2 : public EngineEbook {
   protected:
     Fb2Doc* doc = nullptr;
     TocTree* tocTree = nullptr;
+    bool tocBuilt = false;
 
     bool Load(Str fileName);
     bool LoadFromData(Str data);
@@ -1088,22 +1107,31 @@ bool EngineFb2::FinishLoading() {
     if (!ExtractPageAnchors()) {
         return false;
     }
+    GetToc();
     return pageCount > 0;
 }
 
+bool EngineFb2::HasToc() {
+    if (tocBuilt) {
+        return tocTree != nullptr;
+    }
+    return doc && doc->HasToc();
+}
+
 TocTree* EngineFb2::GetToc() {
-    if (tocTree) {
+    if (tocBuilt) {
         return tocTree;
     }
+    tocBuilt = true;
     EbookTocBuilder builder(this);
     doc->ParseToc(&builder);
     TocItem* root = builder.GetRoot();
     if (!root) {
         return nullptr;
     }
-    auto realRoot = AllocTocItem(nullptr, {}, 0);
+    auto realRoot = AllocTocItem(arena, {}, 0);
     realRoot->child = root;
-    tocTree = new TocTree(realRoot);
+    tocTree = AllocTocTree(arena, realRoot);
     return tocTree;
 }
 
@@ -1164,6 +1192,7 @@ class EngineMobi : public EngineEbook {
 
     IPageDestination* GetNamedDest(Str name) override;
     IPageDestination* GetNamedDestLazy(Str url) override;
+    bool HasToc() override;
     TocTree* GetToc() override;
 
     int LayOutChapter(int chapter) override;
@@ -1177,6 +1206,7 @@ class EngineMobi : public EngineEbook {
   protected:
     MobiDoc* doc = nullptr;
     TocTree* tocTree = nullptr;
+    bool tocBuilt = false;
 
     // byte offsets into doc's html where each chapter starts (chapter 1 is
     // always 0); fewer than 2 entries means the book stays single-chapter
@@ -1214,7 +1244,7 @@ static void FindMobiChapterStarts(Str html, Vec<int>& starts) {
 }
 
 EngineMobi::~EngineMobi() {
-    delete tocTree;
+    DestroyTocTree(tocTree);
     delete doc;
     ScopedRecursiveMutex scope(&pagesAccess);
     for (Vec<HtmlPage*>* v : chapterPages) {
@@ -1267,6 +1297,7 @@ bool EngineMobi::FinishLoading() {
         VecResize(chapterPages, 1);
         chapterPages[0] = MobiFormatter(&args, doc).FormatAllPages();
         pageCount = len(*chapterPages[0]);
+        GetToc();
         return pageCount > 0;
     }
 
@@ -1279,6 +1310,9 @@ bool EngineMobi::FinishLoading() {
 
     int n1 = LayOutChapter(1);
     SetPageCountFromChapters();
+    // load already runs off the UI thread; build ToC now so HasToc()/GetToc()
+    // from the menu/toolbar/sidebar do not gumbo-parse the book on the UI thread
+    GetToc();
     logf("EngineMobi::FinishLoading: %d chapters, chapter 1 has %d pages\n", nCh, n1);
     return n1 > 0;
 }
@@ -1379,6 +1413,7 @@ static int PageForFilePosInChapter(Vec<HtmlPage*>* v, int filePos) {
     return page;
 }
 
+// engine-owned; do not delete
 IPageDestination* EngineMobi::GetNamedDest(Str name) {
     int filePos = ParseInt(name);
     if (filePos < 0 || (0 == filePos && (!name.s || name.s[0] != '0'))) {
@@ -1412,13 +1447,13 @@ IPageDestination* EngineMobi::GetNamedDest(Str name) {
     }
     RectF rect(0, currY + pageBorder, pageRect.dx, 10);
     rect.Inflate(-pageBorder, 0);
-    auto* dest = NewSimpleDest(pageNo, rect);
+    auto* dest = NewSimpleDest(arena, pageNo, rect);
     dest->loc = loc;
     return dest;
 }
 
 // cheap: just the chapter, no formatting; the page is resolved on click by
-// ResolveDest() via GetNamedDest()
+// ResolveDest() via GetNamedDest(). Engine-owned; do not delete.
 IPageDestination* EngineMobi::GetNamedDestLazy(Str url) {
     if (!HasChapters()) {
         return GetNamedDest(url);
@@ -1427,11 +1462,11 @@ IPageDestination* EngineMobi::GetNamedDestLazy(Str url) {
     if (filePos < 0 || (0 == filePos && (!url.s || url.s[0] != '0'))) {
         return nullptr;
     }
-    auto* dest = new PageDestination();
+    auto* dest = New<PageDestination>(arena);
     dest->kind = kindDestinationScrollTo;
     dest->pageNo = -1;
     dest->loc = {ChapterForFilePos(filePos), 0};
-    dest->name = str::Dup(url);
+    dest->name = str::Dup(arena, url);
     return dest;
 }
 
@@ -1443,7 +1478,7 @@ Location EngineMobi::ResolveDest(IPageDestination* dest) {
         return dest->loc;
     }
     Str filePos = dest->loc.chapter >= 1 ? dest->GetName2() : Str{};
-    if (!filePos) {
+    if (len(filePos) == 0) {
         return EngineBase::ResolveDest(dest);
     }
     IPageDestination* resolved = GetNamedDest(filePos);
@@ -1453,7 +1488,6 @@ Location EngineMobi::ResolveDest(IPageDestination* dest) {
     dest->loc = resolved->loc;
     dest->pageNo = resolved->pageNo;
     dest->rect = resolved->GetRect2();
-    delete resolved;
     return dest->loc;
 }
 
@@ -1485,19 +1519,27 @@ Location EngineMobi::LookupBookmark(Str s) {
     return ClampLocation({ch, pg});
 }
 
+bool EngineMobi::HasToc() {
+    if (tocBuilt) {
+        return tocTree != nullptr;
+    }
+    return doc && doc->HasToc();
+}
+
 TocTree* EngineMobi::GetToc() {
-    if (tocTree) {
+    if (tocBuilt) {
         return tocTree;
     }
+    tocBuilt = true;
     EbookTocBuilder builder(this);
     doc->ParseToc(&builder);
     TocItem* root = builder.GetRoot();
     if (!root) {
         return nullptr;
     }
-    auto realRoot = AllocTocItem(nullptr, {}, 0);
+    auto realRoot = AllocTocItem(arena, {}, 0);
     realRoot->child = root;
-    tocTree = new TocTree(realRoot);
+    tocTree = AllocTocTree(arena, realRoot);
     return tocTree;
 }
 
@@ -1536,12 +1578,12 @@ class EnginePdb : public EngineEbook {
         SetDefaultExt(defaultExt, StrL(".pdb"));
     }
     ~EnginePdb() override {
-        delete tocTree;
+        DestroyTocTree(tocTree);
         delete doc;
     }
     EngineBase* Clone() override {
         Str fileName = FilePath();
-        if (!fileName) {
+        if (len(fileName) == 0) {
             return {};
         }
         return CreateFromFile(fileName);
@@ -1554,6 +1596,7 @@ class EnginePdb : public EngineEbook {
         return doc->GetPropertyTemp(prop);
     }
 
+    bool HasToc() override;
     TocTree* GetToc() override;
 
     static EngineBase* CreateFromFile(Str path);
@@ -1561,6 +1604,7 @@ class EnginePdb : public EngineEbook {
   protected:
     PalmDoc* doc = nullptr;
     TocTree* tocTree = nullptr;
+    bool tocBuilt = false;
 
     bool Load(Str fileName);
 };
@@ -1589,22 +1633,31 @@ bool EnginePdb::Load(Str fileName) {
         return false;
     }
 
+    GetToc();
     return pageCount > 0;
 }
 
+bool EnginePdb::HasToc() {
+    if (tocBuilt) {
+        return tocTree != nullptr;
+    }
+    return doc && doc->HasToc();
+}
+
 TocTree* EnginePdb::GetToc() {
-    if (tocTree) {
+    if (tocBuilt) {
         return tocTree;
     }
+    tocBuilt = true;
     EbookTocBuilder builder(this);
     doc->ParseToc(&builder);
     auto* root = builder.GetRoot();
     if (!root) {
         return nullptr;
     }
-    auto realRoot = AllocTocItem(nullptr, {}, 0);
+    auto realRoot = AllocTocItem(arena, {}, 0);
     realRoot->child = root;
-    tocTree = new TocTree(realRoot);
+    tocTree = AllocTocTree(arena, realRoot);
     return tocTree;
 }
 
@@ -1644,7 +1697,7 @@ class ChmDataCache {
     Str GetHtmlData() { return html; }
 
     Str GetImageData(Str id, Str pagePath) {
-        if (!id || !pagePath) {
+        if (len(id) == 0 || len(pagePath) == 0) {
             return {};
         }
         TempStr url = NormalizeURLTemp(id, pagePath);
@@ -1668,7 +1721,7 @@ class ChmDataCache {
     }
 
     TempStr GetFileData(Str relPath, Str pagePath) {
-        if (!relPath || !pagePath) {
+        if (len(relPath) == 0 || len(pagePath) == 0) {
             return {};
         }
         TempStr url = NormalizeURLTemp(relPath, pagePath);
@@ -1700,7 +1753,7 @@ void ChmFormatter::HandleTagImg(HtmlToken* t) {
     if (attr) {
         TempStr src = url::DecodeTemp(attr->val);
         Str img = chmDoc->GetImageData(src, pagePath);
-        needAlt = !img || !EmitImage(img);
+        needAlt = len(img) == 0 || !EmitImage(img);
     }
     if (needAlt) {
         attr = t->GetAttrByName(StrL("alt"));
@@ -1764,11 +1817,11 @@ class EngineChm : public EngineEbook {
     ~EngineChm() override {
         delete dataCache;
         delete doc;
-        delete tocTree;
+        DestroyTocTree(tocTree);
     }
     EngineBase* Clone() override {
         Str fileName = FilePath();
-        if (!fileName) {
+        if (len(fileName) == 0) {
             return {};
         }
         return CreateFromFile(fileName);
@@ -1782,6 +1835,7 @@ class EngineChm : public EngineEbook {
     }
 
     IPageDestination* GetNamedDest(Str name) override;
+    bool HasToc() override;
     TocTree* GetToc() override;
 
     static EngineBase* CreateFromFile(Str path);
@@ -1790,6 +1844,7 @@ class EngineChm : public EngineEbook {
     ChmFile* doc = nullptr;
     ChmDataCache* dataCache = nullptr;
     TocTree* tocTree = nullptr;
+    bool tocBuilt = false;
 
     bool Load(Str fileName);
 
@@ -1912,7 +1967,7 @@ struct ChmHtmlCollector : EbookTocVisitor {
     }
 
     void Visit(Str, Str url, int) override {
-        if (!url || url::IsAbsolute(url)) {
+        if (len(url) == 0 || url::IsAbsolute(url)) {
             return;
         }
         TempStr plainUrl = url::GetFullPathTemp(url);
@@ -1922,7 +1977,7 @@ struct ChmHtmlCollector : EbookTocVisitor {
         AtomicIntInc(&gAllowAllocFailure);
         AutoCall decAllowAlloc(AtomicIntDec, &gAllowAllocFailure);
         TempStr pageHtml = doc->GetDataTemp(plainUrl);
-        if (!pageHtml) {
+        if (len(pageHtml) == 0) {
             return;
         }
         html.Append(fmt("<pagebreak page_path=\"%s\" page_marker />", plainUrl));
@@ -1963,9 +2018,11 @@ bool EngineChm::Load(Str fileName) {
         return false;
     }
 
+    GetToc();
     return pageCount > 0;
 }
 
+// engine-owned; do not delete
 IPageDestination* EngineChm::GetNamedDest(Str name) {
     IPageDestination* dest = EngineEbook::GetNamedDest(name);
     if (dest) {
@@ -1981,10 +2038,18 @@ IPageDestination* EngineChm::GetNamedDest(Str name) {
     return dest;
 }
 
+bool EngineChm::HasToc() {
+    if (tocBuilt) {
+        return tocTree != nullptr;
+    }
+    return doc && (doc->HasToc() || doc->HasIndex());
+}
+
 TocTree* EngineChm::GetToc() {
-    if (tocTree) {
+    if (tocBuilt) {
         return tocTree;
     }
+    tocBuilt = true;
     EbookTocBuilder builder(this);
     doc->ParseToc(&builder);
     if (doc->HasIndex()) {
@@ -1999,9 +2064,9 @@ TocTree* EngineChm::GetToc() {
     if (!root) {
         return nullptr;
     }
-    auto realRoot = AllocTocItem(nullptr, {}, 0);
+    auto realRoot = AllocTocItem(arena, {}, 0);
     realRoot->child = root;
-    tocTree = new TocTree(realRoot);
+    tocTree = AllocTocTree(arena, realRoot);
     return tocTree;
 }
 
@@ -2054,7 +2119,7 @@ class EngineHtml : public EngineEbook {
     ~EngineHtml() override { delete doc; }
     EngineBase* Clone() override {
         Str fileName = FilePath();
-        if (!fileName) {
+        if (len(fileName) == 0) {
             return {};
         }
         return CreateFromFile(fileName);
@@ -2155,12 +2220,12 @@ class EngineTxt : public EngineEbook {
         SetDefaultExt(defaultExt, StrL(".txt"));
     }
     ~EngineTxt() override {
-        delete tocTree;
+        DestroyTocTree(tocTree);
         delete doc;
     }
     EngineBase* Clone() override {
         Str fileName = FilePath();
-        if (!fileName) {
+        if (len(fileName) == 0) {
             return {};
         }
         return CreateFromFile(fileName);
@@ -2173,6 +2238,7 @@ class EngineTxt : public EngineEbook {
         return doc->GetPropertyTemp(prop);
     }
 
+    bool HasToc() override;
     TocTree* GetToc() override;
 
     static EngineBase* CreateFromFile(Str path);
@@ -2180,12 +2246,13 @@ class EngineTxt : public EngineEbook {
   protected:
     TxtDoc* doc = nullptr;
     TocTree* tocTree = nullptr;
+    bool tocBuilt = false;
 
     bool Load(Str fileName);
 };
 
 bool EngineTxt::Load(Str fileName) {
-    if (!fileName) {
+    if (len(fileName) == 0) {
         return false;
     }
 
@@ -2219,20 +2286,32 @@ bool EngineTxt::Load(Str fileName) {
         return false;
     }
 
+    GetToc();
     return pageCount > 0;
 }
 
+bool EngineTxt::HasToc() {
+    if (tocBuilt) {
+        return tocTree != nullptr;
+    }
+    return doc && doc->HasToc();
+}
+
 TocTree* EngineTxt::GetToc() {
-    if (tocTree) {
+    if (tocBuilt) {
         return tocTree;
     }
+    tocBuilt = true;
     EbookTocBuilder builder(this);
     doc->ParseToc(&builder);
     auto* root = builder.GetRoot();
+    if (!root) {
+        return nullptr;
+    }
 
-    auto realRoot = AllocTocItem(nullptr, {}, 0);
+    auto realRoot = AllocTocItem(arena, {}, 0);
     realRoot->child = root;
-    tocTree = new TocTree(realRoot);
+    tocTree = AllocTocTree(arena, realRoot);
     return tocTree;
 }
 

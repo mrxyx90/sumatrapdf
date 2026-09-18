@@ -159,6 +159,38 @@ static ExternalViewerInfo gExternalViewers[] = {
 };
 // clang-format on
 
+// clang-format off
+const int gOpenWithKnownExternalViewerCmds[] = {
+    CmdOpenWithExplorer,
+    CmdOpenWithDirectoryOpus,
+    CmdOpenWithTotalCommander,
+    CmdOpenWithDoubleCommander,
+    CmdOpenWithAcrobat,
+    CmdOpenWithFoxIt,
+    CmdOpenWithFoxItPhantom,
+    CmdOpenWithPdfXchange,
+    CmdOpenWithXpsViewer,
+    CmdOpenWithHtmlHelp,
+    CmdOpenWithPdfDjvuBookmarker,
+    0,
+};
+// clang-format on
+
+bool IsOpenWithKnownExternalViewerCmd(int cmdId) {
+    for (int i = 0; gOpenWithKnownExternalViewerCmds[i]; i++) {
+        if (gOpenWithKnownExternalViewerCmds[i] == cmdId) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// a Shortcuts / toolbar entry is a clone with its own id, so it's the command
+// it stands for that decides
+bool IsOpenWithKnownExternalViewerCmd(CustomCommand* cmd) {
+    return cmd && IsOpenWithKnownExternalViewerCmd(cmd->origId);
+}
+
 static ExternalViewerInfo* FindKnownExternalViewerInfoByCmdId(int cmdId) {
     for (ExternalViewerInfo& ev : gExternalViewers) {
         if (ev.cmdId == cmdId) {
@@ -196,7 +228,7 @@ static TempStr GetAcrobatPathTemp() {
     // Try Adobe Acrobat as a fall-back, if the Reader isn't installed
     Str keyName = StrL(R"(Software\Microsoft\Windows\CurrentVersion\App Paths\AcroRd32.exe)");
     TempStr path = ReadRegStrTemp(HKEY_LOCAL_MACHINE, keyName, {});
-    if (!path) {
+    if (len(path) == 0) {
         keyName = StrL(R"(Software\Microsoft\Windows\CurrentVersion\App Paths\Acrobat.exe)");
         path = ReadRegStrTemp(HKEY_LOCAL_MACHINE, keyName, {});
     }
@@ -252,7 +284,7 @@ static TempStr GetAppPathExeTemp(Str exeName) {
 static TempStr GetRegisteredOpenExeTemp(Str progId) {
     TempStr keyName = fmt(R"(%s\shell\open\command)", progId);
     TempStr command = ReadRegStrTemp(HKEY_CLASSES_ROOT, keyName, {});
-    if (!command) {
+    if (len(command) == 0) {
         return {};
     }
     StrNode* args = ParseCmdLine(command);
@@ -287,13 +319,13 @@ static TempStr GetPDFXChangePathTemp() {
     // V11 renamed both the vendor directory and the executable. Prefer paths
     // registered by the installer, then cover clean and upgraded installations.
     TempStr exePath = GetAppPathExeTemp(StrL("PXCEditor.exe"));
-    if (!exePath) {
+    if (len(exePath) == 0) {
         exePath = GetAppPathExeTemp(StrL("PDFXEdit.exe"));
     }
-    if (!exePath) {
+    if (len(exePath) == 0) {
         exePath = GetRegisteredOpenExeTemp(StrL("PXCEditor.PDF"));
     }
-    if (!exePath) {
+    if (len(exePath) == 0) {
         exePath = GetRegisteredOpenExeTemp(StrL("PDFXEdit.PDF"));
     }
     if (exePath) {
@@ -316,7 +348,7 @@ static TempStr GetPDFXChangePathTemp() {
     // Legacy PDF-XChange Viewer registry entry.
     Str keyName = StrL(R"(Software\Tracker Software\PDFViewer)");
     TempStr path = ReadRegStr2Temp(keyName, StrL("InstallPath"));
-    if (!path) {
+    if (len(path) == 0) {
         return {};
     }
     exePath = path::JoinTemp(path, StrL("PDFXCview.exe"));
@@ -329,7 +361,7 @@ static TempStr GetPDFXChangePathTemp() {
 #if IS_DEBUG
 bool ExternalViewers_UnitTestPDFXChangePaths() {
     TempStr testDir = GetTempFilePathTemp(StrL("issue-5941"));
-    if (!testDir || !file::Delete(testDir) || !dir::Create(testDir)) {
+    if (len(testDir) == 0 || !file::Delete(testDir) || !dir::Create(testDir)) {
         return false;
     }
     defer {
@@ -349,7 +381,7 @@ bool ExternalViewers_UnitTestPDFXChangePaths() {
             return false;
         }
         TempStr found = FindPDFXChangeInProgramDirsTemp(programDirs);
-        if (!found || !path::IsSame(found, expected) || !file::Delete(expected)) {
+        if (len(found) == 0 || !path::IsSame(found, expected) || !file::Delete(expected)) {
             return false;
         }
     }
@@ -358,11 +390,11 @@ bool ExternalViewers_UnitTestPDFXChangePaths() {
 #endif
 
 static void SetKnownExternalViewerExePath(int cmdId, Str exePath) {
-    if (!exePath) {
+    if (len(exePath) == 0) {
         return;
     }
     ExternalViewerInfo* info = FindKnownExternalViewerInfoByCmdId(cmdId);
-    if (info && !info->exeFullPath) {
+    if (info && len(info->exeFullPath) == 0) {
         info->exeFullPath = str::Dup(exePath);
     }
 }
@@ -371,7 +403,7 @@ static bool DetectExternalViewer(ExternalViewerInfo* ev) {
     if (ev->exeFullPath) {
         return true;
     }
-    if (!ev->exePartialPath) {
+    if (len(ev->exePartialPath) == 0) {
         return false;
     }
 
@@ -420,7 +452,7 @@ bool CanViewWithKnownExternalViewer(WindowTab* tab, int cmdId) {
         return false;
     }
     ExternalViewerInfo* ev = FindKnownExternalViewerInfoByCmdId(cmdId);
-    if (!ev || !ev->exeFullPath) {
+    if (!ev || len(ev->exeFullPath) == 0) {
         // logf("CanViewWithKnownExternalViewer cmd: %d, !ev || ev->exeFullPath == nullptr\n", cmd);
         return false;
     }
@@ -569,7 +601,7 @@ bool ViewWithKnownExternalViewer(WindowTab* tab, int cmdId) {
         return false;
     }
     ExternalViewerInfo* ev = FindKnownExternalViewerInfoByCmdId(cmdId);
-    if (!ev->exeFullPath) {
+    if (len(ev->exeFullPath) == 0) {
         return false;
     }
     TempStr args;
@@ -594,7 +626,7 @@ bool PathMatchFilter(Str path, Str filter) {
 // and set *restOut to the remaining command line (after the exe and any spaces)
 static TempStr ExtractExePathTemp(Str cmdLine, Str* restOut) {
     Str s = cmdLine;
-    str::SkipChar(s, ' ');
+    str::TrimChar(s, ' ');
     str::Builder exe;
     if (len(s) > 0 && s.s[0] == '"') {
         s = Str(s.s + 1, s.len - 1);
@@ -610,7 +642,7 @@ static TempStr ExtractExePathTemp(Str cmdLine, Str* restOut) {
         }
         s = Str(s.s + i, s.len - i);
     }
-    str::SkipChar(s, ' ');
+    str::TrimChar(s, ' ');
     *restOut = s;
     return ToStrTemp(exe);
 }
@@ -641,7 +673,7 @@ bool RunWithExe(WindowTab* tab, Str cmdLine, Str filter) {
     if (!file::Exists(exePath)) {
         TempStr msg =
             fmt("External viewer executable not found: %s. Fix ExternalViewers in advanced settings.", exePath);
-        auto caption = _TRA("Error");
+        auto caption = Tr("Error");
         MsgBox(nullptr, msg, caption, MB_OK | MB_ICONERROR);
         return false;
     }

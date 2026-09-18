@@ -115,7 +115,7 @@ static void DrawColorSwatchItem(DropDown* w, DRAWITEMSTRUCT* dis) {
 
     int pad = DpiScale(3);
     int sw = std::max(rc.dy - (2 * pad), 8);
-    Rect swatch{rc.x + pad, rc.y + (rc.dy - sw) / 2, sw, sw};
+    Rect swatch{rc.x + pad, rc.y + ((rc.dy - sw) / 2), sw, sw};
     Color col = kColorTransparent;
     if ((int)dis->itemID < len(w->itemColors)) {
         col = w->itemColors[(int)dis->itemID];
@@ -282,11 +282,8 @@ void DropDown::SetItemsKeepText(StrVec& newItems) {
 }
 
 static void DropDownItemsFromStringArray(StrVec& items, SeqStrings strings) {
-    for (int off = 0; SeqStrAt(strings, off);) {
-        items.Append(SeqStrAt(strings, off));
-        if (!SeqStrAdvance(strings, off)) {
-            break;
-        }
+    for (Str s = SeqStrFirst(strings); len(s) > 0; s = SeqStrNext(s)) {
+        items.Append(s);
     }
 }
 

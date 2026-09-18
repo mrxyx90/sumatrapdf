@@ -6,11 +6,9 @@
 #include "Settings.h"
 #include "DisplayMode.h"
 #include "Notifications.h"
-#ifndef SUMATRA_TEST_UTIL
 #include "ShortcutParse.h"
 #include "Accelerators.h"
 #include "AppSettings.h"
-#endif
 #include "Commands.h"
 
 // @gen-start cmd-c
@@ -114,7 +112,6 @@ static SeqStrings gCommandNames =
     "CmdZoomFitWidthAndContinuous\0"
     "CmdZoomFitPageAndSinglePage\0"
     "CmdContributeTranslation\0"
-    "CmdOpenWithKnownExternalViewerFirst\0"
     "CmdOpenWithExplorer\0"
     "CmdOpenWithDirectoryOpus\0"
     "CmdOpenWithTotalCommander\0"
@@ -126,7 +123,6 @@ static SeqStrings gCommandNames =
     "CmdOpenWithXpsViewer\0"
     "CmdOpenWithHtmlHelp\0"
     "CmdOpenWithPdfDjvuBookmarker\0"
-    "CmdOpenWithKnownExternalViewerLast\0"
     "CmdOpenSelectedDocument\0"
     "CmdPinSelectedDocument\0"
     "CmdForgetSelectedDocument\0"
@@ -202,8 +198,6 @@ static SeqStrings gCommandNames =
     "CmdToggleInverseSearch\0"
     "CmdDebugCorruptMemory\0"
     "CmdDebugCrashMe\0"
-    "CmdDebugDownloadSymbols\0"
-    "CmdDebugTestApp\0"
     "CmdDebugShowNotif\0"
     "CmdDebugStartStressTest\0"
     "CmdDebugTogglePredictiveRender\0"
@@ -232,7 +226,7 @@ static SeqStrings gCommandNames =
     "CmdDocumentExtractText\0"
     "CmdDocumentShowOutline\0"
     "CmdSetScreenshotHotkey\0"
-    "CmdReadAloud\0"
+    "CmdToggleReadAloud\0"
     "CmdPauseReadAloud\0"
     "CmdContinueReadAloud\0"
     "CmdStopReadAloud\0"
@@ -317,7 +311,22 @@ static SeqStrings gCommandNames =
     "CmdAnnotationHighlightBrush\0"
     "CmdFindAnnotation\0"
     "CmdOpenFileNoHistory\0"
+    "CmdCopySelectionAsImage\0"
+    "CmdSearchGoogleLensPage\0"
+    "CmdSearchGoogleLensImage\0"
+    "CmdSaveSelectionAsImage\0"
+    "CmdToggleTrimEmptyMargins\0"
+    "CmdCopyLocationToClipboard\0"
+    "CmdToggleAutomaticallyScroll\0"
+    "CmdAutomaticallyScrollFaster\0"
+    "CmdAutomaticallyScrollSlower\0"
+    "CmdToggleReadingBar\0"
+    "CmdToggleReadingBarInvert\0"
     "CmdNone\0"
+    "CmdFileHistory\0"
+    "CmdFavorite\0"
+    "CmdReadAloudFromCursorPosition\0"
+    "CmdToggleGrayscale\0"
     "\0";
 
 static i32 gCommandIds[] = {
@@ -419,7 +428,6 @@ static i32 gCommandIds[] = {
     CmdZoomFitWidthAndContinuous,
     CmdZoomFitPageAndSinglePage,
     CmdContributeTranslation,
-    CmdOpenWithKnownExternalViewerFirst,
     CmdOpenWithExplorer,
     CmdOpenWithDirectoryOpus,
     CmdOpenWithTotalCommander,
@@ -431,7 +439,6 @@ static i32 gCommandIds[] = {
     CmdOpenWithXpsViewer,
     CmdOpenWithHtmlHelp,
     CmdOpenWithPdfDjvuBookmarker,
-    CmdOpenWithKnownExternalViewerLast,
     CmdOpenSelectedDocument,
     CmdPinSelectedDocument,
     CmdForgetSelectedDocument,
@@ -507,8 +514,6 @@ static i32 gCommandIds[] = {
     CmdToggleInverseSearch,
     CmdDebugCorruptMemory,
     CmdDebugCrashMe,
-    CmdDebugDownloadSymbols,
-    CmdDebugTestApp,
     CmdDebugShowNotif,
     CmdDebugStartStressTest,
     CmdDebugTogglePredictiveRender,
@@ -537,7 +542,7 @@ static i32 gCommandIds[] = {
     CmdDocumentExtractText,
     CmdDocumentShowOutline,
     CmdSetScreenshotHotkey,
-    CmdReadAloud,
+    CmdToggleReadAloud,
     CmdPauseReadAloud,
     CmdContinueReadAloud,
     CmdStopReadAloud,
@@ -622,7 +627,22 @@ static i32 gCommandIds[] = {
     CmdAnnotationHighlightBrush,
     CmdFindAnnotation,
     CmdOpenFileNoHistory,
+    CmdCopySelectionAsImage,
+    CmdSearchGoogleLensPage,
+    CmdSearchGoogleLensImage,
+    CmdSaveSelectionAsImage,
+    CmdToggleTrimEmptyMargins,
+    CmdCopyLocationToClipboard,
+    CmdToggleAutomaticallyScroll,
+    CmdAutomaticallyScrollFaster,
+    CmdAutomaticallyScrollSlower,
+    CmdToggleReadingBar,
+    CmdToggleReadingBarInvert,
     CmdNone,
+    CmdFileHistory,
+    CmdFavorite,
+    CmdReadAloudFromCursorPosition,
+    CmdToggleGrayscale,
 };
 
 SeqStrings gCommandDescriptions =
@@ -724,7 +744,6 @@ SeqStrings gCommandDescriptions =
     "Zoom: Fit Width And Continuous\0"
     "Zoom: Fit Page and Single Page\0"
     "Contribute Translation\0"
-    "don't use\0"
     "Open Directory In Explorer\0"
     "Open Directory In Directory Opus\0"
     "Open Directory In Total Commander\0"
@@ -736,7 +755,6 @@ SeqStrings gCommandDescriptions =
     "Open in Microsoft XPS Viewer\0"
     "Open in Microsoft HTML Help\0"
     "Open With Pdf&Djvu Bookmarker\0"
-    "don't use\0"
     "Open Selected Document\0"
     "Pin Selected Document\0"
     "Remove Selected Document From History\0"
@@ -812,8 +830,6 @@ SeqStrings gCommandDescriptions =
     "Toggle Inverse Search\0"
     "Debug: Corrupt Memory\0"
     "Debug: Crash Me\0"
-    "Debug: Download Symbols\0"
-    "Debug: Test App\0"
     "Debug: Show Notification\0"
     "Debug: Start Stress Test\0"
     "Debug: Toggle Predictive Rendering\0"
@@ -842,7 +858,7 @@ SeqStrings gCommandDescriptions =
     "Extract Text From Document...\0"
     "Show Document Bookmarks...\0"
     "Set Screenshot Hotkey...\0"
-    "Read Aloud\0"
+    "Toggle Read Aloud\0"
     "Pause Reading\0"
     "Continue Reading\0"
     "Stop Reading\0"
@@ -903,7 +919,7 @@ SeqStrings gCommandDescriptions =
     "Extend Selection One Word Right\0"
     "Toggle Laser Pointer\0"
     "Zoom: To Selection\0"
-    "Toggle Hover Preview\0"
+    "Toggle Citation Hover Preview\0"
     "Toggle Disable Links\0"
     "Sign Document...\0"
     "Insert Image...\0"
@@ -924,10 +940,25 @@ SeqStrings gCommandDescriptions =
     "Search with Google Lens\0"
     "Navigate Thumbnails\0"
     "Show Comment\0"
-    "Highlight with Brush\0"
+    "Highlighter\0"
     "Find Annotation\0"
     "Open File Without History...\0"
+    "Copy Selection As Image\0"
+    "Search Page with Google Lens\0"
+    "Search Image with Google Lens\0"
+    "Save As Image...\0"
+    "Toggle Trim Empty Margins\0"
+    "Copy Location To Clipboard\0"
+    "Automatically Scroll\0"
+    "Automatically Scroll Faster\0"
+    "Automatically Scroll Slower\0"
+    "Reading Bar\0"
+    "Reading Bar Invert\0"
     "Do nothing\0"
+    "Open Recent File\0"
+    "Go to Favorite\0"
+    "Start Reading From Cursor Position\0"
+    "Toggle Grayscale\0"
     "\0";
 // clang-format on
 // @gen-end cmd-c
@@ -993,6 +1024,13 @@ static const ArgSpec argSpecs[] = {
     // extension including leading dot, e.g. [CmdFixDefaultApp .pdf]
     {CmdFixDefaultApp, kCmdArgExt, CommandArg::Type::String}, // default
 
+    // a recent file in the File menu, e.g. [CmdFileHistory C:\dir\file.pdf]
+    {CmdFileHistory, kCmdArgFilePath, CommandArg::Type::String}, // default
+
+    // a favorite in the Favorites menu, e.g. [CmdFavorite C:\dir\file.pdf page=3]
+    {CmdFavorite, kCmdArgFilePath, CommandArg::Type::String}, // default
+    {CmdFavorite, kCmdArgPage, CommandArg::Type::String},
+
     {CmdNone, StrL(""), CommandArg::Type::None}, // sentinel
 };
 
@@ -1037,6 +1075,9 @@ int GetCommandIdByName(Str cmdName) {
     if (str::EqI(cmdName, StrL("CmdTogglePdfAnnotationsToolbar"))) {
         return CmdToggleEditPDF;
     }
+    if (str::EqI(cmdName, StrL("CmdReadAloud"))) {
+        return CmdToggleReadAloud;
+    }
     return -1;
 }
 
@@ -1056,16 +1097,33 @@ int GetCommandIdByDesc(Str cmdDesc) {
     return -1;
 }
 
-Str GetCommandDescription(int commandId) {
-    int off = 0;
-    int id = (int)CmdFirst + 1;
-    while (SeqStrAt(gCommandDescriptions, off)) {
-        Str description = SeqStrAt(gCommandDescriptions, off);
-        if (id == commandId) {
-            return description;
+// gCommandIds is parallel to gCommandNames / gCommandDescriptions. Removed
+// commands keep their id but are dropped from those tables, so the id of the
+// n-th description is gCommandIds[n], not CmdFirst + 1 + n.
+// returns -1 if idx is out of range
+int GetCommandIdByIdx(int idx) {
+    if (idx < 0 || idx >= dimofi(gCommandIds)) {
+        return -1;
+    }
+    return gCommandIds[idx];
+}
+
+Str GetCommandName(int commandId) {
+    int idx = 0;
+    for (Str name = SeqStrFirst(gCommandNames); len(name) > 0; name = SeqStrNext(name), idx++) {
+        if (GetCommandIdByIdx(idx) == commandId) {
+            return name;
         }
-        if (!SeqStrAdvance(gCommandDescriptions, off, &id)) {
-            break;
+    }
+    return {};
+}
+
+Str GetCommandDescription(int commandId) {
+    int idx = 0;
+    for (Str description = SeqStrFirst(gCommandDescriptions); len(description) > 0;
+         description = SeqStrNext(description), idx++) {
+        if (GetCommandIdByIdx(idx) == commandId) {
+            return description;
         }
     }
     return {};
@@ -1076,14 +1134,13 @@ static bool IsArgName(Str name, Str argName) {
     if (str::EqI(name, argName)) {
         return true;
     }
-    if (!str::StartsWithI(name, argName)) {
+    if (!str::TrimPrefixI(name, argName)) {
         return false;
     }
-    if (name.len <= argName.len) {
+    if (len(name) == 0) {
         return false;
     }
-    char c = name.s[argName.len];
-    return c == '=';
+    return name.s[0] == '=';
 }
 
 // One allocation: sizeofi(CommandArg) + name + NUL + strVal + NUL.
@@ -1204,15 +1261,11 @@ static void NormalizeCommandNameAndKey(Str definition, Str* name, Str* key) {
         *key = {};
         return;
     }
-#ifndef SUMATRA_TEST_UTIL
     if (!IsValidShortcutString(*key)) {
         logf("CreateCustomCommand: '%s' is not a valid shortcut for '%s'\n", *key, definition);
         MaybeDelayedWarningNotification(fmt("'%s' is not a valid shortcut for '%s'", *key, definition));
         *key = {};
     }
-#else
-    (void)definition;
-#endif
 }
 
 CustomCommand* CreateCustomCommand(Str definition, int origCmdId, CommandArg* args, Str name, Str key) {
@@ -1360,7 +1413,7 @@ static int ParseBool(Str s);
 static CommandArg* TryParseDefaultArg(int defaultArgIdx, Str* argsInOut) {
     // first is default value
     Str rest = *argsInOut;
-    str::SkipChar(rest, ' ');
+    str::TrimChar(rest, ' ');
     Str valEnd = str::SliceFromChar(rest, ' ');
     Str argName = argSpecs[defaultArgIdx].name;
     CommandArg::Type type = argSpecs[defaultArgIdx].type;
@@ -1370,13 +1423,13 @@ static CommandArg* TryParseDefaultArg(int defaultArgIdx, Str* argsInOut) {
         valEnd = {};
     }
     TempStr val = {};
-    if (!valEnd) {
+    if (len(valEnd) == 0) {
         val = str::DupTemp(rest);
         *argsInOut = {};
     } else {
         val = str::DupTemp(Str(rest.s, (int)(valEnd.s - rest.s)));
         *argsInOut = valEnd;
-        str::SkipChar(*argsInOut, ' ');
+        str::TrimChar(*argsInOut, ' ');
     }
 
     if (type == CommandArg::Type::Bool) {
@@ -1419,14 +1472,13 @@ static CommandArg* TryParseNamedArg(int firstArgIdx, Str* argsInOut) {
             return nullptr;
         }
         argName = argSpecs[i].name;
-        if (!str::StartsWithI(rest, argName)) {
+        if (!str::TrimPrefixI(rest, argName)) {
             continue;
         }
         type = argSpecs[i].type;
         break;
     }
-    rest = Str(rest.s + argName.len, rest.len - argName.len);
-    if (!rest) {
+    if (len(rest) == 0) {
         if (type == CommandArg::Type::Bool) {
             // name of bool arg followed by nothing is true
             *argsInOut = {};
@@ -1437,28 +1489,28 @@ static CommandArg* TryParseNamedArg(int firstArgIdx, Str* argsInOut) {
     } else if (rest.s[0] == ' ') {
         if (type == CommandArg::Type::Bool) {
             // name of bool arg followed by nothing is true
-            str::SkipChar(rest, ' ');
+            str::TrimChar(rest, ' ');
             *argsInOut = rest;
             auto* arg = NewArg(type, argName);
             arg->boolVal = true;
             return arg;
         }
         valStart = rest;
-        str::SkipChar(valStart, ' ');
+        str::TrimChar(valStart, ' ');
     } else if (rest.len >= 2 && rest.s[0] == ':' && rest.s[1] == ' ') {
         valStart = Str(rest.s + 1, rest.len - 1);
-        str::SkipChar(valStart, ' ');
+        str::TrimChar(valStart, ' ');
     } else if (rest.s[0] == '=') {
         valStart = Str(rest.s + 1, rest.len - 1);
     }
-    if (!valStart) {
+    if (len(valStart) == 0) {
         // <args> doesn't start with any of the available commands for this command
         return nullptr;
     }
     Str valEnd = str::SliceFromChar(valStart, ' ');
     TempStr val = {};
     Str afterVal;
-    if (!valEnd) {
+    if (len(valEnd) == 0) {
         val = str::DupTemp(valStart);
         afterVal = {};
     } else {
@@ -1467,22 +1519,12 @@ static CommandArg* TryParseNamedArg(int firstArgIdx, Str* argsInOut) {
     }
     if (type == CommandArg::Type::Bool) {
         auto bv = ParseBool(val);
-        bool b;
-        if (bv == 0) {
-            b = false;
-            *argsInOut = afterVal;
-        } else if (bv == 1) {
-            b = true;
-            *argsInOut = afterVal;
-        } else {
-            // bv is -1, which means not a recognized bool value, so assume
-            // it wasn't given
-            // TODO: should apply only if arg doesn't end with ':' or '='
-            b = true;
-            *argsInOut = valStart;
+        if (bv < 0) {
+            return nullptr;
         }
+        *argsInOut = afterVal;
         auto* arg = NewArg(type, argName);
-        arg->boolVal = b;
+        arg->boolVal = (bv == 1);
         return arg;
     }
 
@@ -1628,7 +1670,6 @@ CustomCommand* CreateCommandFromDefinition(Str definition) {
         firstArg->type = CommandArg::Type::Float;
         firstArg->floatVal = zoomVal;
     }
-#ifndef SUMATRA_TEST_UTIL
     if (cmdId == CmdToggleBoolSetting && firstArg) {
         // validate the named boolean setting exists (case-insensitive leaf or path)
         Str settingName = firstArg->strVal;
@@ -1639,7 +1680,6 @@ CustomCommand* CreateCommandFromDefinition(Str definition) {
             // will warn again if the name is still wrong
         }
     }
-#endif
     auto* res = CreateCustomCommand(definition, cmdId, firstArg);
     return res;
 }

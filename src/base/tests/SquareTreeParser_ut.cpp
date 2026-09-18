@@ -5,7 +5,7 @@
 #include "base/SquareTreeParser.h"
 
 // must be last due to assert() over-write
-#include "base/UtAssert.h"
+#include "base/tests/UtAssert.h"
 
 void SquareTreeTest() {
     static Str keyValueData[] = {
@@ -25,7 +25,7 @@ void SquareTreeTest() {
         utassert(str::Eq(root->GetValue(StrL("KEY")), StrL("value")));
         int off = 0;
         utassert(str::Eq(root->GetValue(StrL("key"), &off), StrL("value")));
-        utassert(!root->GetValue(StrL("key"), &off));
+        utassert(len(root->GetValue(StrL("key"), &off)) == 0);
         delete root;
     }
 
@@ -116,7 +116,7 @@ void SquareTreeTest() {
         value = root->GetValue(StrL("count"), &off);
         utassert(str::Eq(value, StrL("1")) && 2 == off);
         value = root->GetValue(StrL("count"), &off);
-        utassert(!value && 2 == off);
+        utassert(len(value) == 0 && 2 == off);
         delete root;
     }
 
@@ -137,7 +137,7 @@ void SquareTreeTest() {
         StrL("node [\n child = \n]\n key = value"),
         StrL("node [\nchild\n]\n]\n key = value"),
         StrL("node[\n[node\nchild\nchild [ node\n]\n key = value"),
-        StrL("node [\r key = value\n node [\nchild\r\n] key = value"),
+        StrL("node [ key = value\n node [\nchild \n] key = value"),
     };
 
     for (Str s : halfBrokenData) {
@@ -147,7 +147,18 @@ void SquareTreeTest() {
         SquareTreeNode* node = root->GetChild(StrL("Node"));
         utassert(node && 1 == len(node->data) && str::Eq(node->GetValue(StrL("child")), StrL("")));
         utassert(str::Eq(root->GetValue(StrL("key")), StrL("value")));
-        utassert(!root->GetValue(StrL("node")) && !root->GetChild(StrL("key")));
+        utassert(len(root->GetValue(StrL("node"))) == 0 && !root->GetChild(StrL("key")));
+        delete root;
+    }
+
+    {
+        // a lone CR ends a line, like CRLF and LF
+        Str s = StrL("key = value\rkey2 = value2\r\nkey3 = value3");
+        SquareTreeNode* root = ParseSquareTree(s);
+        utassert(root && 3 == len(root->data));
+        utassert(str::Eq(root->GetValue(StrL("key")), StrL("value")));
+        utassert(str::Eq(root->GetValue(StrL("key2")), StrL("value2")));
+        utassert(str::Eq(root->GetValue(StrL("key3")), StrL("value3")));
         delete root;
     }
 

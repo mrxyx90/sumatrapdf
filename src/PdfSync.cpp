@@ -127,8 +127,10 @@ bool Synchronizer::NeedsToRebuildIndex() {
     // older file, a copy that preserves mtime), and that's a change too
     i64 newstamp = SyncFileTimestamp();
     if (newstamp != syncfileTimestamp) {
-        // update time stamp
-        syncfileTimestamp = newstamp;
+        // latch it: only MarkIndexWasRebuilt() clears the flag and adopts the
+        // new time stamp, so a rebuild that fails is retried on the next query
+        // instead of leaving us with an index that was never built
+        needsToRebuildIndex = true;
         return true; // the file has changed!
     }
 
@@ -218,7 +220,7 @@ int Pdfsync::RebuildIndexIfNeeded() {
     }
 
     Str data = file::ReadFile(syncFilePath);
-    if (!data) {
+    if (len(data) == 0) {
         return PDFSYNCERR_SYNCFILE_CANNOT_BE_OPENED;
     }
 
@@ -445,13 +447,13 @@ int Pdfsync::DocToSource(int pageNo, Point pt, Str& filename, int* line, int* co
 //
 // The function returns PDFSYNCERR_SUCCESS if a matching record was found.
 UINT Pdfsync::SourceToRecord(Str srcfilename, int line, int /*col*/, Vec<int>& records) {
-    if (!srcfilename) {
+    if (len(srcfilename) == 0) {
         return PDFSYNCERR_INVALID_ARGUMENT;
     }
 
     // convert the source file to an absolute path
     TempStr srcfilepath = path::IsAbsolute(srcfilename) ? srcfilename : PrependDirTemp(srcfilename);
-    if (!srcfilepath) {
+    if (len(srcfilepath) == 0) {
         return PDFSYNCERR_OUTOFMEMORY;
     }
 
@@ -543,7 +545,7 @@ int Pdfsync::SourceToDoc(Str srcfilename, int line, int col, int* page, Vec<Rect
 }
 
 static bool PathHasNonAscii(Str s) {
-    if (!s) {
+    if (len(s) == 0) {
         return false;
     }
     for (int i = 0; i < s.len; i++) {
@@ -561,7 +563,7 @@ static bool PathHasNonAscii(Str s) {
  * @return          A heap-allocated UTF-8 string (caller must free via str::Free), or empty on failure
  */
 static Str ConvertLocalToUTF8(Str localStr) {
-    if (!localStr) {
+    if (len(localStr) == 0) {
         return {};
     }
     UINT acp = GetACP();
@@ -591,8 +593,51 @@ static Str ConvertLocalToUTF8(Str localStr) {
     return Str(utf8Buf, utf8Len - 1);
 }
 
+// The temp files WriteTempSyncFile() wrote. A synctex scanner reads its file
+// for as long as it lives, so they can only go once, on the way out.
+static StrNode* gSyncTempFiles;
+
+void DeleteSyncTempFiles() {
+    for (StrNode* node = gSyncTempFiles; node; node = node->next) {
+        file::Delete(node->s);
+    }
+    FreeStrNode(nullptr, gSyncTempFiles);
+    gSyncTempFiles = nullptr;
+}
+
+// Writes data to a temp file named <base>.synctex: synctex_parser insists on
+// that extension, so the .tmp GetTempFileNameW hands out has to be renamed.
+// Only that .tmp name is guaranteed free, and the rename frees it again, so a
+// .synctex left behind by a version that didn't delete them, or by a crash,
+// can already be sitting there - replace it instead of failing the search.
+static TempStr WriteTempSyncFile(Str data, Str who) {
+    TempStr tempPath = GetTempFilePathTemp(StrL("stx")); // stxabcdef.tmp
+    if (len(tempPath) == 0) {
+        logf("%s: unable to get temp file path. error: %d.\n", who, errno);
+        return {};
+    }
+    if (!file::WriteFile(tempPath, data)) {
+        logf("%s: unable to write temp file '%s'. error: %d.\n", who, tempPath, errno);
+        return {};
+    }
+
+    TempStr tempPathNoExt = path::GetPathNoExtTemp(tempPath);              // stxabcdef
+    TempStr tempPathSync = str::JoinTemp(tempPathNoExt, StrL(".synctex")); // stxabcdef.synctex
+    if (!file::RenameReplace(tempPathSync, tempPath)) {
+        logf("%s: unable rename from '%s' to '%s'.\n", who, tempPath, tempPathSync);
+        return {};
+    }
+
+    StrNode* node = AllocStrNode(nullptr, tempPathSync);
+    if (node) {
+        node->next = gSyncTempFiles;
+        gSyncTempFiles = node;
+    }
+    return tempPathSync;
+}
+
 static TempStr CopyPlainSyncToTempFile(TempStr pathSync) {
-    if (!pathSync) {
+    if (len(pathSync) == 0) {
         return {};
     }
     // use file::ReadFile which uses CreateFileW (handles Unicode)
@@ -601,24 +646,9 @@ static TempStr CopyPlainSyncToTempFile(TempStr pathSync) {
         logf("CopyPlainSyncToTempFile: source file '.synctex' '%s' is empty.\n", pathSync);
         // return {};
     }
-    TempStr tempPath = GetTempFilePathTemp(StrL("stx")); // stxabcdef.tmp
-    if (!tempPath) {
-        str::Free(data);
-        logf("CopyPlainSyncToTempFile: unable to get temp file path. error: %d.\n", errno);
-        return {};
-    }
-    bool ok = file::WriteFile(tempPath, data);
+    TempStr tempPathSync = WriteTempSyncFile(data, StrL("CopyPlainSyncToTempFile"));
     str::Free(data);
-    if (!ok) {
-        logf("CopyPlainSyncToTempFile: unable to write temp file '%s'. error: %d.\n", tempPath, errno);
-        return {};
-    }
-
-    TempStr tempPathNoExt = path::GetPathNoExtTemp(tempPath);              // stxabcdef
-    TempStr tempPathSync = str::JoinTemp(tempPathNoExt, StrL(".synctex")); // stxabcdef.synctex
-    int ret = rename(tempPath.s, tempPathSync.s);
-    if (ret) {
-        logf("CopyPlainSyncToTempFile: unable rename from '%s' to '%s'. error: %d.\n", tempPath, tempPathSync, errno);
+    if (len(tempPathSync) == 0) {
         return {};
     }
 
@@ -627,7 +657,7 @@ static TempStr CopyPlainSyncToTempFile(TempStr pathSync) {
 }
 
 static TempStr DealPlainSync(TempStr pathSync) {
-    if (!pathSync) {
+    if (len(pathSync) == 0) {
         return {};
     }
     Str src = file::ReadFile(pathSync);
@@ -643,7 +673,7 @@ static TempStr DealPlainSync(TempStr pathSync) {
     }
     logf("DealPlainSync: '%s' NOT utf-8, decode by local ansi and write utf-8 to temp file\n", pathSync);
     Str converted = ConvertLocalToUTF8(srcZ);
-    if (!converted) {
+    if (len(converted) == 0) {
         logf("DealPlainSync: unable to convert '%s' from local ansi to utf-8.\n", pathSync);
         return {};
     }
@@ -653,25 +683,9 @@ static TempStr DealPlainSync(TempStr pathSync) {
         logf("DealPlainSync: decoded content is empty.\n", pathSync);
         return {};
     }
-    TempStr tempPath = GetTempFilePathTemp(StrL("stx")); // stxabcdef.tmp
-    if (!tempPath) {
-        str::Free(dst);
-        logf("DealPlainSync: unable to get temp file path. error: %d.\n", errno);
-        return {};
-    }
-    bool ok = file::WriteFile(tempPath, dst);
+    TempStr tempPathSync = WriteTempSyncFile(dst, StrL("DealPlainSync"));
     str::Free(dst);
-    if (!ok) {
-        logf("DealPlainSync: unable to write temp file '%s'. error: %d.\n", tempPath, errno);
-        return {};
-    }
-    logf("DealPlainSync: utf-8 written to temp file '%s'.\n", tempPath);
-
-    TempStr tempPathNoExt = path::GetPathNoExtTemp(tempPath);              // stxabcdef
-    TempStr tempPathSync = str::JoinTemp(tempPathNoExt, StrL(".synctex")); // stxabcdef.synctex
-    int ret = rename(tempPath.s, tempPathSync.s);
-    if (ret) {
-        logf("DealPlainSync: unable rename from '%s' to '%s'. error: %d.\n", tempPath, tempPathSync, errno);
+    if (len(tempPathSync) == 0) {
         return {};
     }
     logf("DealPlainSync: copied '%s' to '%s'\n", pathSync, tempPathSync);
@@ -687,7 +701,7 @@ static bool IsGzipFile(Str path) {
 
 // returns path of ungzipped file
 static TempStr ungzipToTempSync(Str gzPath) {
-    if (!gzPath) {
+    if (len(gzPath) == 0) {
         return {};
     }
     Str compr = file::ReadFile(gzPath);
@@ -704,24 +718,9 @@ static TempStr ungzipToTempSync(Str gzPath) {
         return {};
     }
 
-    TempStr tempPath = GetTempFilePathTemp(StrL("stx")); // stxabcdef.tmp
-    if (!tempPath) {
-        str::Free(uncompr);
-        logf("ungzipToTempSync: unable to get temp file path. error: %d.\n", errno);
-        return {};
-    }
-    bool ok = file::WriteFile(tempPath, uncompr);
+    TempStr tempPathSync = WriteTempSyncFile(uncompr, StrL("ungzipToTempSync"));
     str::Free(uncompr);
-    if (!ok) {
-        logf("ungzipToTempSync: unable to write temp file '%s'. error: %d.\n", tempPath, errno);
-        return {};
-    }
-
-    TempStr tempPathNoExt = path::GetPathNoExtTemp(tempPath);              // stxabcdef
-    TempStr tempPathSync = str::JoinTemp(tempPathNoExt, StrL(".synctex")); // stxabcdef.synctex
-    int ret = rename(tempPath.s, tempPathSync.s);
-    if (ret) {
-        logf("ungzipToTempSync: unable rename from '%s' to '%s'. error: %d.\n", tempPath, tempPathSync, errno);
+    if (len(tempPathSync) == 0) {
         return {};
     }
 
@@ -784,7 +783,7 @@ int SyncTex::RebuildIndexIfNeeded() {
     }
     logf("[dbg]: tempsync1: %s\n", tempsync1 ? tempsync1 : StrL("[NULL]"));
     logf("[dbg]: tempsync2: %s\n", tempsync2 ? tempsync2 : StrL("[NULL]"));
-    if (!tempsync2) {
+    if (len(tempsync2) == 0) {
         logf("SyncTex::RebuildIndexIfNeeded: temp file for origin file '%s' not found\n", pathSync);
         return PDFSYNCERR_SYNCFILE_NOTFOUND;
     }
@@ -812,7 +811,7 @@ int SyncTex::RebuildIndexIfNeeded() {
 // which happens when the PDF lives on a Windows drive but was compiled from
 // inside WSL
 static bool IsUnixSourcePath(Str syncFilePath, Str resolvedSrcPath) {
-    if (!syncFilePath || !resolvedSrcPath) {
+    if (len(syncFilePath) == 0 || len(resolvedSrcPath) == 0) {
         return false;
     }
 
@@ -830,7 +829,10 @@ int SyncTex::DocToSource(int pageNo, Point pt, Str& filename, int* line, int* co
         ReportDebugIf(true);
         return res;
     }
-    ReportIf(!scanner);
+    if (!scanner) {
+        ReportIf(true);
+        return PDFSYNCERR_SYNCFILE_NOTFOUND;
+    }
 
     // Coverity: at this point, this->scanner->flags.has_parsed == 1 and thus
     // synctex_scanner_parse never gets the chance to freeing the scanner
@@ -844,7 +846,7 @@ int SyncTex::DocToSource(int pageNo, Point pt, Str& filename, int* line, int* co
     }
 
     Str name = Str(synctex_scanner_get_name(this->scanner, synctex_node_tag(node)));
-    if (!name) {
+    if (len(name) == 0) {
         return PDFSYNCERR_UNKNOWN_SOURCEFILE;
     }
 
@@ -862,7 +864,7 @@ int SyncTex::DocToSource(int pageNo, Point pt, Str& filename, int* line, int* co
     }
 
     filename = str::Dup(name);
-    if (!filename) {
+    if (len(filename) == 0) {
         return PDFSYNCERR_OUTOFMEMORY;
     }
 
@@ -912,7 +914,7 @@ static int SynctexDisplayQueryWithVariants(synctex_scanner_p scanner, Str srcPat
         path::WindowsToWslMountTemp(srcPath),
     };
     for (TempStr variant : variants) {
-        if (!variant) {
+        if (len(variant) == 0) {
             continue;
         }
         logf("SynctexDisplayQueryWithVariants: '%s' failed, retrying with '%s'\n", srcPath, variant);
@@ -930,14 +932,17 @@ int SyncTex::SourceToDoc(Str srcfilename, int line, int col, int* page, Vec<Rect
     if (res != PDFSYNCERR_SUCCESS) {
         return res;
     }
-    ReportIf(!scanner);
+    if (!scanner) {
+        ReportIf(true);
+        return PDFSYNCERR_SYNCFILE_NOTFOUND;
+    }
 
     TempStr srcfilepath = srcfilename;
     // convert the source file to an absolute path
     if (!path::IsAbsolute(srcfilename)) {
         srcfilepath = PrependDir(srcfilename);
     }
-    if (!srcfilepath) {
+    if (len(srcfilepath) == 0) {
         return PDFSYNCERR_OUTOFMEMORY;
     }
 

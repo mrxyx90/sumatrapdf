@@ -25,7 +25,7 @@
 #include "SumatraPDF.h"
 #include "MainWindow.h"
 #include "Theme.h"
-#include "DarkMode_win.h"
+#include "DarkMode.h"
 #include "Translations.h"
 #include "ImageSaveCropResize.h"
 
@@ -72,7 +72,7 @@ static TempStr FormatPdfDateTemp() {
 // converted to a 24-bit RGB pixmap (a format PDF supports) and stamped with
 // the current time as CreationDate/ModDate (issue #949).
 static bool SaveBitmapAsPdf(Bitmap* bmp, Str destPath) {
-    if (!bmp || !destPath) {
+    if (!bmp || len(destPath) == 0) {
         return false;
     }
     PdfCreator* c = new PdfCreator();
@@ -101,7 +101,7 @@ static void OpenSavedFile(HWND parent, Str path) {
 }
 
 static Str TranslateStr(Str s) {
-    return _TRA(s);
+    return Tr(s);
 }
 
 static void ApplyDarkMode(HWND hwnd) {

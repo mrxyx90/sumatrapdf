@@ -3,99 +3,6 @@
 
 #include "base/Base.h"
 
-#ifdef SUMATRA_TEST_UTIL
-
-#if IS_DEBUG
-#include "base/UtAssert.h"
-#endif
-#include "Commands.h"
-#include "FilterUtil.h"
-#include "CommandPalette.h"
-
-/* CommandPaletteModel code:
-   Copyright 2026 the SumatraPDF project authors (see AUTHORS file).
-   License: GPLv3 */
-struct CommandPaletteEntry {
-    int commandId = 0;
-};
-
-struct CommandPaletteModel {
-    StrVecWithData<CommandPaletteEntry> commands;
-    StrVecWithData<CommandPaletteEntry> filtered;
-    StrVec filterWords;
-
-    void SetCommands(const int* commandIds, int count);
-    void Filter(Str query);
-    int Count() const;
-    Str ItemText(int index) const;
-    int ItemCommandId(int index) const;
-};
-
-void CommandPaletteModel::SetCommands(const int* commandIds, int count) {
-    commands.Reset();
-    filtered.Reset();
-    filterWords.Reset();
-    for (int i = 0; i < count; i++) {
-        int commandId = commandIds[i];
-        Str description = GetCommandDescription(commandId);
-        if (!description) {
-            continue;
-        }
-        commands.Append(description, {commandId});
-    }
-    SortNoCase(&commands);
-    Filter({});
-}
-
-void CommandPaletteModel::Filter(Str query) {
-    filtered.Reset();
-    filterWords.Reset();
-    SplitFilterToWords(query, filterWords);
-    for (int i = 0; i < len(commands); i++) {
-        if (FilterMatches(commands[i], filterWords)) {
-            filtered.AppendFrom(&commands, i);
-        }
-    }
-}
-
-int CommandPaletteModel::Count() const {
-    return len(filtered);
-}
-
-Str CommandPaletteModel::ItemText(int index) const {
-    return index >= 0 && index < len(filtered) ? filtered[index] : Str{};
-}
-
-int CommandPaletteModel::ItemCommandId(int index) const {
-    CommandPaletteEntry* entry = index >= 0 && index < len(filtered) ? filtered.AtData(index) : nullptr;
-    return entry ? entry->commandId : 0;
-}
-
-#if IS_DEBUG
-
-void CommandPaletteModel_UnitTests() {
-    const int commands[] = {CmdOpenFile, CmdRotateLeft, CmdRotateRight, CmdZoomFitWidth};
-    CommandPaletteModel model;
-    model.SetCommands(commands, dimofi(commands));
-    utassert(model.Count() == dimofi(commands));
-    utassert(model.ItemCommandId(0) == CmdOpenFile);
-
-    model.Filter(StrL("rotate right"));
-    utassert(model.Count() == 1);
-    utassert(model.ItemCommandId(0) == CmdRotateRight);
-
-    model.Filter(StrL("FIT width"));
-    utassert(model.Count() == 1);
-    utassert(model.ItemCommandId(0) == CmdZoomFitWidth);
-
-    model.Filter(StrL("missing"));
-    utassert(model.Count() == 0);
-}
-
-#endif
-
-#else
-
 #include "base/Pixmap.h"
 #include "base/Win.h"
 #include "base/File.h"
@@ -140,6 +47,9 @@ void CommandPaletteModel_UnitTests() {
 #include "CommandAvailability.h"
 #include "Accelerators.h"
 #include "FilterHighlightDraw.h"
+#include "Annotation.h"
+#include "AnnotSearch.h"
+#include "AnnotEditToolbar.h"
 #include "CommandPalette.h"
 
 struct MainWindow;
@@ -148,11 +58,16 @@ struct TocItem;
 struct FileState;
 struct Favorite;
 struct ThumbnailPaletteCtrl;
+struct Annotation;
 
 enum class ThumbnailMode {
     Disabled,
     Enabled,
 };
+
+// separates a setting from the value being typed for it in the "= settings"
+// query, e.g. "=ZoomIncrement = 25". A setting name never contains one
+constexpr const char* kPaletteSettingValueSep = "=";
 
 struct ItemDataCP {
     i32 cmdId = 0;
@@ -165,8 +80,14 @@ struct ItemDataCP {
     int pageNo = 0; // toc entry destination page (0 if none), shown in the list
     FileState* favFs = nullptr;
     Favorite* fav = nullptr;
-    bool* boolSetting = nullptr;
-    bool boolSettingDefault = false;
+    Annotation* annot = nullptr;
+    // a "= settings" row. In the setting-picking stage the row text is the
+    // setting's dotted path; in the value-picking stage it is a candidate value
+    // and settingPath names the setting it belongs to.
+    SettingType settingType = SettingType::Comment; // Comment: not a setting row
+    u8* settingPtr = nullptr;
+    intptr_t settingDefault = 0; // FieldInfo::value, decoded per type
+    Str settingPath;
 };
 
 using StrVecCP = StrVecWithData<ItemDataCP>;
@@ -191,9 +112,11 @@ struct CommandPaletteWnd : WindowBase {
     StrVecCP commands;
     StrVecCP toc;
     StrVecCP favorites;
-    StrVecCP boolSettings;
+    StrVecCP annotations;
+    StrVecCP settings;
     VirtListBox* listBox = nullptr;
     ThumbnailPaletteCtrl* thumbnailCtrl = nullptr;
+    HBox* switchRow = nullptr;
     HBox* helpRow = nullptr;
     int helpKind = -1;
 
@@ -217,7 +140,9 @@ struct CommandPaletteWnd : WindowBase {
     void CollectTabsMru(MainWindow*, WindowTab* currTab);
     void CollectToc(MainWindow*);
     void CollectFavorites(MainWindow*);
-    void CollectBoolSettings();
+    void CollectAnnotations(MainWindow*);
+    void CollectSettings();
+    void FillSwitchRow();
     void FilterStringsForQuery(Str, StrVecCP&);
 
     bool Create(MainWindow* win, Str prefix, int smartTabAdvance);
@@ -235,7 +160,9 @@ struct CommandPaletteWnd : WindowBase {
     void SwitchToFileHistory();
     void SwitchToTOC();
     void SwitchToFavorites();
-    void SwitchToBoolSettings();
+    void SwitchToSettings();
+    void BeginEditSettingValue(Str path);
+    void FillSettingValueRows(Str path, Str value, StrVecCP& out);
     void SetThumbnailMode(ThumbnailMode mode);
     void OnSelectionChange();
     void OnListDoubleClick();
@@ -251,6 +178,7 @@ void CommandPaletteSetCurrentSelection(CommandPaletteWnd* wnd, int idx);
 void ScheduleDeleteAndExecCommand(i32 cmdId = 0);
 void SafeDeleteCommandPaletteWnd();
 void PositionCommandPalette(HWND hwnd, HWND hwndRelative);
+static TempStr FormatSettingValueTemp(SettingType type, const u8* p);
 
 // clang-format off
 static i32 gCommandsNoActivate[] = {
@@ -289,6 +217,14 @@ static bool IsCmdInList(i32 cmdId, i32* ids) {
     return false;
 }
 
+// commands that act at the mouse position (annotation create, read aloud from cursor)
+static bool CmdUsesCursorPos(i32 cmdId) {
+    if (cmdId >= CmdCreateAnnotFirst && cmdId <= CmdCreateAnnotLast) {
+        return true;
+    }
+    return cmdId == CmdCreateAnnotImageFromClipboard || cmdId == CmdReadAloudFromCursorPosition;
+}
+
 // UI language (and the debug RTL toggle), not the palette hwnd: that window
 // stays LTR so virtual-control coords and clicks are not mirrored (#5956).
 bool CommandPaletteUiRtl() {
@@ -299,14 +235,18 @@ Str CommandPaletteSkipWS(Str s) {
     if (!s.s) {
         return {};
     }
-    str::SkipWs(s);
+    str::TrimWs(s);
     return s;
 }
 
 CommandPaletteWnd* gCommandPaletteWnd = nullptr;
+static int gPaletteOpDepth = 0;
 static HWND gHwndToActivateOnClose = nullptr;
 static WindowTab* gTabToSelectOnClose = nullptr;
 static i32 gCmdIdToExecOnClose = 0;
+// canvas mouse position when the palette was opened, as WM_COMMAND LPARAM
+// (0 if the mouse was not over the canvas); the live cursor is over the palette
+static LPARAM gCursorPosLParam = 0;
 static FileState* gFavFsToGoToOnClose = nullptr;
 static Favorite* gFavToGoToOnClose = nullptr;
 
@@ -344,6 +284,7 @@ struct ThumbnailRowsModel : ListBoxModel {
 struct ThumbnailRenderTask {
     ThumbnailPaletteCache* cache = nullptr;
     int pageNo = 0;
+    Location loc;
     Pixmap* bitmap = nullptr;
 };
 
@@ -351,6 +292,7 @@ struct ThumbnailRenderWorker {
     ThumbnailPaletteCache* cache = nullptr;
     EngineBase* sourceEngine = nullptr;
     Vec<int> pages;
+    Vec<Location> locs;
     int rotation = 0;
     int thumbDx = 0;
     int thumbDy = 0;
@@ -368,7 +310,6 @@ struct ThumbnailPaletteCtrl : VirtListBox {
     int thumbDy = 0;
     int gap = 0;
     int rowGap = 0;
-    int labelDy = 0;
     bool active = false;
 
     ThumbnailPaletteCtrl(MainWindow*, PlatformFont*, int dpi);
@@ -421,20 +362,25 @@ static void DeleteThumbnailCache(ThumbnailPaletteCache* cache) {
     delete cache;
 }
 
-static Pixmap* RenderPageThumbnail(EngineBase* engine, int pageNo, int rotation, int thumbDx, int thumbDy) {
-    RectF pageRect = engine->PageMediabox(pageNo);
+static Pixmap* RenderPageThumbnail(EngineBase* engine, int pageNo, Location loc, int rotation, int thumbDx,
+                                   int thumbDy) {
+    // reflow docs share one mediabox; don't use a flat pageNo that a clone's
+    // chapter layout may have already shifted
+    int boxPage = loc.IsValid() && engine->isReflowable ? 1 : pageNo;
+    RectF pageRect = engine->PageMediabox(boxPage);
     if (pageRect.IsEmpty()) {
         return nullptr;
     }
 
-    pageRect = engine->Transform(pageRect, pageNo, 1.0f, rotation);
+    pageRect = engine->Transform(pageRect, boxPage, 1.0f, rotation);
     if (pageRect.dx <= 0 || pageRect.dy <= 0) {
         return nullptr;
     }
     float zoom = (float)thumbDx / pageRect.dx;
     pageRect.dy = std::min(pageRect.dy, (float)thumbDy / zoom);
-    pageRect = engine->Transform(pageRect, pageNo, 1.0f, rotation, true);
+    pageRect = engine->Transform(pageRect, boxPage, 1.0f, rotation, true);
     RenderPageArgs args(pageNo, zoom, rotation, &pageRect, RenderTarget::View);
+    args.loc = loc;
     return engine->RenderPage(args);
 }
 
@@ -471,11 +417,12 @@ static void FinishThumbnailWorker(ThumbnailPaletteCache* cache) {
     cache->ctrl->StartRendering();
 }
 
-static void RenderAndPostThumbnail(ThumbnailRenderWorker* worker, EngineBase* engine, int pageNo) {
+static void RenderAndPostThumbnail(ThumbnailRenderWorker* worker, EngineBase* engine, int pageNo, Location loc) {
     auto* task = new ThumbnailRenderTask;
     task->cache = worker->cache;
     task->pageNo = pageNo;
-    task->bitmap = RenderPageThumbnail(engine, pageNo, worker->rotation, worker->thumbDx, worker->thumbDy);
+    task->loc = loc;
+    task->bitmap = RenderPageThumbnail(engine, pageNo, loc, worker->rotation, worker->thumbDx, worker->thumbDy);
     uitask::Post(MkFunc0<ThumbnailRenderTask>(FinishThumbnailRender, task));
 }
 
@@ -488,11 +435,13 @@ static void RenderThumbnailsInBackground(ThumbnailRenderWorker* worker) {
     }
     EngineBase* engine = cache->renderEngine;
     if (engine) {
-        for (int pageNo : worker->pages) {
+        int n = len(worker->pages);
+        for (int i = 0; i < n; i++) {
             if (AtomicIntGet(&cache->cancelRendering) != 0) {
                 break;
             }
-            RenderAndPostThumbnail(worker, engine, pageNo);
+            Location loc = i < len(worker->locs) ? worker->locs[i] : kInvalidLocation;
+            RenderAndPostThumbnail(worker, engine, worker->pages[i], loc);
         }
     }
     uitask::Post(MkFunc0<ThumbnailPaletteCache>(FinishThumbnailWorker, cache));
@@ -512,7 +461,6 @@ ThumbnailPaletteCtrl::ThumbnailPaletteCtrl(MainWindow* win, PlatformFont* font, 
     thumbDy = DpiScaleByDpi(dpi, kPaletteThumbnailDy);
     gap = DpiScaleByDpi(dpi, kPaletteThumbnailGap);
     rowGap = gap;
-    labelDy = PlatformFontMeasureText(font, StrL("0")).dy + DpiScaleByDpi(dpi, 4);
     itemDy = thumbDy + gap;
     padding = DpiScaledInsets(kPaletteThumbnailPadding, kPaletteThumbnailPadding);
 
@@ -568,7 +516,7 @@ void ThumbnailPaletteCtrl::SetBounds(Rect r) {
     int visibleRows = std::max(1, (r.dy - gap) / (thumbDy + gap));
     visibleRows = std::min(visibleRows, rowsModel->rows);
     if (visibleRows > 0) {
-        int freeDy = r.dy - visibleRows * thumbDy;
+        int freeDy = r.dy - (visibleRows * thumbDy);
         rowGap = std::max(gap, freeDy / (visibleRows + 1));
     }
     itemDy = thumbDy + rowGap;
@@ -583,14 +531,16 @@ void ThumbnailPaletteCtrl::SetBounds(Rect r) {
 }
 
 void ThumbnailPaletteCtrl::DrawRow(DrawItemEvent* ev) {
-    int gridDx = cols * thumbDx + (cols - 1) * gap;
+    int gridDx = (cols * thumbDx) + ((cols - 1) * gap);
     int left = ev->itemRect.x + std::max(0, (ev->itemRect.dx - gridDx) / 2);
-    int firstPage = ev->itemIndex * cols + 1;
+    int firstPage = (ev->itemIndex * cols) + 1;
     int lastPage = std::min(pageCount, firstPage + cols - 1);
-    Color textColor = ThemeWindowTextColor();
+    DisplayModel* dm = tab ? tab->AsFixed() : nullptr;
+    EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    bool chapters = engine && engine->HasChapters();
     for (int pageNo = firstPage; pageNo <= lastPage; pageNo++) {
         int col = pageNo - firstPage;
-        int x = left + col * (thumbDx + gap);
+        int x = left + (col * (thumbDx + gap));
         Rect pageRect{x, ev->itemRect.y, thumbDx, thumbDy};
         ev->gfx->FillRect(pageRect, kColWhite);
 
@@ -598,15 +548,36 @@ void ThumbnailPaletteCtrl::DrawRow(DrawItemEvent* ev) {
         if (thumbnail) {
             int drawDx = std::min(thumbnail->width, thumbDx);
             int drawDy = std::min(thumbnail->height, thumbDy);
-            Rect target{x + (thumbDx - drawDx) / 2, pageRect.y + (thumbDy - drawDy) / 2, drawDx, drawDy};
+            Rect target{x + ((thumbDx - drawDx) / 2), pageRect.y + ((thumbDy - drawDy) / 2), drawDx, drawDy};
             ev->gfx->DrawPixmap(thumbnail, target);
         }
 
         if (pageNo == selectedPage) {
             ev->gfx->DrawRect(pageRect, MkRgb(0, 120, 215), 3);
         }
-        Rect label{x, pageRect.Bottom() - labelDy, thumbDx, labelDy};
-        ev->gfx->DrawText(fmt("%d", pageNo), label, gfxTextCenter | gfxTextVCenter, font, textColor);
+
+        TempStr label = fmt("%d", pageNo);
+        if (chapters) {
+            Location loc = engine->LocationFromPageNo(pageNo);
+            if (loc.IsValid()) {
+                label = fmt("%d / %d", loc.chapter, loc.page);
+            }
+        }
+        Size ts = ev->gfx->MeasureText(label, font);
+        int padX = DpiScaleByDpi(dpi, 6);
+        int padY = DpiScaleByDpi(dpi, 2);
+        int inset = DpiScaleByDpi(dpi, 4);
+        int boxDx = std::min(ts.dx + (padX * 2), pageRect.dx - (inset * 2));
+        int boxDy = ts.dy + (padY * 2);
+        int boxX = pageRect.x + ((pageRect.dx - boxDx) / 2);
+        int boxY = pageRect.y + pageRect.dy - boxDy - inset;
+        if (boxY < pageRect.y + inset) {
+            boxY = pageRect.y + inset;
+        }
+        Rect box{boxX, boxY, boxDx, boxDy};
+        // a pill: half the height rounds the short sides into semicircles
+        ev->gfx->FillRoundedRect(box, boxDy / 2, ThemeWindowBackgroundColor());
+        ev->gfx->DrawText(label, box, gfxTextCenter | gfxTextVCenter, font, ThemeWindowTextColor());
     }
 }
 
@@ -621,7 +592,7 @@ int ThumbnailPaletteCtrl::PageAtPoint(Point pt) {
     }
     Point origin = OriginInWindow();
     rowRect.Offset(-origin.x, -origin.y);
-    int gridDx = cols * thumbDx + (cols - 1) * gap;
+    int gridDx = (cols * thumbDx) + ((cols - 1) * gap);
     int left = rowRect.x + std::max(0, (rowRect.dx - gridDx) / 2);
     if (pt.x < left || pt.y < rowRect.y || pt.y >= rowRect.y + thumbDy) {
         return -1;
@@ -630,11 +601,11 @@ int ThumbnailPaletteCtrl::PageAtPoint(Point pt) {
     if (col < 0 || col >= cols) {
         return -1;
     }
-    int cellX = left + col * (thumbDx + gap);
+    int cellX = left + (col * (thumbDx + gap));
     if (pt.x >= cellX + thumbDx) {
         return -1;
     }
-    int pageNo = row * cols + col + 1;
+    int pageNo = (row * cols) + col + 1;
     return pageNo <= pageCount ? pageNo : -1;
 }
 
@@ -802,14 +773,14 @@ void ThumbnailPaletteCtrl::StartRendering() {
     }
 
     int visibleRows = std::max(1, UsableDy() / itemDy);
-    int firstVisible = (scrollY / itemDy) * cols + 1;
+    int firstVisible = ((scrollY / itemDy) * cols) + 1;
     int perScreen = std::max(1, visibleRows * cols);
     int lastVisible = std::min(pageCount, firstVisible + perScreen - 1);
-    int firstPage = std::max(1, firstVisible - kPaletteThumbnailRenderScreens * perScreen);
-    int lastPage = std::min(pageCount, lastVisible + kPaletteThumbnailRenderScreens * perScreen);
+    int firstPage = std::max(1, firstVisible - (kPaletteThumbnailRenderScreens * perScreen));
+    int lastPage = std::min(pageCount, lastVisible + (kPaletteThumbnailRenderScreens * perScreen));
 
-    int keepFirst = std::max(1, firstPage - kPaletteThumbnailKeepScreens * perScreen);
-    int keepLast = std::min(pageCount, lastPage + kPaletteThumbnailKeepScreens * perScreen);
+    int keepFirst = std::max(1, firstPage - (kPaletteThumbnailKeepScreens * perScreen));
+    int keepLast = std::min(pageCount, lastPage + (kPaletteThumbnailKeepScreens * perScreen));
     for (int idx = 0; idx < len(cache->thumbnails); idx++) {
         int pageNo = idx + 1;
         if (cache->thumbnails[idx] && (pageNo < keepFirst || pageNo > keepLast)) {
@@ -819,20 +790,21 @@ void ThumbnailPaletteCtrl::StartRendering() {
     }
 
     auto* worker = new ThumbnailRenderWorker;
-    for (int pageNo = firstVisible; pageNo <= lastVisible; pageNo++) {
-        if (!cache->thumbnails[pageNo - 1]) {
-            VecAppend(worker->pages, pageNo);
+    auto queuePage = [&](int pageNo) {
+        if (cache->thumbnails[pageNo - 1]) {
+            return;
         }
+        VecAppend(worker->pages, pageNo);
+        VecAppend(worker->locs, engine->LocationFromPageNo(pageNo));
+    };
+    for (int pageNo = firstVisible; pageNo <= lastVisible; pageNo++) {
+        queuePage(pageNo);
     }
     for (int pageNo = firstPage; pageNo < firstVisible; pageNo++) {
-        if (!cache->thumbnails[pageNo - 1]) {
-            VecAppend(worker->pages, pageNo);
-        }
+        queuePage(pageNo);
     }
     for (int pageNo = lastVisible + 1; pageNo <= lastPage; pageNo++) {
-        if (!cache->thumbnails[pageNo - 1]) {
-            VecAppend(worker->pages, pageNo);
-        }
+        queuePage(pageNo);
     }
     if (len(worker->pages) == 0) {
         delete worker;
@@ -901,7 +873,8 @@ void SafeDeleteCommandPaletteWnd() {
         i32 cmdId = gCmdIdToExecOnClose;
         gCmdIdToExecOnClose = 0;
         if (IsMainWindowValidAndNotClosing(win)) {
-            HwndPostCommand(win->hwndFrame, cmdId);
+            LPARAM lp = CmdUsesCursorPos(cmdId) ? gCursorPosLParam : 0;
+            HwndPostCommand(win->hwndFrame, cmdId, lp);
         }
     }
     if (gFavToGoToOnClose) {
@@ -930,6 +903,75 @@ void ScheduleDeleteAndExecCommand(i32 cmdId) {
 void CommandPaletteSetCurrentSelection(CommandPaletteWnd* wnd, int idx) {
     wnd->listBox->SetCurrentSelection(idx);
     wnd->OnSelectionChange();
+}
+
+struct RemoveItemOp {
+    CommandPaletteWnd* wnd = nullptr;
+    WindowTab* tab = nullptr;
+    Favorite* fav = nullptr;
+    FileState* favFs = nullptr;
+    Str filePath;
+    int currSel = 0;
+};
+
+// CloseTab / DelFavorite can pump; this runs after the key handler returns.
+static void ApplyRemoveItem(RemoveItemOp* op) {
+    CommandPaletteWnd* wnd = op->wnd;
+    WindowTab* tab = op->tab;
+    Favorite* fav = op->fav;
+    FileState* favFs = op->favFs;
+    Str filePath = op->filePath;
+    int currSel = op->currSel;
+    defer {
+        str::Free(filePath);
+        delete op;
+    };
+
+    if (gCommandPaletteWnd != wnd) {
+        return;
+    }
+
+    gPaletteOpDepth++;
+    defer {
+        gPaletteOpDepth--;
+    };
+
+    MainWindow* host = wnd->win;
+    if (tab) {
+        CloseTab(tab, false);
+    } else if (fav && favFs) {
+        DelFavorite(favFs, fav);
+    } else if (len(filePath) > 0 && host) {
+        ForgetFileFromFrequentlyRead(host, filePath);
+    }
+
+    if (gCommandPaletteWnd != wnd) {
+        return;
+    }
+    if (!IsMainWindowValid(host)) {
+        ScheduleDeleteAndExecCommand();
+        return;
+    }
+
+    wnd->CollectStrings(host);
+    if (gCommandPaletteWnd != wnd || !wnd->listBox || !wnd->listBox->model) {
+        return;
+    }
+    auto* m = (ListBoxModelCP*)wnd->listBox->model;
+    Str filter = CommandPaletteSkipWS(Str(wnd->editQuery->GetTextTemp()));
+    wnd->FilterStringsForQuery(filter, m->strings);
+    wnd->listBox->SetModel(m);
+
+    int n = m->ItemsCount();
+    if (n == 0) {
+        wnd->listBox->SetCurrentSelection(-1);
+        return;
+    }
+    int sel = currSel;
+    if (sel >= n) {
+        sel = n - 1;
+    }
+    CommandPaletteSetCurrentSelection(wnd, sel);
 }
 
 static void EditSetTextAndFocus(Edit* e, Str s) {
@@ -966,8 +1008,25 @@ void CommandPaletteWnd::SwitchToFavorites() {
     SwitchToPrefix(Str(kPalettePrefixFavorites));
 }
 
-void CommandPaletteWnd::SwitchToBoolSettings() {
+void CommandPaletteWnd::SwitchToSettings() {
     SwitchToPrefix(Str(kPalettePrefixBoolSettings));
+}
+
+// Second stage of "= settings": the query becomes "=<path> = <value>" and the
+// list offers values instead of settings. An enum's current value is left out
+// so every choice shows; a free-form value is pre-filled so it can be edited.
+void CommandPaletteWnd::BeginEditSettingValue(Str path) {
+    TempStr value = {};
+    if (!GetSettingsEnumValues(path)) {
+        for (int i = 0; i < len(settings); i++) {
+            if (str::Eq(settings[i], path)) {
+                value = FormatSettingValueTemp(settings.AtData(i)->settingType, settings.AtData(i)->settingPtr);
+                break;
+            }
+        }
+    }
+    EditSetTextAndFocus(editQuery,
+                        fmt("%s%s %s %s", Str(kPalettePrefixBoolSettings), path, Str(kPaletteSettingValueSep), value));
 }
 
 void CommandPaletteWnd::OnActivate(WindowBase::ActivateEvent* ev) {
@@ -975,7 +1034,7 @@ void CommandPaletteWnd::OnActivate(WindowBase::ActivateEvent* ev) {
         // -for-testing runs in the background, so this popup never stays
         // foreground. Closing on WA_INACTIVE would destroy it between
         // sequential WM_SETTEXT queries (image-only-palette-items).
-        if (!gForTesting) {
+        if (!gForTesting && gPaletteOpDepth == 0) {
             ScheduleDeleteAndExecCommand();
         }
         ev->didHandle = true;
@@ -1071,40 +1130,22 @@ bool CommandPaletteWnd::RemoveSelectedItem() {
         return false;
     }
 
-    if (d->tab) {
-        WindowTab* tab = d->tab;
-        CloseTab(tab, false);
-        if (!IsMainWindowValid(win)) {
-            // closing the last tab closed the host window
-            ScheduleDeleteAndExecCommand();
-            return true;
-        }
-    } else if (d->fav && d->favFs) {
-        // copy before DelFavorite frees the Favorite*
-        Str path = d->favFs->filePath;
-        int pageNo = d->fav->pageNo;
-        DelFavorite(path, pageNo);
-    } else if (d->filePath) {
-        ForgetFileFromFrequentlyRead(win, d->filePath);
-    } else {
+    WindowTab* tab = d->tab;
+    Favorite* fav = d->fav;
+    FileState* favFs = d->favFs;
+    Str filePath = d->filePath;
+    if (!tab && !(fav && favFs) && len(filePath) == 0) {
         return false;
     }
 
-    CollectStrings(win);
-    Str filter = CommandPaletteSkipWS(Str(editQuery->GetTextTemp()));
-    FilterStringsForQuery(filter, m->strings);
-    listBox->SetModel(m);
-
-    n = m->ItemsCount();
-    if (n == 0) {
-        listBox->SetCurrentSelection(-1);
-        return true;
-    }
-    int sel = currSel;
-    if (sel >= n) {
-        sel = n - 1;
-    }
-    CommandPaletteSetCurrentSelection(this, sel);
+    auto* op = new RemoveItemOp;
+    op->wnd = this;
+    op->tab = tab;
+    op->fav = fav;
+    op->favFs = favFs;
+    op->filePath = str::Dup(filePath);
+    op->currSel = currSel;
+    uitask::Post(MkFunc0<RemoveItemOp>(ApplyRemoveItem, op), "PaletteRemoveItem");
     return true;
 }
 
@@ -1251,7 +1292,7 @@ void CommandPaletteWnd::ExecuteCurrentSelection() {
     ItemDataCP* data = m->strings.AtData(idx);
     i32 cmdId = data->cmdId;
     if (cmdId == CmdToggleBoolSetting) {
-        SwitchToBoolSettings();
+        SwitchToSettings();
         return;
     }
     if (cmdId != 0) {
@@ -1263,9 +1304,21 @@ void CommandPaletteWnd::ExecuteCurrentSelection() {
         return;
     }
 
-    if (data->boolSetting) {
-        ToggleSettingsBool(data->boolSetting);
-        ScheduleDeleteAndExecCommand();
+    if (data->settingPtr) {
+        Str itemText = m->strings[idx];
+        if (len(data->settingPath) > 0) {
+            // a value picked for a setting: the row text is the value
+            SetSettingsValueFromStr(data->settingPath, itemText);
+            ScheduleDeleteAndExecCommand();
+            return;
+        }
+        if (data->settingType == SettingType::Bool) {
+            ToggleSettingsBool((bool*)data->settingPtr);
+            ScheduleDeleteAndExecCommand();
+            return;
+        }
+        // anything else needs a value: stay open and ask for one
+        BeginEditSettingValue(itemText);
         return;
     }
 
@@ -1293,6 +1346,16 @@ void CommandPaletteWnd::ExecuteCurrentSelection() {
         gHwndToActivateOnClose = win->hwndFrame;
         gFavFsToGoToOnClose = data->favFs;
         gFavToGoToOnClose = data->fav;
+        ScheduleDeleteAndExecCommand();
+        return;
+    }
+
+    if (data->annot) {
+        WindowTab* curr = win->CurrentTab();
+        if (curr) {
+            SetSelectedAnnotation(curr, data->annot);
+        }
+        gHwndToActivateOnClose = win->hwndFrame;
         ScheduleDeleteAndExecCommand();
         return;
     }
@@ -1359,7 +1422,7 @@ static TempStr WithKbdMarkupTemp(Str s) {
                 break;
             }
         }
-        if (!match) {
+        if (len(match) == 0) {
             out.AppendChar(s.s[i]);
             i++;
             continue;
@@ -1403,6 +1466,48 @@ static void InitHelpText(const HelpStyle& st, VirtRichText* t, Str markup) {
     t->padding = Insets{0, padX, 0, padX};
 }
 
+void CommandPaletteWnd::FillSwitchRow() {
+    if (!switchRow) {
+        return;
+    }
+    for (auto& c : switchRow->children) {
+        delete c.layout;
+    }
+    VecReset(switchRow->children);
+
+    auto colBg = ThemeWindowControlBackgroundColor();
+    auto colTxt = ThemeWindowTextColor();
+    HelpStyle st{hwnd, GetAppFont(), colTxt, colBg};
+    auto addSwitch = [this, &st](Str s, Str switchTo) {
+        TempStr markup = str::JoinTemp(StrL("(Kbd/"), Str(s.s, 1), StrL(")"), Str(s.s + 1, len(s) - 1));
+        auto* t = new PaletteSwitch();
+        InitHelpText(st, t, markup);
+        t->wnd = this;
+        t->prefix = switchTo;
+        t->onClick = MkFunc1Void(OnPaletteSwitchClicked);
+        switchRow->AddChild(t);
+    };
+    addSwitch(Tr("> Commands"), Str(kPalettePrefixCommands));
+    addSwitch(Tr("@ Tabs"), Str(kPalettePrefixTabs));
+    addSwitch(Tr("# History"), Str(kPalettePrefixFileHistory));
+    if (len(favorites) > 0) {
+        addSwitch(Tr("$ Favorites"), Str(kPalettePrefixFavorites));
+    }
+    if (len(toc) > 0) {
+        addSwitch(Tr("% TOC"), Str(kPalettePrefixTOC));
+    }
+    if (win && win->AsFixed()) {
+        addSwitch(Tr("& Thumbnails"), Str(kPalettePrefixThumbnails));
+    }
+    if (len(annotations) > 0) {
+        addSwitch(Tr("* Annotations"), Str(kPalettePrefixAnnotations));
+    }
+    addSwitch(Tr("= Settings"), Str(kPalettePrefixBoolSettings));
+    if (layout) {
+        DoLayout();
+    }
+}
+
 static VirtRichText* NewHelpText(const HelpStyle& st, Str markup) {
     auto* t = new VirtRichText();
     InitHelpText(st, t, markup);
@@ -1424,6 +1529,7 @@ enum {
     kHelpHistory,
     kHelpTabs,
     kHelpFavorites,
+    kHelpAnnotations,
     kHelpSettings,
     kHelpToc,
     kHelpEverything,
@@ -1443,11 +1549,14 @@ static int PaletteHelpKind(Str filter, bool smartTab) {
     if (str::StartsWith(filter, Str(kPalettePrefixFileHistory))) {
         return kHelpHistory;
     }
-    if (str::StartsWith(filter, Str(kPalettePrefixTOC)) || str::StartsWith(filter, Str(kPalettePrefixTOCLegacy))) {
+    if (str::StartsWith(filter, Str(kPalettePrefixTOC))) {
         return kHelpToc;
     }
     if (str::StartsWith(filter, Str(kPalettePrefixFavorites))) {
         return kHelpFavorites;
+    }
+    if (str::StartsWith(filter, Str(kPalettePrefixAnnotations))) {
+        return kHelpAnnotations;
     }
     if (str::StartsWith(filter, Str(kPalettePrefixBoolSettings))) {
         return kHelpSettings;
@@ -1481,45 +1590,49 @@ void CommandPaletteWnd::UpdateHelpRow() {
     int nHelp = 0;
     switch (kind) {
         case kHelpSmartTab:
-            strings[nHelp++] = _TRA("Ctrl+Tab navigate");
-            strings[nHelp++] = _TRA("Release Ctrl select");
-            strings[nHelp++] = _TRA("Space for sticky mode");
-            strings[nHelp++] = _TRA("Del close tab");
+            strings[nHelp++] = Tr("Ctrl+Tab navigate");
+            strings[nHelp++] = Tr("Release Ctrl select");
+            strings[nHelp++] = Tr("Space for sticky mode");
+            strings[nHelp++] = Tr("Del close tab");
             break;
         case kHelpHistory:
-            strings[nHelp++] = _TRA("Enter open file");
-            strings[nHelp++] = _TRA("Del remove from history");
-            strings[nHelp++] = _TRA("Esc close");
+            strings[nHelp++] = Tr("Enter open file");
+            strings[nHelp++] = Tr("Del remove from history");
+            strings[nHelp++] = Tr("Esc close");
             break;
         case kHelpTabs:
-            strings[nHelp++] = _TRA("Enter switch to tab");
-            strings[nHelp++] = _TRA("Del close tab");
-            strings[nHelp++] = _TRA("Esc close");
+            strings[nHelp++] = Tr("Enter switch to tab");
+            strings[nHelp++] = Tr("Del close tab");
+            strings[nHelp++] = Tr("Esc close");
             break;
         case kHelpFavorites:
-            strings[nHelp++] = _TRA("Enter go to favorite");
-            strings[nHelp++] = _TRA("Del remove favorite");
-            strings[nHelp++] = _TRA("Esc close");
+            strings[nHelp++] = Tr("Enter go to favorite");
+            strings[nHelp++] = Tr("Del remove favorite");
+            strings[nHelp++] = Tr("Esc close");
+            break;
+        case kHelpAnnotations:
+            strings[nHelp++] = Tr("Enter go to");
+            strings[nHelp++] = Tr("Esc close");
             break;
         case kHelpSettings:
-            strings[nHelp++] = _TRA("Enter change");
-            strings[nHelp++] = _TRA("Esc close");
+            strings[nHelp++] = Tr("Enter change");
+            strings[nHelp++] = Tr("Esc close");
             break;
         case kHelpThumbnails:
-            strings[nHelp++] = _TRA("Enter go to");
-            strings[nHelp++] = _TRA("Esc close");
+            strings[nHelp++] = Tr("Enter go to");
+            strings[nHelp++] = Tr("Esc close");
             break;
         case kHelpToc:
-            strings[nHelp++] = _TRA("Enter go to");
-            strings[nHelp++] = _TRA("Esc close");
+            strings[nHelp++] = Tr("Enter go to");
+            strings[nHelp++] = Tr("Esc close");
             break;
         case kHelpEverything:
-            strings[nHelp++] = _TRA("Enter select");
-            strings[nHelp++] = _TRA("Esc close");
+            strings[nHelp++] = Tr("Enter select");
+            strings[nHelp++] = Tr("Esc close");
             break;
         default:
-            strings[nHelp++] = _TRA("Enter run command");
-            strings[nHelp++] = _TRA("Esc close");
+            strings[nHelp++] = Tr("Enter run command");
+            strings[nHelp++] = Tr("Esc close");
             break;
     }
     auto colBg = ThemeWindowControlBackgroundColor();
@@ -1537,7 +1650,7 @@ bool CommandPaletteWnd::Create(MainWindow* win, Str prefix, int smartTabAdvance)
     if (str::Eq(prefix, Str(kPalettePrefixTabs))) {
         smartTabMode = smartTabAdvance != 0;
     }
-    tocMode = str::Eq(prefix, Str(kPalettePrefixTOC)) || str::Eq(prefix, Str(kPalettePrefixTOCLegacy));
+    tocMode = str::Eq(prefix, Str(kPalettePrefixTOC));
     CollectStrings(win);
     {
         CreateCustomArgs args;
@@ -1584,33 +1697,9 @@ bool CommandPaletteWnd::Create(MainWindow* win, Str prefix, int smartTabAdvance)
         vbox->AddChild(new Spacer(0, DpiScale(4)));
         auto* box = new HBox();
         box->rtl = CommandPaletteUiRtl();
-        // same smaller app font as the bottom hint row
-        HelpStyle st{hwnd, GetAppFont(), colTxt, colBg};
-        // in "# History" and friends the first character is what you type
-        // to get there, so it becomes a key-cap
-        auto addSwitch = [this, box, &st](Str s, Str switchTo) {
-            TempStr markup = str::JoinTemp(StrL("(Kbd/"), Str(s.s, 1), StrL(")"), Str(s.s + 1, len(s) - 1));
-            auto* t = new PaletteSwitch();
-            InitHelpText(st, t, markup);
-            t->wnd = this;
-            t->prefix = switchTo;
-            t->onClick = MkFunc1Void(OnPaletteSwitchClicked);
-            box->AddChild(t);
-        };
-        addSwitch(_TRA("# History"), Str(kPalettePrefixFileHistory));
-        addSwitch(_TRA("> Commands"), Str(kPalettePrefixCommands));
-        addSwitch(_TRA("@ Tabs"), Str(kPalettePrefixTabs));
-        if (win->AsFixed()) {
-            addSwitch(_TRA("& Thumbnails"), Str(kPalettePrefixThumbnails));
-        }
-        if (len(toc) > 0) {
-            addSwitch(_TRA("% TOC"), Str(kPalettePrefixTOC));
-        }
-        if (len(favorites) > 0) {
-            addSwitch(_TRA("$ Favorites"), Str(kPalettePrefixFavorites));
-        }
-        addSwitch(_TRA("= Settings"), Str(kPalettePrefixBoolSettings));
-        vbox->AddChild(NewHelpRow(box));
+        switchRow = NewHelpRow(box);
+        FillSwitchRow();
+        vbox->AddChild(switchRow);
     }
 
     {
@@ -1704,6 +1793,12 @@ void RunCommandPalette(MainWindow* win, Str prefix, int smartTabAdvance) {
         ScheduleDeleteAndExecCommand();
     }
 
+    gCursorPosLParam = 0;
+    if (HwndIsCursorOverWindow(win->hwndCanvas)) {
+        Point pt = HwndGetCursorPos(win->hwndCanvas);
+        gCursorPosLParam = MAKELPARAM(pt.x, pt.y);
+    }
+
     auto* wnd = new CommandPaletteWnd();
     wnd->onClose = MkFunc1Void<WindowBase::CloseEvent*>(OnClose);
     wnd->onDestroy = MkFunc1Void<WindowBase::DestroyEvent*>(OnDestroy);
@@ -1714,10 +1809,60 @@ void RunCommandPalette(MainWindow* win, Str prefix, int smartTabAdvance) {
         MkMethod1<CommandPaletteWnd, WindowBase::PreTranslateEvent*, &CommandPaletteWnd::PreTranslate>(wnd);
     wnd->SetFont(GetAppBiggerFont());
     wnd->win = win;
+    gCommandPaletteWnd = wnd;
     bool ok = wnd->Create(win, prefix, smartTabAdvance);
     ReportIf(!ok);
-    gCommandPaletteWnd = wnd;
     gHwndToActivateOnClose = win->hwndFrame;
+}
+
+void CommandPaletteOnAnnotationsChanged() {
+    CommandPaletteWnd* wnd = gCommandPaletteWnd;
+    if (!wnd || !wnd->hwnd || !wnd->win) {
+        return;
+    }
+    if (!IsMainWindowValidAndNotClosing(wnd->win)) {
+        return;
+    }
+    int nPrev = len(wnd->annotations);
+    wnd->CollectAnnotations(wnd->win);
+    if ((nPrev == 0) != (len(wnd->annotations) == 0)) {
+        wnd->FillSwitchRow();
+    }
+    if (!wnd->editQuery || !wnd->listBox) {
+        return;
+    }
+    Str filter = CommandPaletteSkipWS(Str(wnd->editQuery->GetTextTemp()));
+    if (!str::StartsWith(filter, Str(kPalettePrefixAnnotations))) {
+        return;
+    }
+    auto* m = (ListBoxModelCP*)wnd->listBox->model;
+    if (!m) {
+        return;
+    }
+    Annotation* keep = nullptr;
+    int sel = wnd->listBox->GetCurrentSelection();
+    if (sel >= 0 && sel < m->ItemsCount()) {
+        ItemDataCP* data = m->Data(sel);
+        keep = data ? data->annot : nullptr;
+    }
+    wnd->FilterStringsForQuery(filter, m->strings);
+    wnd->listBox->SetModel(m);
+    wnd->UpdateHelpRow();
+    int n = m->ItemsCount();
+    if (n == 0) {
+        return;
+    }
+    int idx = 0;
+    if (keep) {
+        for (int i = 0; i < n; i++) {
+            ItemDataCP* data = m->Data(i);
+            if (data && data->annot == keep) {
+                idx = i;
+                break;
+            }
+        }
+    }
+    CommandPaletteSetCurrentSelection(wnd, idx);
 }
 
 HWND CommandPaletteHwndForAccelerator(HWND hwnd) {
@@ -1752,19 +1897,28 @@ TempStr CommandPaletteStateTemp(int* exitCodeOut) {
     int sel = wnd->listBox ? wnd->listBox->GetCurrentSelection() : -1;
     int n = wnd->listBox ? wnd->listBox->ItemsCount() : 0;
     int selectedCmdId = 0;
+    int annotPage = 0;
     if (sel >= 0 && sel < n) {
         auto* model = (ListBoxModelCP*)wnd->listBox->model;
         ItemDataCP* data = model->Data(sel);
         selectedCmdId = data ? data->cmdId : 0;
+        if (data && data->annot) {
+            annotPage = data->annot->pageNo;
+        }
     }
     int qStart = 0, qEnd = 0, qLen = 0;
     EditGetSelection(wnd->editQuery, qStart, qEnd);
     qLen = EditGetTextLen(wnd->editQuery);
     int thumbPage = wnd->thumbnailCtrl ? wnd->thumbnailCtrl->selectedPage : 0;
     int rendered = wnd->thumbnailCtrl ? wnd->thumbnailCtrl->RenderedCount() : 0;
-    out.Append(fmt("OK sel=%d items=%d querySel=%d,%d queryLen=%d cmd=%d rtl=%d thumb=%d page=%d rendered=%d\n", sel, n,
-                   qStart, qEnd, qLen, selectedCmdId, (int)CommandPaletteUiRtl(), (int)wnd->thumbnailMode, thumbPage,
-                   rendered));
+    int nAnnots = len(wnd->annotations);
+    EngineBase* engine = wnd->win && wnd->win->CurrentTab() ? wnd->win->CurrentTab()->GetEngine() : nullptr;
+    int annotsDone = EngineMupdfAnnotsLoadDone(engine) ? 1 : 0;
+    out.Append(
+        fmt("OK sel=%d items=%d querySel=%d,%d queryLen=%d cmd=%d rtl=%d thumb=%d page=%d rendered=%d annots=%d "
+            "annotPage=%d annotsDone=%d\n",
+            sel, n, qStart, qEnd, qLen, selectedCmdId, (int)CommandPaletteUiRtl(), (int)wnd->thumbnailMode, thumbPage,
+            rendered, nAnnots, annotPage, annotsDone));
     return finish(0);
 }
 
@@ -1876,6 +2030,13 @@ static TempStr UpdateCommandNameTemp(MainWindow* win, int cmdId, Str s) {
                 newIsOn = !dm->GetUniformPageWidth();
             }
         } break;
+        case CmdToggleTrimEmptyMargins: {
+            DisplayModel* dm = win->AsFixed();
+            if (dm) {
+                isToggle = true;
+                newIsOn = !dm->GetTrimEmptyMargins();
+            }
+        } break;
         case CmdFindToggleMatchCase: {
             isToggle = true;
             newIsOn = !win->findMatchCase;
@@ -1947,29 +2108,29 @@ static TempStr UpdateCommandNameTemp(MainWindow* win, int cmdId, Str s) {
 
     if (cmdId == CmdToggleWindowsPreviewer) {
         if (IsPreviewInstalled()) {
-            return _TRA("Unregister Windows Previewer");
+            return Tr("Unregister Windows Previewer");
         }
-        return _TRA("Register Windows Previewer");
+        return Tr("Register Windows Previewer");
     }
 
     if (cmdId == CmdToggleWindowsSearchFilter) {
         if (IsSearchFilterInstalled()) {
-            return _TRA("Unregister Windows Search Filter");
+            return Tr("Unregister Windows Search Filter");
         }
-        return _TRA("Register Windows Search Filter");
+        return Tr("Register Windows Search Filter");
     }
 
     if (cmdId == CmdAIChatWithClaudeCode) {
-        return _TRA("AI Claude chat with document");
+        return Tr("AI Claude chat with document");
     }
     if (cmdId == CmdAIChatWithGrokBuild) {
-        return _TRA("AI Grok chat with document");
+        return Tr("AI Grok chat with document");
     }
     if (cmdId == CmdAIChatWithOpenAICodex) {
-        return _TRA("AI Codex chat with document");
+        return Tr("AI Codex chat with document");
     }
     if (cmdId == CmdAIChatWithAntiGravity) {
-        return _TRA("AI Antigravity chat with document");
+        return Tr("AI Antigravity chat with document");
     }
 
     return s;
@@ -1979,7 +2140,7 @@ static void AppendTab(StrVecCP& tabs, WindowTab* tab, WindowTab* currTab, int& c
     ItemDataCP data;
     data.tab = tab;
     if (tab->IsAboutTab()) {
-        tabs.Append(_TRA("Home"), data);
+        tabs.Append(Tr("Home"), data);
     } else {
         auto name = path::GetBaseNameTemp(tab->filePath);
         if (len(name) == 0) {
@@ -2097,6 +2258,28 @@ static void AppendFavoritesForFile(StrVecCP& favorites, FileState* fs, bool isCu
     }
 }
 
+void CommandPaletteWnd::CollectAnnotations(MainWindow* mainWin) {
+    annotations.Reset();
+    WindowTab* tab = mainWin ? mainWin->CurrentTab() : nullptr;
+    if (!tab) {
+        return;
+    }
+    EngineBase* engine = tab->GetEngine();
+    if (!EngineSupportsAnnotations(engine)) {
+        return;
+    }
+    Vec<Annotation*> annots;
+    EngineMupdfGetLoadedAnnotations(engine, annots);
+    for (Annotation* a : annots) {
+        if (!a) {
+            continue;
+        }
+        ItemDataCP data;
+        data.annot = a;
+        annotations.Append(AnnotationReadableNameTemp(a->type), data);
+    }
+}
+
 void CommandPaletteWnd::CollectFavorites(MainWindow* mainWin) {
     favorites.Reset();
     WindowTab* currTab = mainWin->CurrentTab();
@@ -2122,7 +2305,60 @@ void CommandPaletteWnd::CollectFavorites(MainWindow* mainWin) {
     }
 }
 
-static void CollectBoolSettingsInStruct(StrVecCP& out, const StructInfo* info, u8* base, Str prefix) {
+// the scalar settings the palette can edit; arrays and compact structs need the
+// advanced settings dialog or the settings file
+static bool IsPaletteSettingType(SettingType t) {
+    switch (t) {
+        case SettingType::Bool:
+        case SettingType::Int:
+        case SettingType::Float:
+        case SettingType::String:
+        case SettingType::Color:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// field.value holds the default: the value itself for Bool/Int, a string
+// pointer for Float/String/Color. It is NOT a pointer for Bool/Int, so only
+// deref it for the string-backed types.
+static TempStr FormatSettingDefaultTemp(SettingType type, intptr_t def) {
+    switch (type) {
+        case SettingType::Bool:
+            return str::DupTemp(def != 0 ? StrL("true") : StrL("false"));
+        case SettingType::Int:
+            return fmt("%d", (int)def);
+        default:
+            return str::DupTemp(Str((const char*)def));
+    }
+}
+
+static TempStr FormatSettingValueTemp(SettingType type, const u8* p) {
+    switch (type) {
+        case SettingType::Bool:
+            return str::DupTemp(*(const bool*)p ? StrL("true") : StrL("false"));
+        case SettingType::Int:
+            return fmt("%d", *(const int*)p);
+        case SettingType::Float:
+            return fmt("%g", *(const float*)p);
+        default:
+            // Color is a ParsedColor whose first member is the text
+            return str::DupTemp(*(const Str*)p);
+    }
+}
+
+static bool SettingDiffersFromDefault(const ItemDataCP* d) {
+    if (d->settingType == SettingType::Float) {
+        float def = 0;
+        str::Parse(Str((const char*)d->settingDefault), "%f", &def);
+        return *(const float*)d->settingPtr != def;
+    }
+    TempStr val = FormatSettingValueTemp(d->settingType, d->settingPtr);
+    return !str::Eq(val, FormatSettingDefaultTemp(d->settingType, d->settingDefault));
+}
+
+static void CollectSettingsInStruct(StrVecCP& out, const StructInfo* info, u8* base, Str prefix) {
     if (!info || !base) {
         return;
     }
@@ -2137,39 +2373,39 @@ static void CollectBoolSettingsInStruct(StrVecCP& out, const StructInfo* info, u
         u8* fieldPtr = base + field.offset;
         TempStr path = len(prefix) > 0 ? fmt("%s.%s", prefix, fname) : str::DupTemp(fname);
         if (field.type == SettingType::Struct) {
-            CollectBoolSettingsInStruct(out, (const StructInfo*)field.value, fieldPtr, path);
+            CollectSettingsInStruct(out, (const StructInfo*)field.value, fieldPtr, path);
             continue;
         }
-        if (field.type != SettingType::Bool || len(path) == 0) {
+        if (!IsPaletteSettingType(field.type) || len(path) == 0) {
             continue;
         }
         ItemDataCP data;
-        data.boolSetting = (bool*)fieldPtr;
-        data.boolSettingDefault = field.value != 0;
+        data.settingType = field.type;
+        data.settingPtr = fieldPtr;
+        data.settingDefault = field.value;
         out.Append(path, data);
     }
 }
 
-void CommandPaletteWnd::CollectBoolSettings() {
-    boolSettings.Reset();
+void CommandPaletteWnd::CollectSettings() {
+    settings.Reset();
     if (!gSettings) {
         return;
     }
-    CollectBoolSettingsInStruct(boolSettings, &gSettingsInfo, (u8*)gSettings, {});
-    SortNoCase(&boolSettings);
+    CollectSettingsInStruct(settings, &gSettingsInfo, (u8*)gSettings, {});
+    SortNoCase(&settings);
 
     // changed values first, then the rest; both groups stay alphabetical
     StrVecCP ordered;
     for (int pass = 0; pass < 2; pass++) {
-        for (int i = 0; i < len(boolSettings); i++) {
-            ItemDataCP* d = boolSettings.AtData(i);
-            bool changed = *d->boolSetting != d->boolSettingDefault;
+        for (int i = 0; i < len(settings); i++) {
+            bool changed = SettingDiffersFromDefault(settings.AtData(i));
             if (changed == (pass == 0)) {
-                ordered.AppendFrom(&boolSettings, i);
+                ordered.AppendFrom(&settings, i);
             }
         }
     }
-    boolSettings = ordered;
+    settings = ordered;
 }
 
 void CommandPaletteWnd::CollectStrings(MainWindow* mainWin) {
@@ -2184,7 +2420,12 @@ void CommandPaletteWnd::CollectStrings(MainWindow* mainWin) {
 
     CollectToc(mainWin);
     CollectFavorites(mainWin);
-    CollectBoolSettings();
+    WindowTab* tab = mainWin->CurrentTab();
+    if (tab && EngineSupportsAnnotations(tab->GetEngine())) {
+        StartLoadingAnnotationsForUi(tab);
+    }
+    CollectAnnotations(mainWin);
+    CollectSettings();
 
     fileHistory.Reset();
     for (FileState* fs : *gSettings->fileStates) {
@@ -2198,13 +2439,11 @@ void CommandPaletteWnd::CollectStrings(MainWindow* mainWin) {
     }
 
     StrVecCP tempCommands;
-    int cmdId = (int)CmdFirst + 1;
-    for (int off = 0; SeqStrAt(gCommandDescriptions, off);) {
-        Str name = SeqStrAt(gCommandDescriptions, off);
+    int cmdIdx = 0;
+    int cmdId = 0;
+    for (Str name = SeqStrFirst(gCommandDescriptions); len(name) > 0; name = SeqStrNext(name), cmdIdx++) {
+        cmdId = GetCommandIdByIdx(cmdIdx);
         if (!AllowCommand(ctx, (i32)cmdId)) {
-            if (!SeqStrAdvance(gCommandDescriptions, off, &cmdId)) {
-                break;
-            }
             continue;
         }
         ReportIf(len(name) == 0);
@@ -2215,9 +2454,6 @@ void CommandPaletteWnd::CollectStrings(MainWindow* mainWin) {
         auto nameTranslated = trans::GetTranslation(name);
         auto nameUpdated = UpdateCommandNameTemp(mainWin, cmdId, nameTranslated);
         tempCommands.Append(nameUpdated, data);
-        if (!SeqStrAdvance(gCommandDescriptions, off, &cmdId)) {
-            break;
-        }
     }
 
     auto* curr = gFirstCustomCommand;
@@ -2271,6 +2507,15 @@ void CommandPaletteWnd::DrawListBoxItem(VirtListBox::DrawItemEvent* ev) {
     Gfx* gfx = ev->gfx;
     HWND hwndList = lb->GetHwnd();
     Rect rc = ev->itemRect;
+    ItemDataCP* data = m->Data(ev->itemIndex);
+    if (!data) {
+        return;
+    }
+    if (data->annot) {
+        DrawAnnotationListRow(gfx, lb->font, rc, data->annot, filterWords, highlighted, lb->GetColor(kColListBg),
+                              lb->GetColor(kColListText), ev->selected);
+        return;
+    }
 
     Color colBg = lb->GetColor(kColListBg);
     Color colText = lb->GetColor(kColListText);
@@ -2296,18 +2541,16 @@ void CommandPaletteWnd::DrawListBoxItem(VirtListBox::DrawItemEvent* ev) {
     bool prevMirrored = hwndRtl ? gfx->SetMirrored(false) : false;
 
     Str itemText = m->Item(ev->itemIndex);
-    ItemDataCP* data = m->Data(ev->itemIndex);
 
     TempStr rightStr;
     PlatformFont* rightFont = lb->font;
     Color rightCol = AccentColor(colText, 80);
     if (data->cmdId != 0) {
         rightStr = CommandPaletteShortcutTemp(data->cmdId);
-    } else if (data->boolSetting) {
-        bool on = *data->boolSetting;
-        rightStr = on ? StrL("true") : StrL("false");
+    } else if (data->settingPtr && len(data->settingPath) == 0) {
+        rightStr = FormatSettingValueTemp(data->settingType, data->settingPtr);
         rightCol = colText;
-        if (on != data->boolSettingDefault) {
+        if (SettingDiffersFromDefault(data)) {
             PlatformFont* bold = GetBoldPlatformFont(lb->font);
             if (bold) {
                 rightFont = bold;
@@ -2409,7 +2652,7 @@ TempStr CommandPaletteShortcutTemp(i32 cmdId) {
         return {};
     }
     TempStr withAccel = AppendAccelKeyToMenuStringTemp(StrL(""), cmdId);
-    if (!withAccel || withAccel.s[0] != '\t') {
+    if (len(withAccel) == 0 || withAccel.s[0] != '\t') {
         return {};
     }
     return Str(withAccel.s + 1, len(withAccel) - 1);
@@ -2428,8 +2671,8 @@ static void FilterStrings(StrVecCP& strs, const StrVec& words, StrVecCP& matched
             TempStr shortcut = CommandPaletteShortcutTemp(data->cmdId);
             matches = FilterMatches(shortcut, words);
         }
-        if (!matches && data && data->boolSetting) {
-            Str val = *data->boolSetting ? StrL("true") : StrL("false");
+        if (!matches && data && data->settingPtr) {
+            TempStr val = FormatSettingValueTemp(data->settingType, data->settingPtr);
             matches = FilterMatches(val, words);
         }
         if (!matches) {
@@ -2439,27 +2682,94 @@ static void FilterStrings(StrVecCP& strs, const StrVec& words, StrVecCP& matched
     }
 }
 
+// "ZoomIncrement = 25" -> path "ZoomIncrement", value "25". False when the
+// query is still naming a setting, so the list keeps filtering settings.
+static bool SplitSettingValueQuery(Str query, Str& path, Str& value) {
+    int at = str::IndexOfChar(query, kPaletteSettingValueSep[0]);
+    if (at < 0) {
+        return false;
+    }
+    path = Str(query.s, at);
+    value = Str(query.s + at + 1, query.len - at - 1);
+    str::TrimWsBoth(path);
+    str::TrimWsBoth(value);
+    return len(path) > 0;
+}
+
+// Rows for the value stage: an enum offers its allowed values, anything else
+// offers the one value being typed. Enter on a row applies it (see
+// ExecuteCurrentSelection).
+void CommandPaletteWnd::FillSettingValueRows(Str path, Str value, StrVecCP& out) {
+    // the full dotted path, or an unambiguous leaf ("Units" for
+    // "FixedPageUI.PageGrid.Units") so the name can be typed by hand
+    ItemDataCP* found = nullptr;
+    Str foundPath;
+    int nLeaf = 0;
+    for (int i = 0; i < len(settings); i++) {
+        Str s = settings[i];
+        if (str::EqI(s, path)) {
+            found = settings.AtData(i);
+            foundPath = s;
+            nLeaf = 1;
+            break;
+        }
+        Str leaf = str::SliceFromCharLast(s, '.');
+        if (len(leaf) > 1 && str::EqI(Str(leaf.s + 1, leaf.len - 1), path)) {
+            nLeaf++;
+            found = settings.AtData(i);
+            foundPath = s;
+        }
+    }
+    if (nLeaf != 1) {
+        found = nullptr;
+    }
+    if (!found || found->settingType == SettingType::Bool) {
+        return;
+    }
+    ItemDataCP data = *found;
+    data.settingPath = foundPath;
+    const char** enumValues = GetSettingsEnumValues(foundPath);
+    if (!enumValues) {
+        // clearing a string is meaningful, an empty number is not
+        bool isStr = found->settingType != SettingType::Int && found->settingType != SettingType::Float;
+        if (len(value) > 0 || isStr) {
+            out.Append(value, data);
+        }
+        return;
+    }
+    for (const char** v = enumValues; *v; v++) {
+        Str s(*v);
+        // the empty choice means "unset"; it can't be a row you pick, so leave
+        // it to the advanced settings dialog
+        if (len(s) == 0 || (len(value) > 0 && !FilterMatches(s, filterWords))) {
+            continue;
+        }
+        out.Append(s, data);
+    }
+}
+
 void CommandPaletteWnd::FilterStringsForQuery(Str filter, StrVecCP& strings) {
     strings.Reset();
-    if (!filter) {
+    if (len(filter) == 0) {
         filter = StrL("");
     }
 
     bool searchTabs = false, searchHistory = false, searchCommands = false, searchToc = false, searchFavorites = false,
-         searchBoolSettings = false;
+         searchSettings = false, searchAnnotations = false;
     if (str::TrimPrefix(filter, Str(kPalettePrefixEverything))) {
         searchTabs = searchHistory = searchCommands = true;
     } else if (str::TrimPrefix(filter, Str(kPalettePrefixTabs))) {
         searchTabs = true;
     } else if (str::TrimPrefix(filter, Str(kPalettePrefixFileHistory))) {
         searchHistory = true;
-    } else if (str::TrimPrefix(filter, Str(kPalettePrefixTOC)) ||
-               str::TrimPrefix(filter, Str(kPalettePrefixTOCLegacy))) {
+    } else if (str::TrimPrefix(filter, Str(kPalettePrefixTOC))) {
         searchToc = true;
     } else if (str::TrimPrefix(filter, Str(kPalettePrefixFavorites))) {
         searchFavorites = true;
+    } else if (str::TrimPrefix(filter, Str(kPalettePrefixAnnotations))) {
+        searchAnnotations = true;
     } else if (str::TrimPrefix(filter, Str(kPalettePrefixBoolSettings))) {
-        searchBoolSettings = true;
+        searchSettings = true;
     } else if (str::TrimPrefix(filter, Str(kPalettePrefixThumbnails))) {
         return;
     } else {
@@ -2468,6 +2778,35 @@ void CommandPaletteWnd::FilterStringsForQuery(Str filter, StrVecCP& strings) {
     }
 
     filterWords.Reset();
+    if (searchSettings) {
+        Str path, value;
+        if (SplitSettingValueQuery(filter, path, value)) {
+            SplitFilterToWords(value, filterWords);
+            FillSettingValueRows(path, value, strings);
+            return;
+        }
+    }
+    if (searchAnnotations) {
+        AnnotMatchOpts opts;
+        if (!ParseAnnotSearch(filter, opts)) {
+            opts.Reset();
+            StrVec words;
+            SplitFilterToWords(filter, words);
+            for (Str w : words) {
+                AnnotSearchAddContentWord(opts, w);
+            }
+        }
+        AnnotSearchContentWords(opts, filterWords);
+        int n = len(annotations);
+        for (int i = 0; i < n; i++) {
+            ItemDataCP* data = annotations.AtData(i);
+            if (data && AnnotMatches(data->annot, opts)) {
+                strings.AppendFrom(&annotations, i);
+            }
+        }
+        return;
+    }
+
     SplitFilterToWords(filter, filterWords);
 
     if (searchTabs) {
@@ -2485,8 +2824,8 @@ void CommandPaletteWnd::FilterStringsForQuery(Str filter, StrVecCP& strings) {
     if (searchFavorites) {
         FilterStrings(favorites, filterWords, strings);
     }
-    if (searchBoolSettings) {
-        FilterStrings(boolSettings, filterWords, strings);
+    if (searchSettings) {
+        FilterStrings(settings, filterWords, strings);
     }
 }
 
@@ -2520,12 +2859,10 @@ void CommandPaletteWnd::QueryChanged() {
         CommandPaletteSetCurrentSelection(this, currSelIdx);
         return;
     }
-    if ((str::StartsWith(filter, Str(kPalettePrefixTOC)) || str::StartsWith(filter, Str(kPalettePrefixTOCLegacy))) &&
-        len(filterWords) == 0) {
+    if (str::StartsWith(filter, Str(kPalettePrefixTOC)) && len(filterWords) == 0) {
         int idx = (currTocIdx >= 0 && currTocIdx < nItems) ? currTocIdx : 0;
         CommandPaletteSetCurrentSelection(this, idx);
         return;
     }
     CommandPaletteSetCurrentSelection(this, 0);
 }
-#endif

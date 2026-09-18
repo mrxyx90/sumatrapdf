@@ -1,10 +1,11 @@
 /* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
-// TODO: not quite happy how those functions are split among
-// Annotation.cpp, EngineMupdf.cpp and AnnotEditToolbar.cpp
-
 struct Pixmap;
+struct fz_context;
+struct pdf_annot;
+
+RectF PdfAnnotBounds(fz_context*, pdf_annot*);
 
 // for fast conversions, must match the order of pdf_annot_type enum in annot.h
 enum class AnnotationType {
@@ -44,6 +45,12 @@ enum class AnnotationChange {
     Add,
     Remove,
     Modify,
+};
+
+enum class InkEraseResult {
+    None,
+    Changed,
+    Empty,
 };
 
 class EngineBase;
@@ -129,7 +136,15 @@ int PopupId(Annotation*); // -1 if not exist
 Str AnnotationReadableNameTemp(AnnotationType tp);
 AnnotationType Type(Annotation*);
 
-Str DefaultAppearanceTextFont(Annotation*);
+// free text font style bits
+constexpr int kFreeTextBold = 1;
+constexpr int kFreeTextItalic = 2;
+constexpr int kFreeTextUnderline = 4;
+extern SeqStrings gBase14FontFamilies; // "Courier\0Helvetica\0Times\0"
+
+bool IsBase14FontFamily(Str);
+Str FreeTextFontFamily(Annotation*);
+int FreeTextFontStyle(Annotation*);
 PdfColor DefaultAppearanceTextColor(Annotation*);
 int DefaultAppearanceTextSize(Annotation*);
 Str Contents(Annotation*);
@@ -156,8 +171,11 @@ bool GetLinePoints(Annotation*, PointF& start, PointF& end);
 void SetLinePoints(Annotation*, PointF start, PointF end);
 Vec<PointF> GetVertices(Annotation*);
 void SetVertices(Annotation*, const Vec<PointF>&);
+void GetInkList(Annotation*, Vec<int>&, Vec<PointF>&);
+bool EraseInkStrokes(Vec<int>&, Vec<PointF>&, PointF, float);
+InkEraseResult EraseAnnotationInk(Annotation*, PointF, float);
 
-void SetDefaultAppearanceTextFont(Annotation*, Str);
+void SetFreeTextFont(Annotation*, Str family, int style);
 void SetDefaultAppearanceTextSize(Annotation*, int);
 void SetDefaultAppearanceTextColor(Annotation*, PdfColor);
 bool SetContents(Annotation*, Str);
@@ -197,6 +215,7 @@ bool AnnotationIsLive(Annotation*);
 
 void DeleteAnnotation(Annotation*);
 bool AnnotationCanBeMoved(AnnotationType);
+bool AnnotationIsTextMarkup(AnnotationType);
 bool AnnotationCanBeResized(AnnotationType);
 bool AnnotationCanBeCopied(AnnotationType);
 bool AnnotationSupportsColor(AnnotationType);

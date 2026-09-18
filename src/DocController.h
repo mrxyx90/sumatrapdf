@@ -31,7 +31,7 @@ struct DocControllerCallback {
     virtual void GotoLink(IPageDestination*) = 0;
     // DisplayModel //
     virtual void Repaint() = 0;
-    virtual void UpdateScrollbars(Size canvas) = 0;
+    virtual void UpdateScrollbars(DisplayModel* dm, Size canvas) = 0;
     virtual void RequestRendering(DisplayModel* dm, int pageNo) = 0;
     // start (or continue) chained predictive rendering anchored to originPageNo
     virtual void RequestPredictiveRendering(DisplayModel* dm, int originPageNo, const int* pages, int nPages) = 0;
@@ -117,6 +117,7 @@ struct DocController {
     virtual TocTree* GetToc() = 0;
     virtual void ScrollTo(int pageNo, RectF rect, float zoom) = 0;
 
+    // engine-owned; do not delete
     virtual IPageDestination* GetNamedDest(Str name) = 0;
 
     // get display state (pageNo, zoom, scroll etc. of the document)

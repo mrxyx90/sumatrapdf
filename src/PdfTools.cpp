@@ -2,6 +2,7 @@
    License: GPLv3 */
 
 #include "base/Base.h"
+#include "base/UITask.h"
 #include "gui/Dpi.h"
 #include "base/File.h"
 #include "base/Win.h"
@@ -32,9 +33,11 @@
 #include "ExternalViewers.h"
 #include "Flags.h"
 #include "DisplayModel.h"
+#include "Selection.h"
 #include "Theme.h"
+#include "Notifications.h"
 
-#include "DarkMode_win.h"
+#include "DarkMode.h"
 #include "Commands.h"
 #include "PdfTools.h"
 
@@ -260,7 +263,7 @@ void PdfToolDialog::AddButtonsRow(Str actionText, Str hint) {
     actionBtn->onClick = MkMethod1<PdfToolDialog, VirtMouseEvent*, &PdfToolDialog::DoIt>(this);
     row->AddChild(actionBtn);
 
-    cancelBtn = NewButton(_TRA("Cancel"), false);
+    cancelBtn = NewButton(Tr("Cancel"), false);
     cancelBtn->onClick = MkMethod1<PdfToolDialog, VirtMouseEvent*, &PdfToolDialog::OnCancel>(this);
     row->AddChild(cancelBtn);
 }
@@ -300,8 +303,8 @@ void PdfBakeDialog::DoIt(VirtMouseEvent*) {
     // annotations would be missing unless we write them out first (issue #5977).
     if (engine && EngineHasUnsavedAnnotations(engine)) {
         tmpPath = GetTempFilePathTemp(StrL("bake"));
-        if (!tmpPath || !EngineMupdfSaveCopy(engine, tmpPath)) {
-            MessageBoxWarning(hwnd, StrL("Failed to bake PDF file."), _TRA("Bake PDF"));
+        if (len(tmpPath) == 0 || !EngineMupdfSaveCopy(engine, tmpPath)) {
+            MessageBoxWarning(hwnd, StrL("Failed to bake PDF file."), Tr("Bake PDF"));
             return;
         }
         inputPath = tmpPath;
@@ -329,17 +332,17 @@ void PdfBakeDialog::DoIt(VirtMouseEvent*) {
         StartLoadDocument(&args);
     } else {
         logf("PdfBakeDoIt: pdfbake_main failed with %d\n", res);
-        MessageBoxWarning(hwnd, StrL("Failed to bake PDF file."), _TRA("Bake PDF"));
+        MessageBoxWarning(hwnd, StrL("Failed to bake PDF file."), Tr("Bake PDF"));
     }
 }
 
 bool PdfBakeDialog::Create(MainWindow* w, WindowTab* tab) {
-    if (!CreateToolDialog(w, tab, _TRA("Bake PDF"))) {
+    if (!CreateToolDialog(w, tab, Tr("Bake PDF"))) {
         return false;
     }
     AddPathRow();
     AddDestRow(MakeUniqueFilePathTemp(srcPath), L"PDF Files\0*.pdf\0All Files\0*.*\0", L"pdf");
-    AddButtonsRow(_TRA("Bake PDF"));
+    AddButtonsRow(Tr("Bake PDF"));
     FinishDialog(destEdit);
     return true;
 }
@@ -349,7 +352,7 @@ void ShowPdfBakeDialog(MainWindow* win) {
         return;
     }
     WindowTab* tab = win->CurrentTab();
-    if (!tab || !tab->filePath) {
+    if (!tab || len(tab->filePath) == 0) {
         return;
     }
     if (!IsPdfDoc(tab)) {
@@ -439,12 +442,12 @@ void PdfExtractTextDialog::DoIt(VirtMouseEvent*) {
         OpenPathInDefaultFileManager(path);
     } else {
         logf("PdfExtractTextDoIt: failed to extract text, isPdf: %d\n", (int)isPdf);
-        MessageBoxWarning(hwnd, StrL("Failed to extract text."), _TRA("Extract Text"));
+        MessageBoxWarning(hwnd, StrL("Failed to extract text."), Tr("Extract Text"));
     }
 }
 
 bool PdfExtractTextDialog::Create(MainWindow* w, WindowTab* tab) {
-    if (!CreateToolDialog(w, tab, _TRA("Extract Text From PDF"))) {
+    if (!CreateToolDialog(w, tab, Tr("Extract Text From PDF"))) {
         return false;
     }
     AddPathRow();
@@ -452,8 +455,8 @@ bool PdfExtractTextDialog::Create(MainWindow* w, WindowTab* tab) {
     TempStr txtPath = str::JoinTemp(noExt, StrL(".txt"));
     AddDestRow(MakeUniqueFilePathTemp(txtPath), L"Text Files\0*.txt\0All Files\0*.*\0", L"txt");
     int pageCount = w->ctrl ? w->ctrl->PageCount() : 1;
-    pagesEdit = AddLabeledEdit(_TRA("Pages:"), fmt("1-%d", pageCount));
-    AddButtonsRow(_TRA("Extract Text"));
+    pagesEdit = AddLabeledEdit(Tr("Pages:"), fmt("1-%d", pageCount));
+    AddButtonsRow(Tr("Extract Text"));
     FinishDialog(destEdit);
     return true;
 }
@@ -463,7 +466,7 @@ void ShowPdfExtractTextDialog(MainWindow* win) {
         return;
     }
     WindowTab* tab = win->CurrentTab();
-    if (!tab || !tab->filePath) {
+    if (!tab || len(tab->filePath) == 0) {
         return;
     }
     logf("ShowPdfExtractTextDialog: opening for '%s'\n", tab->filePath);
@@ -505,17 +508,17 @@ void PdfCompressDialog::DoIt(VirtMouseEvent*) {
         StartLoadDocument(&args);
     } else {
         logf("PdfCompressDoIt: pdfclean_main failed with %d\n", res);
-        MessageBoxWarning(hwnd, StrL("Failed to compress PDF file."), _TRA("Compress PDF"));
+        MessageBoxWarning(hwnd, StrL("Failed to compress PDF file."), Tr("Compress PDF"));
     }
 }
 
 bool PdfCompressDialog::Create(MainWindow* w, WindowTab* tab) {
-    if (!CreateToolDialog(w, tab, _TRA("Compress PDF"))) {
+    if (!CreateToolDialog(w, tab, Tr("Compress PDF"))) {
         return false;
     }
     AddPathRow();
     AddDestRow(MakeUniqueFilePathTemp(srcPath), L"PDF Files\0*.pdf\0All Files\0*.*\0", L"pdf");
-    AddButtonsRow(_TRA("Compress PDF"));
+    AddButtonsRow(Tr("Compress PDF"));
     FinishDialog(destEdit);
     return true;
 }
@@ -525,7 +528,7 @@ void ShowPdfCompressDialog(MainWindow* win) {
         return;
     }
     WindowTab* tab = win->CurrentTab();
-    if (!tab || !tab->filePath) {
+    if (!tab || len(tab->filePath) == 0) {
         return;
     }
     if (!IsPdfDoc(tab)) {
@@ -569,17 +572,17 @@ void PdfDecompressDialog::DoIt(VirtMouseEvent*) {
         StartLoadDocument(&args);
     } else {
         logf("PdfDecompressDoIt: pdfclean_main failed with %d\n", res);
-        MessageBoxWarning(hwnd, StrL("Failed to decompress PDF file."), _TRA("Decompress PDF"));
+        MessageBoxWarning(hwnd, StrL("Failed to decompress PDF file."), Tr("Decompress PDF"));
     }
 }
 
 bool PdfDecompressDialog::Create(MainWindow* w, WindowTab* tab) {
-    if (!CreateToolDialog(w, tab, _TRA("Decompress PDF"))) {
+    if (!CreateToolDialog(w, tab, Tr("Decompress PDF"))) {
         return false;
     }
     AddPathRow();
     AddDestRow(MakeUniqueFilePathTemp(srcPath), L"PDF Files\0*.pdf\0All Files\0*.*\0", L"pdf");
-    AddButtonsRow(_TRA("Decompress PDF"));
+    AddButtonsRow(Tr("Decompress PDF"));
     FinishDialog(destEdit);
     return true;
 }
@@ -589,7 +592,7 @@ void ShowPdfDecompressDialog(MainWindow* win) {
         return;
     }
     WindowTab* tab = win->CurrentTab();
-    if (!tab || !tab->filePath) {
+    if (!tab || len(tab->filePath) == 0) {
         return;
     }
     if (!IsPdfDoc(tab)) {
@@ -624,7 +627,7 @@ struct PdfDeletePageDialog : PdfToolDialog {
 // Returns a sorted list of unique 1-based page numbers to delete.
 // Returns false if the syntax is invalid or any page is out of range.
 static bool ParseDeletePages(Str s, int pageCount, Vec<int>& pagesToDelete) {
-    if (!s) {
+    if (len(s) == 0) {
         return false;
     }
     StrVec parts;
@@ -635,7 +638,7 @@ static bool ParseDeletePages(Str s, int pageCount, Vec<int>& pagesToDelete) {
     for (int pi = 0; pi < len(parts); pi++) {
         Str part = parts[pi];
         str::TrimWSInPlace(part, str::TrimOpt::Both);
-        if (!part) {
+        if (len(part) == 0) {
             return false;
         }
         // check for range "A-B" where A/B can be a number or "N"
@@ -643,11 +646,11 @@ static bool ParseDeletePages(Str s, int pageCount, Vec<int>& pagesToDelete) {
         if (str::CutChar(part, '-', &startStr, &endStr)) {
             str::TrimWSInPlace(startStr, str::TrimOpt::Both);
             str::TrimWSInPlace(endStr, str::TrimOpt::Both);
-            if (!startStr) {
+            if (len(startStr) == 0) {
                 return false;
             }
             // "8-" means "8-N" (from page 8 to the last page)
-            bool endIsEmpty = !endStr;
+            bool endIsEmpty = len(endStr) == 0;
             int start, end;
             if (str::EqI(startStr, StrL("N"))) {
                 start = pageCount;
@@ -820,12 +823,12 @@ void PdfDeletePageDialog::DoIt(VirtMouseEvent*) {
     EngineBase* sourceEngine = sourceTab ? sourceTab->GetEngine() : nullptr;
     if (isExtract && onlyWithAnnotations && onlyWithAnnotations->IsChecked()) {
         if (!sourceEngine || !KeepOnlyPagesWithAnnotations(sourceEngine, parsedPages)) {
-            MessageBoxWarning(hwnd, StrL("Failed to read annotations from PDF file."), _TRA("Extract Pages From PDF"));
+            MessageBoxWarning(hwnd, StrL("Failed to read annotations from PDF file."), Tr("Extract Pages From PDF"));
             return;
         }
         if (len(parsedPages) == 0) {
             MessageBoxWarning(hwnd, StrL("No pages with annotations in the selected range."),
-                              _TRA("Extract Pages From PDF"));
+                              Tr("Extract Pages From PDF"));
             return;
         }
     }
@@ -847,8 +850,8 @@ void PdfDeletePageDialog::DoIt(VirtMouseEvent*) {
     TempStr tmpPath;
     if (isExtract && sourceEngine && EngineHasUnsavedAnnotations(sourceEngine)) {
         tmpPath = GetTempFilePathTemp(StrL("extract-pages"));
-        if (!tmpPath || !EngineMupdfSaveCopy(sourceEngine, tmpPath)) {
-            MessageBoxWarning(hwnd, StrL("Failed to extract pages from PDF file."), _TRA("Extract Pages From PDF"));
+        if (len(tmpPath) == 0 || !EngineMupdfSaveCopy(sourceEngine, tmpPath)) {
+            MessageBoxWarning(hwnd, StrL("Failed to extract pages from PDF file."), Tr("Extract Pages From PDF"));
             return;
         }
         inputPath = tmpPath;
@@ -879,7 +882,7 @@ void PdfDeletePageDialog::DoIt(VirtMouseEvent*) {
         logf("PdfDeletePageDoIt: pdfclean_main failed with %d for %s\n", res, op);
         Str msg =
             isExtract ? StrL("Failed to extract pages from PDF file.") : StrL("Failed to delete pages from PDF file.");
-        Str title = isExtract ? _TRA("Extract Pages From PDF") : _TRA("Delete Pages From PDF");
+        Str title = isExtract ? Tr("Extract Pages From PDF") : Tr("Delete Pages From PDF");
         MessageBoxWarning(hwnd, msg, title);
     }
 }
@@ -913,7 +916,7 @@ void PdfDeletePageDialog::PreTranslate(WindowBase::PreTranslateEvent* ev) {
 
 bool PdfDeletePageDialog::Create(MainWindow* w, WindowTab* tab, bool isExtractArg) {
     isExtract = isExtractArg;
-    Str title = isExtract ? _TRA("Extract Pages From PDF") : _TRA("Delete Pages From PDF");
+    Str title = isExtract ? Tr("Extract Pages From PDF") : Tr("Delete Pages From PDF");
     if (!CreateToolDialog(w, tab, title)) {
         return false;
     }
@@ -922,7 +925,7 @@ bool PdfDeletePageDialog::Create(MainWindow* w, WindowTab* tab, bool isExtractAr
     AddDestRow(MakeUniqueFilePathTemp(srcPath), L"PDF Files\0*.pdf\0All Files\0*.*\0", L"pdf");
 
     int currentPage = w->ctrl ? w->ctrl->CurrentPageNo() : 1;
-    Str pagesLabel = isExtract ? _TRA("Pages To Extract:") : _TRA("Pages To Delete:");
+    Str pagesLabel = isExtract ? Tr("Pages To Extract:") : Tr("Pages To Delete:");
     pagesEdit = AddLabeledEdit(pagesLabel, fmt("%d", currentPage));
     // "of N" after the edit
     lastRow->AddChild(new Spacer(gap, 0));
@@ -931,7 +934,7 @@ bool PdfDeletePageDialog::Create(MainWindow* w, WindowTab* tab, bool isExtractAr
     if (isExtract) {
         Checkbox::CreateArgs args;
         args.parent = hwnd;
-        args.text = _TRA("Only with annotations");
+        args.text = Tr("Only with annotations");
         args.font = font;
         args.isRtl = IsUIRtl();
         onlyWithAnnotations = new Checkbox();
@@ -940,7 +943,7 @@ bool PdfDeletePageDialog::Create(MainWindow* w, WindowTab* tab, bool isExtractAr
         AddRow()->AddChild(onlyWithAnnotations);
     }
 
-    Str actionText = isExtract ? _TRA("Extract Pages") : _TRA("Delete Pages");
+    Str actionText = isExtract ? Tr("Extract Pages") : Tr("Delete Pages");
     AddButtonsRow(actionText, StrL("Syntax: 2,5-7,13-"));
     onPreTranslate =
         MkMethod1<PdfDeletePageDialog, WindowBase::PreTranslateEvent*, &PdfDeletePageDialog::PreTranslate>(this);
@@ -958,7 +961,7 @@ static void ShowPdfPageRangeDialog(MainWindow* win, bool isExtract) {
         return;
     }
     WindowTab* tab = win->CurrentTab();
-    if (!tab || !tab->filePath) {
+    if (!tab || len(tab->filePath) == 0) {
         return;
     }
     if (!IsPdfDoc(tab)) {
@@ -1036,18 +1039,18 @@ void PdfEncryptDialog::DoIt(VirtMouseEvent*) {
         StartLoadDocument(&args);
     } else {
         logf("PdfEncryptDoIt: pdfclean_main failed with %d\n", res);
-        MessageBoxWarning(hwnd, StrL("Failed to encrypt PDF file."), _TRA("Encrypt PDF"));
+        MessageBoxWarning(hwnd, StrL("Failed to encrypt PDF file."), Tr("Encrypt PDF"));
     }
 }
 
 bool PdfEncryptDialog::Create(MainWindow* w, WindowTab* tab) {
-    if (!CreateToolDialog(w, tab, _TRA("Encrypt PDF"))) {
+    if (!CreateToolDialog(w, tab, Tr("Encrypt PDF"))) {
         return false;
     }
     AddPathRow();
     AddDestRow(MakeUniqueFilePathTemp(srcPath), L"PDF Files\0*.pdf\0All Files\0*.*\0", L"pdf");
-    passwordEdit = AddLabeledEdit(_TRA("Password:"), {}, true);
-    AddButtonsRow(_TRA("Encrypt PDF"));
+    passwordEdit = AddLabeledEdit(Tr("Password:"), {}, true);
+    AddButtonsRow(Tr("Encrypt PDF"));
     FinishDialog(passwordEdit);
     passwordEdit->onTextChanged = MkMethod0<PdfEncryptDialog, &PdfEncryptDialog::UpdateButton>(this);
     UpdateButton();
@@ -1059,7 +1062,7 @@ void ShowPdfEncryptDialog(MainWindow* win) {
         return;
     }
     WindowTab* tab = win->CurrentTab();
-    if (!tab || !tab->filePath) {
+    if (!tab || len(tab->filePath) == 0) {
         return;
     }
     if (!IsPdfDoc(tab)) {
@@ -1119,18 +1122,18 @@ void PdfDecryptDialog::DoIt(VirtMouseEvent*) {
     } else {
         logf("PdfDecryptDoIt: pdfclean_main failed with %d, src: '%s', password len: %d\n", res, srcPath,
              len(password));
-        MessageBoxWarning(hwnd, StrL("Failed to decrypt PDF file."), _TRA("Decrypt PDF"));
+        MessageBoxWarning(hwnd, StrL("Failed to decrypt PDF file."), Tr("Decrypt PDF"));
     }
 }
 
 bool PdfDecryptDialog::Create(MainWindow* w, WindowTab* tab, Str pwd) {
-    if (!CreateToolDialog(w, tab, _TRA("Decrypt PDF"))) {
+    if (!CreateToolDialog(w, tab, Tr("Decrypt PDF"))) {
         return false;
     }
     password = str::Dup(pwd);
     AddPathRow();
     AddDestRow(MakeUniqueFilePathTemp(srcPath), L"PDF Files\0*.pdf\0All Files\0*.*\0", L"pdf");
-    AddButtonsRow(_TRA("Decrypt PDF"));
+    AddButtonsRow(Tr("Decrypt PDF"));
     FinishDialog(destEdit);
     return true;
 }
@@ -1140,7 +1143,7 @@ void ShowPdfDecryptDialog(MainWindow* win) {
         return;
     }
     WindowTab* tab = win->CurrentTab();
-    if (!tab || !tab->filePath) {
+    if (!tab || len(tab->filePath) == 0) {
         return;
     }
     if (!IsPdfDoc(tab)) {
@@ -1169,11 +1172,11 @@ void ShowPdfDecryptDialog(MainWindow* win) {
 // Default destination: same path with .pdf extension, made unique if the file
 // already exists (e.g. comic.cbz → comic.pdf, or comic.1.pdf if taken).
 static TempStr DefaultPdfDestPathTemp(Str srcPath) {
-    if (!srcPath) {
+    if (len(srcPath) == 0) {
         return {};
     }
     TempStr noExt = path::GetPathNoExtTemp(srcPath);
-    if (!noExt) {
+    if (len(noExt) == 0) {
         noExt = str::DupTemp(srcPath);
     }
     TempStr pdfPath = str::JoinTemp(noExt, StrL(".pdf"));
@@ -1185,22 +1188,11 @@ struct ConvertToPdfDialog : PdfToolDialog {
     void DoIt(VirtMouseEvent* ev = nullptr) override;
 };
 
-void ConvertToPdfDialog::DoIt(VirtMouseEvent*) {
-    TempStr destPath = destEdit->GetTextTemp();
-    if (len(destPath) == 0) {
-        return;
+// Same conversion as File → Convert to PDF (issue #4118).
+static bool ConvertImageCollectionToPdf(EngineBase* engine, Str destPath) {
+    if (!engine || !engine->IsImageCollection() || len(destPath) == 0) {
+        return false;
     }
-    if (!win || !win->IsDocLoaded()) {
-        return;
-    }
-    DisplayModel* dm = win->AsFixed();
-    EngineBase* engine = dm ? dm->GetEngine() : nullptr;
-    if (!engine || !engine->IsImageCollection()) {
-        MessageBoxWarning(hwnd, _TRA("Failed to save a file"), _TRA("Convert to PDF"));
-        return;
-    }
-
-    logf("ConvertToPdf: converting '%s' to '%s'\n", srcPath, destPath);
 
     TempStr producer = fmt("SumatraPDF %s", currentVersion);
     PdfCreator::SetProducerName(producer);
@@ -1216,7 +1208,104 @@ void ConvertToPdfDialog::DoIt(VirtMouseEvent*) {
         FreePixmap(px);
         return png;
     };
-    bool ok = PdfCreator::SaveImageCollectionAsPdf(destPath, engine, toOptimizedPng);
+    return PdfCreator::SaveImageCollectionAsPdf(destPath, engine, toOptimizedPng);
+}
+
+TempStr ConvertImageCollectionToPdfResultTemp(Str srcPath, Str destPath, int* exitCodeOut) {
+    auto finish = [&](int code, TempStr s) -> TempStr {
+        if (exitCodeOut) {
+            *exitCodeOut = code;
+        }
+        return s;
+    };
+    if (len(srcPath) == 0 || len(destPath) == 0) {
+        return finish(1, str::DupTemp(StrL("ERROR bad-args")));
+    }
+    EngineBase* engine = CreateEngineFromFile(srcPath, nullptr, false);
+    if (!engine) {
+        return finish(1, str::DupTemp(StrL("ERROR engine-create-failed")));
+    }
+    bool ok = ConvertImageCollectionToPdf(engine, destPath);
+    SafeEngineRelease(&engine);
+    if (!ok) {
+        return finish(1, str::DupTemp(StrL("ERROR convert-failed")));
+    }
+    return finish(0, str::DupTemp(StrL("OK")));
+}
+
+TempStr ExtractPdfPagesResultTemp(Str destPath, Str pagesSpec, int annotsOnly, int* exitCodeOut) {
+    auto finish = [&](int code, TempStr s) -> TempStr {
+        if (exitCodeOut) {
+            *exitCodeOut = code;
+        }
+        return s;
+    };
+    if (len(gWindows) == 0) {
+        return finish(2, str::DupTemp(StrL("NOTREADY no-window")));
+    }
+    MainWindow* win = gWindows[0];
+    WindowTab* tab = win ? win->CurrentTab() : nullptr;
+    EngineBase* engine = tab ? tab->GetEngine() : nullptr;
+    if (!engine || len(tab->filePath) == 0) {
+        return finish(2, str::DupTemp(StrL("NOTREADY no-engine")));
+    }
+    if (len(destPath) == 0 || len(pagesSpec) == 0) {
+        return finish(1, str::DupTemp(StrL("ERROR bad-args")));
+    }
+    int pageCount = engine->PageCount();
+    Vec<int> parsedPages;
+    if (!ParseDeletePages(pagesSpec, pageCount, parsedPages)) {
+        return finish(1, str::DupTemp(StrL("ERROR bad-pages")));
+    }
+    if (annotsOnly) {
+        if (!KeepOnlyPagesWithAnnotations(engine, parsedPages)) {
+            return finish(1, str::DupTemp(StrL("ERROR annots")));
+        }
+        if (len(parsedPages) == 0) {
+            return finish(1, str::DupTemp(StrL("ERROR no-annot-pages")));
+        }
+    }
+    TempStr pageRange = FormatPageRangeTemp(parsedPages);
+    Str inputPath = tab->filePath;
+    TempStr tmpPath;
+    if (EngineHasUnsavedAnnotations(engine)) {
+        tmpPath = GetTempFilePathTemp(StrL("extract-pages"));
+        if (len(tmpPath) == 0 || !EngineMupdfSaveCopy(engine, tmpPath)) {
+            return finish(1, str::DupTemp(StrL("ERROR save-copy")));
+        }
+        inputPath = tmpPath;
+    }
+    char* argv[] = {(char*)"clean",      (char*)"-gggg",     (char*)"-e",        (char*)"100",
+                    (char*)"-f",         (char*)"-i",        (char*)"-t",        (char*)"-Z",
+                    CStrTemp(inputPath), CStrTemp(destPath), CStrTemp(pageRange)};
+    fz_set_optind(0);
+    int res = pdfclean_main(11, argv);
+    if (tmpPath) {
+        file::Delete(tmpPath);
+    }
+    if (res != 0) {
+        return finish(1, str::DupTemp(StrL("ERROR pdfclean")));
+    }
+    return finish(0, str::DupTemp(StrL("OK")));
+}
+
+void ConvertToPdfDialog::DoIt(VirtMouseEvent*) {
+    TempStr destPath = destEdit->GetTextTemp();
+    if (len(destPath) == 0) {
+        return;
+    }
+    if (!win || !win->IsDocLoaded()) {
+        return;
+    }
+    DisplayModel* dm = win->AsFixed();
+    EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    if (!engine || !engine->IsImageCollection()) {
+        MessageBoxWarning(hwnd, Tr("Failed to save a file"), Tr("Convert to PDF"));
+        return;
+    }
+
+    logf("ConvertToPdf: converting '%s' to '%s'\n", srcPath, destPath);
+    bool ok = ConvertImageCollectionToPdf(engine, destPath);
     if (ok) {
         logf("ConvertToPdf: converted successfully\n");
         MainWindow* w = win;
@@ -1226,17 +1315,17 @@ void ConvertToPdfDialog::DoIt(VirtMouseEvent*) {
         StartLoadDocument(&args);
     } else {
         logf("ConvertToPdf: SaveImageCollectionAsPdf failed\n");
-        MessageBoxWarning(hwnd, _TRA("Failed to save a file"), _TRA("Convert to PDF"));
+        MessageBoxWarning(hwnd, Tr("Failed to save a file"), Tr("Convert to PDF"));
     }
 }
 
 bool ConvertToPdfDialog::Create(MainWindow* w, WindowTab* tab) {
-    if (!CreateToolDialog(w, tab, _TRA("Convert to PDF"))) {
+    if (!CreateToolDialog(w, tab, Tr("Convert to PDF"))) {
         return false;
     }
     AddPathRow();
     AddDestRow(DefaultPdfDestPathTemp(srcPath), L"PDF Files\0*.pdf\0All Files\0*.*\0", L"pdf");
-    AddButtonsRow(_TRA("Convert to PDF"));
+    AddButtonsRow(Tr("Convert to PDF"));
     FinishDialog(destEdit);
     return true;
 }
@@ -1246,7 +1335,7 @@ void ShowConvertToPdfDialog(MainWindow* win) {
         return;
     }
     WindowTab* tab = win->CurrentTab();
-    if (!tab || !tab->filePath) {
+    if (!tab || len(tab->filePath) == 0) {
         return;
     }
     EngineBase* engine = tab->GetEngine();
@@ -1313,7 +1402,7 @@ static TempStr EnsurePagePlaceholderTemp(Str path, bool multiPage) {
     }
     TempStr ext = path::GetExtTemp(path);
     TempStr noExt = path::GetPathNoExtTemp(path);
-    if (!ext) {
+    if (len(ext) == 0) {
         return str::JoinTemp(noExt, StrL("-<N>.png"));
     }
     return str::JoinTemp(noExt, StrL("-<N>"), ext);
@@ -1354,7 +1443,7 @@ static bool GetImageEncoderForPath(Str path, CLSID* encOut) {
 }
 
 static bool SavePixmapAsImageFile(Pixmap* px, Str path) {
-    if (!px || !path) {
+    if (!px || len(path) == 0) {
         return false;
     }
     CLSID enc{};
@@ -1401,7 +1490,7 @@ static int ConvertPagesToImages(EngineBase* engine, int rotation, Str templatePa
         return 0;
     }
     TempStr withExt = WithDefaultImageExtTemp(templatePath);
-    if (!withExt) {
+    if (len(withExt) == 0) {
         return 0;
     }
     TempStr templ = EnsurePagePlaceholderTemp(withExt, len(pages) > 1);
@@ -1648,7 +1737,7 @@ void ConvertPdfToImagesDialog::DoIt(VirtMouseEvent*) {
     DisplayModel* dm = win ? win->AsFixed() : nullptr;
     EngineBase* engine = dm ? dm->GetEngine() : nullptr;
     if (!engine) {
-        MessageBoxWarning(hwnd, StrL("Failed to convert PDF to images."), _TRA("Convert PDF to Images"));
+        MessageBoxWarning(hwnd, StrL("Failed to convert PDF to images."), Tr("Convert PDF to Images"));
         return;
     }
 
@@ -1677,7 +1766,7 @@ void ConvertPdfToImagesDialog::DoIt(VirtMouseEvent*) {
 
     if (nOk == 0) {
         str::Free(firstPath);
-        MessageBoxWarning(hwnd, StrL("Failed to convert PDF to images."), _TRA("Convert PDF to Images"));
+        MessageBoxWarning(hwnd, StrL("Failed to convert PDF to images."), Tr("Convert PDF to Images"));
         return;
     }
     logf("ConvertPdfToImages: wrote %d of %d file(s)\n", nOk, len(pages));
@@ -1688,7 +1777,7 @@ void ConvertPdfToImagesDialog::DoIt(VirtMouseEvent*) {
 }
 
 bool ConvertPdfToImagesDialog::Create(MainWindow* w, WindowTab* tab) {
-    if (!CreateToolDialog(w, tab, _TRA("Convert PDF to Images"))) {
+    if (!CreateToolDialog(w, tab, Tr("Convert PDF to Images"))) {
         return false;
     }
     pageCount = w->ctrl ? w->ctrl->PageCount() : 1;
@@ -1740,18 +1829,18 @@ bool ConvertPdfToImagesDialog::Create(MainWindow* w, WindowTab* tab) {
 
     HBox* row = AddRow();
     row->gap = font->averageCharWidth;
-    row->AddChild(NewVirtText({.s = _TRA("Pages:"), .font = font, .isRtl = IsUIRtl()}));
+    row->AddChild(NewVirtText({.s = Tr("Pages:"), .font = font, .isRtl = IsUIRtl()}));
 
-    radioCurrent = NewPagesRadio(hwnd, font, _TRA("Current"), true, false);
+    radioCurrent = NewPagesRadio(hwnd, font, Tr("Current"), true, false);
     radioCurrent->onStateChanged =
         MkMethod0<ConvertPdfToImagesDialog, &ConvertPdfToImagesDialog::OnPagesModeChanged>(this);
     row->AddChild(radioCurrent);
 
-    radioAll = NewPagesRadio(hwnd, font, _TRA("All"), false, true);
+    radioAll = NewPagesRadio(hwnd, font, Tr("All"), false, true);
     radioAll->onStateChanged = MkMethod0<ConvertPdfToImagesDialog, &ConvertPdfToImagesDialog::OnPagesModeChanged>(this);
     row->AddChild(radioAll);
 
-    radioCustom = NewPagesRadio(hwnd, font, _TRA("Custom"), false, false);
+    radioCustom = NewPagesRadio(hwnd, font, Tr("Custom"), false, false);
     radioCustom->onStateChanged =
         MkMethod0<ConvertPdfToImagesDialog, &ConvertPdfToImagesDialog::OnPagesModeChanged>(this);
     row->AddChild(radioCustom);
@@ -1767,7 +1856,7 @@ bool ConvertPdfToImagesDialog::Create(MainWindow* w, WindowTab* tab) {
     pagesEdit->SetIsEnabled(false);
     row->AddChild(pagesEdit, 1);
 
-    AddButtonsRow(_TRA("Convert"), _TRA("Use <N> for the page number"));
+    AddButtonsRow(Tr("Convert"), Tr("Use <N> for the page number"));
     FinishDialog(destEdit);
 
     destEdit->onTextChanged = MkMethod0<ConvertPdfToImagesDialog, &ConvertPdfToImagesDialog::UpdateButton>(this);
@@ -1781,7 +1870,7 @@ void ShowConvertPdfToImagesDialog(MainWindow* win) {
         return;
     }
     WindowTab* tab = win->CurrentTab();
-    if (!tab || !tab->filePath) {
+    if (!tab || len(tab->filePath) == 0) {
         return;
     }
     if (!IsPdfDoc(tab)) {
@@ -1790,6 +1879,490 @@ void ShowConvertPdfToImagesDialog(MainWindow* win) {
     logf("ShowConvertPdfToImagesDialog: opening for '%s'\n", tab->filePath);
 
     auto* dlg = new ConvertPdfToImagesDialog();
+    if (!dlg->Create(win, tab)) {
+        delete dlg;
+    }
+}
+
+// rectangular selection → PNG / JPEG / BMP at a chosen DPI, independent of
+// the current zoom (issue #6127)
+constexpr i64 kMaxSaveSelectionPixels = 100 * 1000 * 1000;
+constexpr int kMaxSaveSelectionSide = 16384;
+constexpr int kSaveSelectionDefaultDpi = 300;
+
+static const int kSaveSelectionDpiChoices[] = {72, 150, 300, 600, 1200};
+
+static float SaveSelectionZoom(EngineBase* engine, float dpi) {
+    float fileDpi = engine->GetFileDPI();
+    if (fileDpi <= 0) {
+        fileDpi = 72.0f;
+    }
+    if (dpi < 1) {
+        dpi = (float)kSaveSelectionDefaultDpi;
+    }
+    return dpi / fileDpi;
+}
+
+static bool SaveSelectionSizeOk(int w, int h) {
+    if (w <= 0 || h <= 0) {
+        return false;
+    }
+    if (w > kMaxSaveSelectionSide || h > kMaxSaveSelectionSide) {
+        return false;
+    }
+    i64 pixels = (i64)w * (i64)h;
+    return pixels <= kMaxSaveSelectionPixels;
+}
+
+static bool EstimateSelectionPx(RectF rect, float zoom, int& w, int& h) {
+    w = (int)floorf((rect.dx * zoom) + 0.5f);
+    h = (int)floorf((rect.dy * zoom) + 0.5f);
+    return w > 0 && h > 0;
+}
+
+static Kind kNotifSaveSelectionAsImage = "notifSaveSelectionAsImage";
+
+static Pixmap* RenderSelectionPixmap(EngineBase* engine, int rotation, int pageNo, RectF rect, float dpi) {
+    if (!engine || rect.IsEmpty()) {
+        return nullptr;
+    }
+    if (pageNo < 1 || pageNo > engine->PageCount()) {
+        return nullptr;
+    }
+    float zoom = SaveSelectionZoom(engine, dpi);
+    int estW = 0;
+    int estH = 0;
+    if (!EstimateSelectionPx(rect, zoom, estW, estH) || !SaveSelectionSizeOk(estW, estH)) {
+        logf("RenderSelectionPixmap: %dx%d at %.0f DPI is too large\n", estW, estH, dpi);
+        return nullptr;
+    }
+    RenderPageArgs args(pageNo, zoom, rotation, &rect, RenderTarget::Export);
+    Pixmap* px = engine->RenderPage(args);
+    if (!px) {
+        logf("RenderSelectionPixmap: RenderPage failed page %d\n", pageNo);
+        return nullptr;
+    }
+    px->xres = dpi;
+    px->yres = dpi;
+    if (px->format != PixmapFormat::Native) {
+        return px;
+    }
+    Pixmap* converted = PixmapCopyAs32bppDIB(px);
+    FreePixmap(px);
+    return converted;
+}
+
+static bool WriteSelectionPixmap(Pixmap* px, Str destPath) {
+    if (!px || len(destPath) == 0) {
+        return false;
+    }
+    bool ok = false;
+    if (str::EndsWithI(destPath, StrL(".png"))) {
+        // lodepng has no pHYs, so EngineImages displays 1:1. Encode+zopfli
+        // here so the file is final before we open it (GDI+ then async zopfli
+        // used to open a tiny pHYs page, then reload after rewrite).
+        Str png = EncodeAndOptimizePngFromPixmap(px);
+        ok = len(png) > 0 && file::WriteFile(destPath, png);
+        str::Free(png);
+        if (!ok) {
+            file::Delete(destPath);
+        }
+    } else {
+        ok = SavePixmapAsImageFile(px, destPath);
+    }
+    return ok;
+}
+
+static bool SavePageRectAsImage(EngineBase* engine, int rotation, int pageNo, RectF rect, Str destPath, float dpi,
+                                int* widthOut, int* heightOut) {
+    if (widthOut) {
+        *widthOut = 0;
+    }
+    if (heightOut) {
+        *heightOut = 0;
+    }
+    Pixmap* px = RenderSelectionPixmap(engine, rotation, pageNo, rect, dpi);
+    if (!px) {
+        return false;
+    }
+    bool ok = WriteSelectionPixmap(px, destPath);
+    if (ok) {
+        if (widthOut) {
+            *widthOut = px->width;
+        }
+        if (heightOut) {
+            *heightOut = px->height;
+        }
+    }
+    FreePixmap(px);
+    return ok;
+}
+
+struct SaveSelImgWork {
+    Pixmap* px = nullptr;
+    Str destPath;
+    HWND hwndCanvas = nullptr;
+    MainWindow* win = nullptr;
+    bool ok = false;
+};
+
+static void FinishSaveSelImg(SaveSelImgWork* d) {
+    if (IsWindow(d->hwndCanvas)) {
+        RemoveNotificationsForGroup(d->hwndCanvas, kNotifSaveSelectionAsImage);
+    }
+    if (d->ok) {
+        logf("SaveSelectionAsImage: wrote '%s'\n", d->destPath);
+        if (IsMainWindowValidAndNotClosing(d->win)) {
+            LoadArgs args(d->destPath, d->win);
+            StartLoadDocument(&args);
+        }
+    } else {
+        HWND parent = nullptr;
+        if (IsMainWindowValidAndNotClosing(d->win)) {
+            parent = d->win->hwndFrame;
+        }
+        MessageBoxWarning(parent, StrL("Failed to save the selection as an image."), Tr("Save Selection As Image"));
+    }
+    str::Free(d->destPath);
+    delete d;
+}
+
+static void SaveSelImgThread(SaveSelImgWork* d) {
+    d->ok = WriteSelectionPixmap(d->px, d->destPath);
+    FreePixmap(d->px);
+    d->px = nullptr;
+    uitask::Post(MkFunc0(FinishSaveSelImg, d), "FinishSaveSelImg");
+}
+
+TempStr SaveSelectionAsImageResultTemp(Str destPath, int dpi, int pageNo, int x, int y, int dx, int dy,
+                                       int* exitCodeOut) {
+    auto finish = [&](int code, TempStr s) -> TempStr {
+        if (exitCodeOut) {
+            *exitCodeOut = code;
+        }
+        return s;
+    };
+    if (len(gWindows) == 0) {
+        return finish(2, str::DupTemp(StrL("NOTREADY no-window")));
+    }
+    MainWindow* win = gWindows[0];
+    DisplayModel* dm = win ? win->AsFixed() : nullptr;
+    EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    if (!engine) {
+        return finish(2, str::DupTemp(StrL("NOTREADY no-engine")));
+    }
+    if (len(destPath) == 0 || dpi < 1 || dx <= 0 || dy <= 0) {
+        return finish(1, str::DupTemp(StrL("ERROR bad-args")));
+    }
+    TempStr withExt = WithDefaultImageExtTemp(destPath);
+    if (len(withExt) == 0) {
+        return finish(1, str::DupTemp(StrL("ERROR bad-ext")));
+    }
+    RectF rect{(float)x, (float)y, (float)dx, (float)dy};
+    int w = 0;
+    int h = 0;
+    if (!SavePageRectAsImage(engine, dm->GetRotation(), pageNo, rect, withExt, (float)dpi, &w, &h)) {
+        return finish(1, str::DupTemp(StrL("ERROR save-failed")));
+    }
+    return finish(0, fmt("OK w=%d h=%d path=%s", w, h, withExt));
+}
+
+struct SaveSelectionAsImageDialog : PdfToolDialog {
+    int pageNo = 0;
+    RectF selRect;
+    DropDown* dropFormat = nullptr;
+    DropDown* dropDpi = nullptr;
+    VirtText* sizeLabel = nullptr;
+    bool syncingFormat = false;
+
+    bool Create(MainWindow* win, WindowTab* tab);
+    void DoIt(VirtMouseEvent* ev = nullptr) override;
+    void OnBrowseDest(VirtMouseEvent* ev = nullptr);
+    void OnFormatChanged();
+    void OnDpiChanged();
+    void SetDestExtFromFormat();
+    void SyncFormatFromPath(Str path);
+    void UpdateSizeLabel();
+    int SelectedFormatIdx() const;
+    int SelectedDpi() const;
+};
+
+int SaveSelectionAsImageDialog::SelectedFormatIdx() const {
+    if (!dropFormat) {
+        return 0;
+    }
+    int idx = CbGetCurrentSelection(dropFormat);
+    if (idx < 0 || idx >= ConvertImageFormatCount()) {
+        return 0;
+    }
+    return idx;
+}
+
+int SaveSelectionAsImageDialog::SelectedDpi() const {
+    if (!dropDpi) {
+        return kSaveSelectionDefaultDpi;
+    }
+    int idx = CbGetCurrentSelection(dropDpi);
+    if (idx < 0 || idx >= dimofi(kSaveSelectionDpiChoices)) {
+        return kSaveSelectionDefaultDpi;
+    }
+    return kSaveSelectionDpiChoices[idx];
+}
+
+void SaveSelectionAsImageDialog::SetDestExtFromFormat() {
+    if (!destEdit) {
+        return;
+    }
+    TempStr dest = destEdit->GetTextTemp();
+    if (len(dest) == 0) {
+        return;
+    }
+    Str ext = kConvertImageFormats[SelectedFormatIdx()].ext;
+    TempStr noExt = path::GetPathNoExtTemp(dest);
+    TempStr newDest = str::JoinTemp(noExt, ext);
+    if (str::EqI(dest, newDest)) {
+        return;
+    }
+    destEdit->SetText(newDest);
+}
+
+void SaveSelectionAsImageDialog::SyncFormatFromPath(Str path) {
+    if (!dropFormat) {
+        return;
+    }
+    int idx = ConvertImageFormatIdxFromPath(path);
+    if (idx == CbGetCurrentSelection(dropFormat)) {
+        return;
+    }
+    syncingFormat = true;
+    CbSetCurrentSelection(dropFormat, idx);
+    syncingFormat = false;
+}
+
+void SaveSelectionAsImageDialog::UpdateSizeLabel() {
+    if (!sizeLabel || !win) {
+        return;
+    }
+    DisplayModel* dm = win->AsFixed();
+    EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    if (!engine) {
+        return;
+    }
+    float zoom = SaveSelectionZoom(engine, (float)SelectedDpi());
+    int w = 0;
+    int h = 0;
+    EstimateSelectionPx(selRect, zoom, w, h);
+    if (!SaveSelectionSizeOk(w, h)) {
+        sizeLabel->SetText(Tr("Too large for this DPI"));
+        if (actionBtn) {
+            actionBtn->SetIsEnabled(false);
+        }
+    } else {
+        sizeLabel->SetText(fmt("%d x %d px", w, h));
+        if (actionBtn) {
+            TempStr dest = destEdit ? destEdit->GetTextTemp() : Str{};
+            actionBtn->SetIsEnabled(len(dest) > 0);
+        }
+    }
+    sizeLabel->RequestLayout();
+}
+
+void SaveSelectionAsImageDialog::OnFormatChanged() {
+    if (syncingFormat) {
+        return;
+    }
+    SetDestExtFromFormat();
+}
+
+void SaveSelectionAsImageDialog::OnDpiChanged() {
+    UpdateSizeLabel();
+}
+
+void SaveSelectionAsImageDialog::OnBrowseDest(VirtMouseEvent*) {
+    WCHAR dstFileName[MAX_PATH + 1]{};
+    TempStr current = destEdit->GetTextTemp();
+    wstr::BufSet(WStr(dstFileName, MAX_PATH), ToWStrTemp(current));
+
+    int fmtIdx = SelectedFormatIdx();
+    OPENFILENAME ofn{};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = hwnd;
+    ofn.lpstrFile = dstFileName;
+    ofn.nMaxFile = dimof(dstFileName);
+    ofn.lpstrFilter = L"PNG\0*.png\0JPEG\0*.jpg;*.jpeg\0BMP\0*.bmp\0All Files\0*.*\0";
+    ofn.nFilterIndex = (DWORD)(fmtIdx + 1);
+    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+    ofn.lpstrDefExt = kConvertImageFormats[fmtIdx].defExt.s;
+
+    if (!GetSaveFileNameW(&ofn)) {
+        return;
+    }
+    TempStr picked = ToUtf8Temp(dstFileName);
+    destEdit->SetText(picked);
+    int filterIdx = (int)ofn.nFilterIndex - 1;
+    if (filterIdx >= 0 && filterIdx < ConvertImageFormatCount()) {
+        syncingFormat = true;
+        CbSetCurrentSelection(dropFormat, filterIdx);
+        syncingFormat = false;
+        SetDestExtFromFormat();
+    } else {
+        SyncFormatFromPath(picked);
+    }
+    UpdateSizeLabel();
+}
+
+void SaveSelectionAsImageDialog::DoIt(VirtMouseEvent*) {
+    TempStr destPath = destEdit->GetTextTemp();
+    if (len(destPath) == 0) {
+        return;
+    }
+    DisplayModel* dm = win ? win->AsFixed() : nullptr;
+    EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    if (!engine) {
+        return;
+    }
+    TempStr withExt = WithDefaultImageExtTemp(destPath);
+    if (len(withExt) == 0) {
+        MessageBoxWarning(hwnd, StrL("Unsupported image format."), Tr("Save Selection As Image"));
+        return;
+    }
+    int dpi = SelectedDpi();
+    Pixmap* px = RenderSelectionPixmap(engine, dm->GetRotation(), pageNo, selRect, (float)dpi);
+    if (!px) {
+        MessageBoxWarning(hwnd, StrL("Failed to save the selection as an image."), Tr("Save Selection As Image"));
+        return;
+    }
+
+    auto* work = new SaveSelImgWork();
+    work->px = px;
+    work->destPath = str::Dup(withExt);
+    work->hwndCanvas = win->hwndCanvas;
+    work->win = win;
+
+    NotificationCreateArgs nargs;
+    nargs.hwndParent = win->hwndCanvas;
+    nargs.msg = Tr("Saving image...");
+    nargs.groupId = kNotifSaveSelectionAsImage;
+    nargs.timeoutMs = kNotifNoTimeout;
+    ShowNotification(nargs);
+
+    Close();
+    RunAsync(MkFunc0(SaveSelImgThread, work), StrL("SaveSelImg"));
+}
+
+bool SaveSelectionAsImageDialog::Create(MainWindow* w, WindowTab* tab) {
+    if (!tab || !tab->selectionOnPage || len(*tab->selectionOnPage) == 0) {
+        return false;
+    }
+    SelectionOnPage& sel = (*tab->selectionOnPage)[0];
+    if (sel.rect.IsEmpty()) {
+        return false;
+    }
+    pageNo = sel.pageNo;
+    selRect = sel.rect;
+
+    if (!CreateToolDialog(w, tab, Tr("Save Selection As Image"))) {
+        return false;
+    }
+    AddPathRow();
+
+    TempStr noExt = path::GetPathNoExtTemp(srcPath);
+    TempStr pngPath = MakeUniqueFilePathTemp(str::JoinTemp(noExt, StrL("-sel.png")));
+
+    HBox* destRow = AddRow();
+    destRow->gap = font->averageCharWidth;
+
+    Edit::CreateArgs dargs;
+    dargs.parent = hwnd;
+    dargs.withBorder = true;
+    dargs.font = font;
+    dargs.text = pngPath;
+    dargs.isRtl = IsUIRtl();
+    destEdit = new Edit();
+    destEdit->Create(dargs);
+    destRow->AddChild(destEdit, 1);
+
+    {
+        auto* dd = new DropDown();
+        DropDown::CreateArgs ddargs;
+        ddargs.parent = hwnd;
+        ddargs.font = font;
+        ddargs.isRtl = IsUIRtl();
+        dd->Create(ddargs);
+        StrVec items;
+        for (int i = 0; i < ConvertImageFormatCount(); i++) {
+            items.Append(kConvertImageFormats[i].label);
+        }
+        dd->SetItems(items);
+        CbSetCurrentSelection(dd, 0);
+        dd->SetColors(ThemeWindowTextColor(), ThemeWindowControlBackgroundColor());
+        dd->onSelectionChanged =
+            MkMethod0<SaveSelectionAsImageDialog, &SaveSelectionAsImageDialog::OnFormatChanged>(this);
+        dropFormat = dd;
+        destRow->AddChild(dropFormat);
+    }
+
+    browseBtn = NewButton(StrL("..."), false);
+    browseBtn->onClick =
+        MkMethod1<SaveSelectionAsImageDialog, VirtMouseEvent*, &SaveSelectionAsImageDialog::OnBrowseDest>(this);
+    destRow->AddChild(browseBtn);
+
+    if (pathLabel) {
+        pathLabel->padding.left = destEdit->GetLeftTextMargin();
+    }
+
+    HBox* dpiRow = AddRow();
+    dpiRow->gap = font->averageCharWidth;
+    dpiRow->AddChild(NewVirtText({.s = Tr("DPI:"), .font = font, .isRtl = IsUIRtl()}));
+
+    {
+        auto* dd = new DropDown();
+        DropDown::CreateArgs ddargs;
+        ddargs.parent = hwnd;
+        ddargs.font = font;
+        ddargs.isRtl = IsUIRtl();
+        dd->Create(ddargs);
+        StrVec items;
+        int selIdx = 0;
+        for (int i = 0; i < dimofi(kSaveSelectionDpiChoices); i++) {
+            items.Append(fmt("%d", kSaveSelectionDpiChoices[i]));
+            if (kSaveSelectionDpiChoices[i] == kSaveSelectionDefaultDpi) {
+                selIdx = i;
+            }
+        }
+        dd->SetItems(items);
+        CbSetCurrentSelection(dd, selIdx);
+        dd->SetColors(ThemeWindowTextColor(), ThemeWindowControlBackgroundColor());
+        dd->onSelectionChanged = MkMethod0<SaveSelectionAsImageDialog, &SaveSelectionAsImageDialog::OnDpiChanged>(this);
+        dropDpi = dd;
+        dpiRow->AddChild(dropDpi);
+    }
+
+    sizeLabel = NewVirtText({.s = StrL(""), .font = font, .isRtl = IsUIRtl()});
+    dpiRow->AddChild(sizeLabel, 1);
+
+    AddButtonsRow(Tr("Save"));
+    FinishDialog(destEdit);
+
+    destEdit->onTextChanged = MkMethod0<SaveSelectionAsImageDialog, &SaveSelectionAsImageDialog::UpdateSizeLabel>(this);
+    UpdateSizeLabel();
+    return true;
+}
+
+void ShowSaveSelectionAsImageDialog(MainWindow* win) {
+    if (!win || !win->IsDocLoaded()) {
+        return;
+    }
+    if (!HasPermission(Perm::CopySelection) || !CanAccessDisk()) {
+        return;
+    }
+    WindowTab* tab = win->CurrentTab();
+    if (!tab || !IsRectangularSelection(win)) {
+        return;
+    }
+    logf("ShowSaveSelectionAsImageDialog: opening for '%s'\n", tab->filePath);
+
+    auto* dlg = new SaveSelectionAsImageDialog();
     if (!dlg->Create(win, tab)) {
         delete dlg;
     }

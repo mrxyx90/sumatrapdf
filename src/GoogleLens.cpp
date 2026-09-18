@@ -64,7 +64,7 @@ static void AppendBase64(str::Builder& out, const u8* data, size_t size) {
 
 static bool WriteGoogleLensPage(WindowTab* tab, const u8* png, size_t pngSize) {
     if (pngSize == 0 || pngSize > kMaxGoogleLensPngBytes) {
-        GoogleLensNotify(tab, _TRA("The selected area is too large for Google Lens."));
+        GoogleLensNotify(tab, Tr("The selected area is too large for Google Lens."));
         return false;
     }
 
@@ -84,20 +84,20 @@ static bool WriteGoogleLensPage(WindowTab* tab, const u8* png, size_t pngSize) {
              "form.appendChild(i);document.body.appendChild(form);form.submit();</script>\n"));
 
     TempStr path = GetTempFilePathTemp(StrL("SumatraPDF-Lens"));
-    if (!path) {
-        GoogleLensNotify(tab, _TRA("Could not create a temporary file for Google Lens."));
+    if (len(path) == 0) {
+        GoogleLensNotify(tab, Tr("Could not create a temporary file for Google Lens."));
         return false;
     }
     TempStr htmlPath = str::JoinTemp(path, StrL(".html"));
     if (!file::Rename(htmlPath, path) || !file::WriteFile(htmlPath, ToStr(html))) {
         file::Delete(path);
         file::Delete(htmlPath);
-        GoogleLensNotify(tab, _TRA("Could not create a temporary file for Google Lens."));
+        GoogleLensNotify(tab, Tr("Could not create a temporary file for Google Lens."));
         return false;
     }
     if (!LaunchFileShell(htmlPath, {}, StrL("open"))) {
         file::Delete(htmlPath);
-        GoogleLensNotify(tab, _TRA("Could not open Google Lens in the web browser."));
+        GoogleLensNotify(tab, Tr("Could not open Google Lens in the web browser."));
         return false;
     }
     return true;
@@ -132,24 +132,44 @@ static bool EncodePng(RenderedBitmap* bitmap, Vec<u8>& out) {
     return ok;
 }
 
-void SearchWithGoogleLens(WindowTab* tab, IPageElement* imageElement, int pageNo) {
+enum class GoogleLensSrc {
+    Auto,
+    Selection,
+    Page,
+    Image
+};
+
+static void SearchGoogleLensSrc(WindowTab* tab, GoogleLensSrc src, IPageElement* imageElement, int pageNo) {
     if (!tab || !tab->win || !HasPermission(Perm::InternetAccess) || !HasPermission(Perm::CopySelection)) {
         return;
     }
     DisplayModel* dm = tab->AsFixed();
     if (!dm) {
-        GoogleLensNotify(tab, _TRA("Google Lens is only available for document pages."));
+        GoogleLensNotify(tab, Tr("Google Lens is only available for document pages."));
         return;
     }
 
     RenderedBitmap* bitmap = nullptr;
     bool isImage = imageElement && imageElement->Is(kindPageElementImage);
-    if (isImage) {
-        bitmap = dm->GetEngine()->GetImageForPageElement(imageElement);
-    } else if (dm->GetEngine()->kind != kindEngineImage && tab->selectionOnPage && len(*tab->selectionOnPage) > 0) {
+    if (src == GoogleLensSrc::Image || (src == GoogleLensSrc::Auto && isImage)) {
+        if (isImage) {
+            bitmap = dm->GetEngine()->GetImageForPageElement(imageElement);
+        } else if (src == GoogleLensSrc::Image && dm->GetEngine()->kind != kindEngineImage) {
+            GoogleLensNotify(tab, Tr("No image under the cursor."));
+            return;
+        }
+    }
+
+    bool wantSel = src == GoogleLensSrc::Selection ||
+                   (src == GoogleLensSrc::Auto && !bitmap && dm->GetEngine()->kind != kindEngineImage &&
+                    tab->selectionOnPage && len(*tab->selectionOnPage) > 0);
+    if (!bitmap && wantSel && tab->selectionOnPage && len(*tab->selectionOnPage) > 0) {
         bitmap = RenderSelectionsAsRenderedBitmap(dm, *tab->selectionOnPage);
     }
-    if (!bitmap && !isImage) {
+
+    bool wantPage =
+        src == GoogleLensSrc::Page || src == GoogleLensSrc::Auto || (src == GoogleLensSrc::Image && !bitmap);
+    if (!bitmap && wantPage) {
         if (pageNo <= 0) {
             pageNo = dm->CurrentPageNo();
         }
@@ -161,7 +181,7 @@ void SearchWithGoogleLens(WindowTab* tab, IPageElement* imageElement, int pageNo
         }
     }
     if (!bitmap) {
-        GoogleLensNotify(tab, _TRA("Could not render the page for Google Lens."));
+        GoogleLensNotify(tab, Tr("Could not render the page for Google Lens."));
         return;
     }
 
@@ -169,8 +189,24 @@ void SearchWithGoogleLens(WindowTab* tab, IPageElement* imageElement, int pageNo
     bool ok = EncodePng(bitmap, png);
     delete bitmap;
     if (!ok) {
-        GoogleLensNotify(tab, _TRA("Could not encode the page for Google Lens."));
+        GoogleLensNotify(tab, Tr("Could not encode the page for Google Lens."));
         return;
     }
     WriteGoogleLensPage(tab, png.els, len(png));
+}
+
+void SearchWithGoogleLens(WindowTab* tab, IPageElement* imageElement, int pageNo) {
+    SearchGoogleLensSrc(tab, GoogleLensSrc::Auto, imageElement, pageNo);
+}
+
+void SearchGoogleLensSelection(WindowTab* tab) {
+    SearchGoogleLensSrc(tab, GoogleLensSrc::Selection, nullptr, 0);
+}
+
+void SearchGoogleLensPage(WindowTab* tab, int pageNo) {
+    SearchGoogleLensSrc(tab, GoogleLensSrc::Page, nullptr, pageNo);
+}
+
+void SearchGoogleLensImage(WindowTab* tab, IPageElement* imageElement) {
+    SearchGoogleLensSrc(tab, GoogleLensSrc::Image, imageElement, 0);
 }

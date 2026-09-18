@@ -5,7 +5,7 @@
 #include <locale.h>
 
 // must be last due to assert() over-write
-#include "base/UtAssert.h"
+#include "base/tests/UtAssert.h"
 
 using str::FormatTemp;
 
@@ -263,6 +263,53 @@ static void testUnterminatedPositional() {
     check(FormatTemp("{1"), StrL("{1")); // no '%': raw text, not a directive
 }
 
+// Fmt holds 32 instructions and no more. Every parser that adds one has to
+// check that, or a format string with more directives than that walks off the
+// end of the array into the fields behind it. A translated format string is
+// runtime input, so this is reachable.
+static void testMoreDirectivesThanFit() {
+    check(FormatTemp("a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%"
+                     "a%%a%%a%%"),
+          StrL(""));
+    check(FormatTemp("a%%b%%c"), StrL("a%b%c"));
+
+    // The same past the array with % specs, which parse down a different path
+    // than the literals do: thirty-four directives, all of them fed.
+    check(
+        FormatTemp("%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d", 1, 2, 3, 4, 5, 6, 7, 8, 9,
+                   10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34),
+        StrL(""));
+    // And thirty-two of them, which is the most that fits, still formats.
+    utassert(FormatTemp("%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d", 1, 2, 3, 4, 5, 6, 7, 8, 9,
+                        10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32)
+                 .len > 0);
+}
+
+// Every conversion but %s goes through a 256-byte buffer in Fmt. A field too
+// wide for it is written straight into the answer instead, so the width says
+// what it says rather than being cut to 255 characters with nothing to say so.
+static void testFieldWiderThanTheScratchBuffer() {
+    Str s = FormatTemp("%500d", 1);
+    utassert(s.len == 500);
+    utassert(s.s[0] == ' ' && s.s[498] == ' ' && s.s[499] == '1');
+    check(s, fmtRef("%500d", 1));
+
+    // what follows the wide field is still appended after it
+    Str after = FormatTemp("%500d|", 1);
+    utassert(after.len == 501 && after.s[500] == '|');
+
+    // a precision, which is the other way to outgrow the buffer
+    Str precise = FormatTemp("%.400f", 0.5);
+    utassert(precise.len == 402);
+    check(precise, fmtRef("%.400f", 0.5));
+
+    // two of them in one format, so the second is not written over the first:
+    // the answer grows, it is not a buffer being reused
+    Str both = FormatTemp("%300d;%300d", 1, 2);
+    utassert(both.len == 601 && both.s[300] == ';');
+    utassert(both.s[299] == '1' && both.s[600] == '2');
+}
+
 void StrFormatTest() {
     testStrings();
     testChars();
@@ -276,4 +323,6 @@ void StrFormatTest() {
     testPositional();
     testAnyType();
     testUnterminatedPositional();
+    testMoreDirectivesThanFit();
+    testFieldWiderThanTheScratchBuffer();
 }

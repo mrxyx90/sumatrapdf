@@ -34,7 +34,7 @@
 #include "FilterHighlightDraw.h"
 #include "Translations.h"
 #include "Theme.h"
-#include "DarkMode_win.h"
+#include "DarkMode.h"
 #include "FindWindow.h"
 
 // command ids for the window's toolbar buttons (handled in OnCommand)
@@ -222,7 +222,7 @@ static void DeferredGoToFindMatch(DeferredGoToFindMatchData* d) {
 // append a command's keyboard shortcut to its tooltip, e.g. "Find Next (F3)"
 static TempStr AppendCmdAccel(Str base, int cmd) {
     TempStr accel = AppendAccelKeyToMenuStringTemp({}, cmd);
-    if (!accel) {
+    if (len(accel) == 0) {
         return base;
     }
     return str::JoinTemp(base, fmt(" (%s)", Str(accel.s + 1, len(accel) - 1))); // +1 skips the leading \t
@@ -231,15 +231,15 @@ static TempStr AppendCmdAccel(Str base, int cmd) {
 static TempStr FindWindowButtonTooltip(int cmd) {
     switch (cmd) {
         case CmdFindPrev:
-            return AppendCmdAccel(_TRA("Find Previous"), cmd);
+            return AppendCmdAccel(Tr("Find Previous"), cmd);
         case CmdFindNext:
-            return AppendCmdAccel(_TRA("Find Next"), cmd);
+            return AppendCmdAccel(Tr("Find Next"), cmd);
         case CmdFindToggleMatchCase:
-            return AppendCmdAccel(_TRA("Match Case"), cmd);
+            return AppendCmdAccel(Tr("Match Case"), cmd);
         case CmdFindToggleMatchWholeWord:
-            return AppendCmdAccel(_TRA("Match Whole Word"), cmd);
+            return AppendCmdAccel(Tr("Match Whole Word"), cmd);
         case kFindWinPinCmdId:
-            return _TRA("Dock to toolbar");
+            return Tr("Dock to toolbar");
     }
     return {};
 }
@@ -312,7 +312,7 @@ bool FindWindowWnd::Create(MainWindow* mainWin) {
     {
         CreateCustomArgs args;
         args.visible = false;
-        args.title = _TRA("Find");
+        args.title = Tr("Find");
         // WS_CLIPCHILDREN neutralizes CS_PARENTDC of the standard controls
         // (their DCs get clipped to the control, not to this window), so e.g.
         // the results listbox can't paint its partially visible bottom row
@@ -340,7 +340,7 @@ bool FindWindowWnd::Create(MainWindow* mainWin) {
         edit = new DropDown();
         edit->SetColors(colTxt, colBg);
         edit->Create(args);
-        CbSetCueBanner(edit, _TRA("Find"));
+        CbSetCueBanner(edit, Tr("Find"));
         edit->onTextChanged = MkMethod0<FindWindowWnd, &FindWindowWnd::OnTextChanged>(this);
         edit->onCloseUp = MkMethod0<FindWindowWnd, &FindWindowWnd::OnHistoryCommitted>(this);
         ApplyFindHistory(edit);
@@ -528,9 +528,7 @@ void FindWindowWnd::RefreshResults(bool allowNavigation) {
     if (len(term) == 0) {
         term = win->findEdit ? win->findEdit->GetTextTemp() : TempStr{};
     }
-    if (len(term) > 0) {
-        filterWords.Append(term);
-    }
+    filterWords.AppendNonEmpty(term);
     results->SetModel(results->model); // the model is live; re-read it
     // keep a result selected so it's visible as you type and Next/Prev have a
     // sensible starting point.
@@ -801,7 +799,7 @@ void FindWindowWnd::UpdatePagesLabel() {
         n = std::max(win->ctrl->PageCount(), 1);
     }
     if (pagesLabel) {
-        pagesLabel->SetText(fmt(_TRA("Limit to pages 1-%d:").s, n));
+        pagesLabel->SetText(fmt(Tr("Limit to pages 1-%d:").s, n));
     }
 }
 
@@ -1077,7 +1075,7 @@ void ShowFindWindow(MainWindow* win) {
     // Hidden-window DPI queries keep the caller's scale; use the monitor we
     // actually placed the window on (issue #5998).
     Rect wr = HwndWindowRect(w->hwnd);
-    w->UpdateDpi(DpiGetForPoint(wr.x + wr.dx / 2, wr.y + wr.dy / 2));
+    w->UpdateDpi(DpiGetForPoint(wr.x + (wr.dx / 2), wr.y + (wr.dy / 2)));
     w->Layout();
     ShowWindow(w->hwnd, SW_SHOW);
     win->findEdit->SetFocus();

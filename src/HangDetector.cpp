@@ -18,7 +18,6 @@
 #include "base/Win.h"
 
 #include "SumatraConfig.h"
-#include "CrashHandler.h"
 #include "HangDetector.h"
 
 // how long the UI thread can ignore our ping before we call it blocked
@@ -50,18 +49,9 @@ bool IsUiHangDetectorRunning() {
     return gWatchdogThread != nullptr;
 }
 
-// Symbols: prefer a .pdb next to the .exe (what a local build has), then
-// whatever the crash handler downloaded into gSymbolsDir.
+// Symbols: the .pdb next to the .exe, which only a local build has.
 static bool EnsureSymbols() {
-    Arena* a = GetTempArena();
-    str::Builder symPath;
-    str::BuilderReserve(nullptr, symPath, 1024);
-    str::BuilderAppend(a, symPath, GetSelfExeDirTemp());
-    if (len(gSymbolsDir) > 0) {
-        str::BuilderAppend(a, symPath, StrL(";"));
-        str::BuilderAppend(a, symPath, gSymbolsDir);
-    }
-    TempWStr ws = ToWStrTemp(ToStrTemp(symPath));
+    TempWStr ws = ToWStrTemp(GetSelfExeDirTemp());
     if (!dbghelp::Initialize(ws, false)) {
         return false;
     }
@@ -161,7 +151,7 @@ static void ReportHang(double blockedMs) {
 
     gHangReportsLeft--;
     str::Builder s;
-    str::BuilderReserve(nullptr, s, 8 * 1024);
+    s.Reserve(8 * 1024);
     int nSkipped = 0;
     for (int i = 0; i < nThreads; i++) {
         ThreadStack& ts = gStacks[i];
@@ -170,9 +160,9 @@ static void ReportHang(double blockedMs) {
             continue;
         }
         str::Builder cs;
-        str::BuilderReserve(nullptr, cs, 2048);
+        cs.Reserve(2048);
         for (int j = 0; j < ts.nAddrs; j++) {
-            dbghelp::GetAddressInfo(nullptr, cs, (DWORD64)ts.addrs[j], false);
+            dbghelp::GetAddressInfo(cs, (DWORD64)ts.addrs[j], false);
         }
         Str csStr = ToStr(cs);
         if (!IsOurThread(ts.tid, csStr)) {

@@ -64,7 +64,7 @@ void ApplyExplorerQuickLookChrome(MainWindow* win) {
     if (dy < 300) {
         dy = work.dy;
     }
-    Rect r{work.x + (work.dx - dx) / 2, work.y + (work.dy - dy) / 2, dx, dy};
+    Rect r{work.x + ((work.dx - dx) / 2), work.y + ((work.dy - dy) / 2), dx, dy};
     HwndMoveWindow(hwnd, &r);
     SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     ShowOrHideToolbar(win);
@@ -74,7 +74,7 @@ void ApplyExplorerQuickLookChrome(MainWindow* win) {
 }
 
 static bool PathIsSupportedPreview(Str path) {
-    if (!path || !file::Exists(path)) {
+    if (len(path) == 0 || !file::Exists(path)) {
         return false;
     }
     FileType kind = GuessFileTypeFromFile(path);
@@ -82,7 +82,7 @@ static bool PathIsSupportedPreview(Str path) {
 }
 
 void ShowExplorerQuickLook(Str path) {
-    if (!path) {
+    if (len(path) == 0) {
         return;
     }
     TempStr norm = path::NormalizeTemp(path);
@@ -123,7 +123,7 @@ void ShowExplorerQuickLook(Str path) {
 }
 
 bool SendExplorerQuickLookToExisting(HWND hwnd, Str path) {
-    if (!hwnd || !path || !IsWindow(hwnd)) {
+    if (!hwnd || len(path) == 0 || !IsWindow(hwnd)) {
         return false;
     }
     TempStr pathZ = str::DupTemp(path);

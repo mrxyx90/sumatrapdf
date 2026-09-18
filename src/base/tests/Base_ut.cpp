@@ -4,7 +4,7 @@
 #include "base/Base.h"
 
 // must be last due to assert() over-write
-#include "base/UtAssert.h"
+#include "base/tests/UtAssert.h"
 
 struct TestFn0Data {
     int n = 0;
@@ -284,6 +284,38 @@ static void ColorTest() {
     utassert(!diamond.Contains({0, 0}));
 }
 
+// An allocation bigger than a block gets a block sized for it alone, and that
+// block stays the current one. The next small allocation chains off it and
+// must not inherit its size: reserving is cheap, but a block made for a big
+// allocation commits everything it reserves, so inheriting would commit the
+// whole of it for a handful of bytes.
+static void ArenaChainedBlockSizeTest() {
+    Arena* a = ArenaNew();
+    utassert(a != nullptr);
+    u64 reserveChunk = a->reserveChunkSize;
+    u64 commitChunk = a->commitChunkSize;
+    utassert(reserveChunk > 0 && commitChunk > 0);
+
+    // one allocation too big for a block of the usual size
+    void* big = a->Push(reserveChunk + 4096, 8, false);
+    utassert(big != nullptr);
+    utassert(a->current->reserved > reserveChunk);
+    utassert(a->current != a);
+
+    // fill what page alignment left over at the end of it, so the next push
+    // is the one that chains
+    u64 left = a->current->reserved - a->current->pos;
+    if (left > 0) {
+        utassert(a->Push(left, 1, false) != nullptr);
+    }
+
+    void* tail = a->Push(64, 8, false);
+    utassert(tail != nullptr);
+    utassert(a->current->reserved == reserveChunk);
+    utassert(a->current->committed == commitChunk);
+    ArenaDelete(a);
+}
+
 static void ArenaPtrCompressTest() {
     // Single-block round-trip
     {
@@ -364,6 +396,7 @@ void BaseUtilTest() {
     Func1FromFunc0Test();
     Func1ListTest();
     ColorTest();
+    ArenaChainedBlockSizeTest();
     ArenaPtrCompressTest();
 
     size_t n = dimof(roundUpTestCases) / 2;
@@ -383,6 +416,20 @@ void BaseUtilTest() {
     utassert(RoundToPowerOf2(15) == 16);
     utassert(RoundToPowerOf2((1 << 13) + 1) == (1 << 14));
     utassert(RoundToPowerOf2((1 << 30) + 1) == -1); // overflow: no power of 2 fits in an int
+
+    utassert(WCharToLower('A') == 'a');
+    utassert(WCharToLower('Z') == 'z');
+    utassert(WCharToLower('a') == 'a');
+    utassert(WCharToLower('0') == '0');
+    utassert(WCharToLower(0x00C9) == 0x00E9); // É -> é
+    utassert(WCharToLower(0x0410) == 0x0430); // А -> а
+
+    utassert(FoldCaseRune(0x0130) == 'i');       // İ -> i
+    utassert(FoldDiacriticsRune(0x00E9) == 'e'); // é -> e
+    utassert(FoldDiacriticsRune(0x0141) == 'L'); // Ł -> L
+    utassert(FoldDiacriticsRune(0x0105) == 'a'); // ą -> a
+    utassert(FoldDiacriticsRune(0x0430) == 0x0430);
+    utassert(IsCombiningMark(0x0301));
 
     utassert(MurmurHash2(nullptr, 0) == 0);
     utassert(MurmurHash2("test", 4) != MurmurHash2("Test", 4));

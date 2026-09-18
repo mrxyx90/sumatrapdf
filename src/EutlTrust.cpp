@@ -27,7 +27,7 @@ constexpr int kMaxXmlBytes = 8 * 1024 * 1024;
 
 static TempStr EutlCachePathTemp() {
     TempStr dir = GetSumatraDataDirTemp();
-    if (!dir) {
+    if (len(dir) == 0) {
         return {};
     }
     return path::JoinTemp(dir, StrL("eutl-certs.sha256"));
@@ -35,7 +35,7 @@ static TempStr EutlCachePathTemp() {
 
 static TempStr EutlStampPathTemp() {
     TempStr dir = GetSumatraDataDirTemp();
-    if (!dir) {
+    if (len(dir) == 0) {
         return {};
     }
     return path::JoinTemp(dir, StrL("eutl-certs.txt"));
@@ -58,10 +58,9 @@ static void CollectTagContents(Str xml, Str openNeedle, Str closeNeedle, StrVec&
         if (close < 0) {
             break;
         }
-        Str val = str::TrimWs(Str(body.s, close));
-        if (len(val) > 0) {
-            out.Append(val);
-        }
+        Str val(body.s, close);
+        str::TrimWsBoth(val);
+        out.AppendNonEmpty(val);
         rest = Str(body.s + close, body.len - close);
     }
 }
@@ -98,6 +97,19 @@ static void AddCertFingerprint(Str der, StrVec& fps) {
     }
 }
 
+// LOTL TSLLocation lists XML TSLs and PDF copies. Fetch XML only
+// (.xml, .xtsl, or names like TSLDK_v6xml).
+static bool IsXmlTslUrl(Str url) {
+    int cut = str::IndexOfChar(url, '?');
+    if (cut < 0) {
+        cut = str::IndexOfChar(url, '#');
+    }
+    if (cut >= 0) {
+        url = Str(url.s, cut);
+    }
+    return str::EndsWithI(url, StrL("xml")) || str::EndsWithI(url, StrL("xtsl"));
+}
+
 static bool HttpGetBounded(Str url, str::Builder& out) {
     HttpRsp rsp;
     if (!HttpGet(url, &rsp) || !IsHttpRspOk(&rsp)) {
@@ -128,7 +140,7 @@ bool EutlCertIsEuTrusted(const u8* der, int derLen) {
         return false;
     }
     TempStr path = EutlCachePathTemp();
-    if (!path || !file::Exists(path)) {
+    if (len(path) == 0 || !file::Exists(path)) {
         return false;
     }
     Str cache = file::ReadFile(path);
@@ -150,7 +162,7 @@ bool EutlCacheExists() {
 
 TempStr EutlCacheInfoTemp() {
     TempStr stamp = EutlStampPathTemp();
-    if (!stamp || !file::Exists(stamp)) {
+    if (len(stamp) == 0 || !file::Exists(stamp)) {
         return StrL("EU trusted list not downloaded");
     }
     Str s = file::ReadFile(stamp);
@@ -174,7 +186,7 @@ bool EutlUpdate(Str* errOut) {
     int fetched = 0;
     for (int i = 0; i < len(tslUrls) && fetched < kMaxTslLists; i++) {
         Str url = tslUrls[i];
-        if (!str::StartsWithI(url, StrL("http"))) {
+        if (!str::StartsWithI(url, StrL("http")) || !IsXmlTslUrl(url)) {
             continue;
         }
         str::Builder tsl;
@@ -201,7 +213,7 @@ bool EutlUpdate(Str* errOut) {
     }
     TempStr cachePath = EutlCachePathTemp();
     TempStr stampPath = EutlStampPathTemp();
-    if (!cachePath || !dir::CreateForFile(cachePath)) {
+    if (len(cachePath) == 0 || !dir::CreateForFile(cachePath)) {
         if (errOut) {
             *errOut = str::Dup(StrL("could not write the EUTL cache"));
         }

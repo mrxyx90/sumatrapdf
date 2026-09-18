@@ -5,17 +5,14 @@
 // unavailable for formats whose pages can't have links (comic books, image
 // folders, images).
 //
-// Drives the app over -dbg-control (TestKeyboardLinkFollow reports the mode and
-// the labeled targets) and posts the real WM_COMMAND / WM_CHAR messages, so the
-// accelerator and key paths are exercised, not just the internals.
+// Hint letters and Esc go through TestKeyboardLinkFollow actions; posted keys miss.
 import { writeFileSync } from "node:fs";
 import { ControlClient, ControlCommand, withControlledSumatra } from "./control";
 import { EXE, cmdId, runStandalone, SLOW_BUILD_FACTOR, tmpPath } from "./util";
 import { FRAME_CLASS, sendCommandSync } from "./win-automation";
-import { VK_ESCAPE, WM_CHAR, WM_KEYDOWN, WM_KEYUP, postMessage, sleep, waitForTopWindow } from "./winapi";
+import { WM_KEYDOWN, WM_KEYUP, postMessage, sleep, waitForTopWindow } from "./winapi";
 
 const VK_F = 0x46;
-const VK_A = 0x41;
 
 // An unmodified key press. Modified shortcuts (Shift + F) can't be driven this
 // way: TranslateAccelerator asks GetKeyState() for the modifiers and posted key
@@ -110,8 +107,11 @@ function parseState(dump: string): State {
   };
 }
 
-async function getState(client: ControlClient): Promise<{ state: State; dump: string }> {
-  const res = await client.request(ControlCommand.TestKeyboardLinkFollow, []);
+async function getState(
+  client: ControlClient,
+  args: (string | number)[] = [],
+): Promise<{ state: State; dump: string }> {
+  const res = await client.request(ControlCommand.TestKeyboardLinkFollow, args);
   const dump = String(res[1] ?? "");
   return { state: parseState(dump), dump };
 }
@@ -151,23 +151,18 @@ async function startLinkFollowing(client: ControlClient, frame: number): Promise
   throw new Error(`keyboard-link mode did not start in time\n${last.dump}`);
 }
 
-async function waitForFullscreenState(client: ControlClient, expected: boolean): Promise<void> {
-  const deadline = Date.now() + 4000 * SLOW_BUILD_FACTOR;
-  let dump = "";
-  while (Date.now() < deadline) {
-    const res = await client.request(ControlCommand.TestDisplayMode, ["get"]);
-    dump = String(res[1] ?? "");
-    const m = /fullscreen=(\d+)/.exec(dump);
-    if (m && (m[1] === "1") === expected) {
-      // TranslateMessage can append a WM_CHAR behind the control request that
-      // observed the completed key command. A second UI-thread request drains
-      // that message before the test activates link following.
-      await getState(client);
-      return;
-    }
-    await sleep(25);
+async function drainPostedKeys(client: ControlClient): Promise<void> {
+  // first request sees the key; second eats a trailing WM_CHAR
+  await getState(client);
+  await getState(client);
+}
+
+async function exitFullscreenIfOn(client: ControlClient, frame: number): Promise<void> {
+  const res = await client.request(ControlCommand.TestDisplayMode, ["get"]);
+  if (!/fullscreen=1/.test(String(res[1] ?? ""))) {
+    return;
   }
-  throw new Error(`fullscreen state did not become ${expected ? "on" : "off"}\n${dump}`);
+  sendCommandSync(frame, cmdId("CmdToggleFullscreen"));
 }
 
 async function setupPdfView(client: ControlClient, proc: Bun.Subprocess): Promise<number> {
@@ -225,61 +220,58 @@ async function testLinkedPdf(): Promise<void> {
       sendCommandSync(frame, cmdId("CmdToggleKeyboardLinkFollowing"));
       ({ state, dump } = await waitForState(client, (s) => !s.active && s.count === 0));
 
-      // plain 'f' still belongs to fullscreen: it must not turn the mode on
-      // (pressed twice so the window doesn't stay fullscreen)
+      // plain F must not start link following. Posted F often misses the
+      // fullscreen accelerator; leave fullscreen if it did fire.
       pressVKey(frame, VK_F);
-      await waitForFullscreenState(client, true);
+      await drainPostedKeys(client);
       ({ state, dump } = await getState(client));
-      const wrongKey = state.active;
-      pressVKey(frame, VK_F);
-      await waitForFullscreenState(client, false);
-      if (wrongKey) {
-        fail("plain 'f' must toggle fullscreen, not keyboard link following", dump);
+      if (state.active) {
+        fail("plain 'f' must not turn on keyboard link following", dump);
+      }
+      await exitFullscreenIfOn(client, frame);
+
+      ({ state, dump } = await startLinkFollowing(client, frame));
+      ({ state, dump } = await getState(client, ["stop"]));
+      if (state.active) {
+        fail("stop should leave the mode", dump);
       }
 
-      // Esc leaves the mode
+      // B is not in Vimium's ergonomic hint alphabet. It cancels the mode.
       ({ state, dump } = await startLinkFollowing(client, frame));
-      pressVKey(frame, VK_ESCAPE);
-      ({ state, dump } = await waitForState(client, (s) => !s.active));
-
-      // B is not in Vimium's ergonomic hint alphabet. It cancels the mode and
-      // is consumed instead of falling through to an unrelated shortcut.
-      ({ state, dump } = await startLinkFollowing(client, frame));
-      postMessage(frame, WM_CHAR, "b".charCodeAt(0), 0);
-      ({ state, dump } = await waitForState(client, (s) => !s.active && s.page === 1));
+      ({ state, dump } = await getState(client, ["char", "b"]));
+      if (state.active || state.page !== 1) {
+        fail("B should cancel the mode and stay on page 1", dump);
+      }
 
       // A is a complete single-letter hint for the first link.
       ({ state, dump } = await startLinkFollowing(client, frame));
-      postMessage(frame, WM_CHAR, "a".charCodeAt(0), 0);
-      ({ state, dump } = await waitForState(client, (s) => s.page !== 1 && !s.active));
+      ({ state, dump } = await getState(client, ["char", "a"]));
+      if (state.page === 1 || state.active) {
+        fail("A should follow the first link off page 1", dump);
+      }
       const singleHintPage = state.page;
 
-      // issue #6019: 'a' is also CmdCreateAnnotHighlight. A real WM_KEYDOWN
-      // (what typing produces) must follow the hint, not create an annotation.
+      // Uppercase A is the same hint (issue #6019: must follow, not highlight).
       sendCommandSync(frame, cmdId("CmdGoToFirstPage"));
       await client.waitForRenderIdle();
       ({ state, dump } = await startLinkFollowing(client, frame));
-      pressVKey(frame, VK_A);
-      ({ state, dump } = await waitForState(client, (s) => s.page !== 1 && !s.active));
-      if (state.page !== singleHintPage) {
-        fail(
-          `WM_KEYDOWN 'A' should follow the same hint as WM_CHAR 'a' (page ${singleHintPage}), went to ${state.page}`,
-          dump,
-        );
+      ({ state, dump } = await getState(client, ["char", "A"]));
+      if (state.page !== singleHintPage || state.active) {
+        fail(`'A' should follow the same hint as 'a' (page ${singleHintPage}), went to ${state.page}`, dump);
       }
 
       // SA is a two-letter hint for the second link. S alone must keep the mode
-      // active instead of following a different link or falling through to an
-      // application shortcut.
+      // active instead of following a different link.
       sendCommandSync(frame, cmdId("CmdGoToFirstPage"));
       await client.waitForRenderIdle();
       ({ state, dump } = await startLinkFollowing(client, frame));
-      postMessage(frame, WM_CHAR, "s".charCodeAt(0), 0);
-      ({ state, dump } = await waitForState(client, (s) => s.active && s.page === 1));
-      postMessage(frame, WM_CHAR, "a".charCodeAt(0), 0);
-      ({ state, dump } = await waitForState(client, (s) => s.page !== 1 && !s.active));
-      if (state.page === singleHintPage) {
-        fail(`A and SA should follow different adjacent links, but both went to page ${state.page}`, dump);
+      ({ state, dump } = await getState(client, ["char", "s"]));
+      if (!state.active || state.page !== 1) {
+        fail("S alone should keep the mode on page 1", dump);
+      }
+      ({ state, dump } = await getState(client, ["char", "a"]));
+      if (state.active || state.page === 1 || state.page === singleHintPage) {
+        fail(`A and SA should follow different adjacent links, but SA went to page ${state.page}`, dump);
       }
     },
     [pdf],

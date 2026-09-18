@@ -55,10 +55,10 @@ static void TocCustomizeTooltip(TreeView::GetTooltipEvent* ev) {
         return;
     }
     Str path = PageDestGetValue(link);
-    if (!path) {
+    if (len(path) == 0) {
         path = tocItem->title;
     }
-    if (!path) {
+    if (len(path) == 0) {
         return;
     }
     const auto* k = link->GetKind();
@@ -91,7 +91,7 @@ static void TocCustomizeTooltip(TreeView::GetTooltipEvent* ev) {
     }
 
     if (kindDestinationLaunchEmbedded == k || kindDestinationAttachment == k) {
-        TempStr tmp = fmt(_TRA("Attachment: %s").s, path);
+        TempStr tmp = fmt(Tr("Attachment: %s").s, path);
         infotip.Append(tmp);
     } else {
         infotip.Append(path);
@@ -115,7 +115,7 @@ static IPageDestination* SnapshotDestForDeferredNav(IPageDestination* dest, int 
     Kind k = dest->GetKind();
     if (k == kindDestinationLaunchURL) {
         Str url = ((PageDestinationURL*)dest)->url;
-        if (!url) {
+        if (len(url) == 0) {
             url = PageDestGetValue(dest);
         }
         return url ? new PageDestinationURL(url) : nullptr;
@@ -217,7 +217,7 @@ static TocItem* FindTocItemByTitlePage(TocItem* item, Str title, int pageNo) {
             if (pageNo <= 0 || item->pageNo == pageNo) {
                 return item;
             }
-        } else if (!title && pageNo > 0 && item->pageNo == pageNo) {
+        } else if (len(title) == 0 && pageNo > 0 && item->pageNo == pageNo) {
             return item;
         }
         TocItem* found = FindTocItemByTitlePage(item->child, title, pageNo);
@@ -704,11 +704,11 @@ static void UpdateDocTocExpansionStateRecur(TreeView* treeView, Vec<int>& tocSta
     while (tocItem) {
         // items without children cannot be toggled
         if (tocItem->child) {
-            // we have to query the state of the tree view item because
-            // isOpenToggled is not kept in sync
-            // TODO: keep toggle state on TocItem in sync
-            // by subscribing to the right notifications
-            bool isExpanded = treeView->IsExpanded((TreeItem)tocItem);
+            // Query loaded items; unloaded ones retain their saved model state.
+            bool isExpanded = tocItem->IsExpanded();
+            if (tocItem->userData) {
+                isExpanded = treeView->IsExpanded((TreeItem)tocItem);
+            }
             bool wasToggled = isExpanded != tocItem->isOpenDefault;
             if (wasToggled) {
                 VecAppend(tocState, tocItem->id);
@@ -897,7 +897,7 @@ static void TocCollapseAll(TreeView* tv) {
     TocExpandToLevel(tv, 1);
     HWND hwnd = tv->hwnd;
     HTREEITEM root = TreeView_GetRoot(hwnd);
-    if (root && !TreeView_GetNextSibling(hwnd, root) && TreeView_GetChild(hwnd, root)) {
+    if (root && !TreeView_GetNextSibling(hwnd, root) && tv->treeModel->ChildCount(tv->GetTreeItemByHandle(root)) > 0) {
         TreeView_Expand(hwnd, root, TVE_EXPAND);
     }
 }
@@ -936,31 +936,31 @@ static void TocCollapseSameLevel(TreeView* tv, TreeItem ti) {
 // clang-format off
 static MenuDef menuDefContextToc[] = {
     {
-        _TRN("Expand All"),
+        TrN("Expand All"),
         CmdExpandAll,
     },
     {
-        _TRN("Collapse All"),
+        TrN("Collapse All"),
         CmdCollapseAll,
     },
     {
-        _TRN("Expand to Level 1"),
+        TrN("Expand to Level 1"),
         CmdTocExpandToLevel1,
     },
     {
-        _TRN("Expand to Level 2"),
+        TrN("Expand to Level 2"),
         CmdTocExpandToLevel2,
     },
     {
-        _TRN("Expand to Level 3"),
+        TrN("Expand to Level 3"),
         CmdTocExpandToLevel3,
     },
     {
-        _TRN("Collapse Same Level"),
+        TrN("Collapse Same Level"),
         CmdTocCollapseSameLevel,
     },
     {
-        _TRN("Expand to Current Page"),
+        TrN("Expand to Current Page"),
         CmdExpandToCurrentPage,
     },
     {
@@ -968,19 +968,19 @@ static MenuDef menuDefContextToc[] = {
         0,
     },
     {
-        _TRN("Open Embedded PDF"),
+        TrN("Open Embedded PDF"),
         CmdOpenEmbeddedPDF,
     },
     {
-        _TRN("Save Embedded File..."),
+        TrN("Save Embedded File..."),
         CmdSaveEmbeddedFile,
     },
     {
-        _TRN("Open Attachment"),
+        TrN("Open Attachment"),
         CmdOpenAttachment,
     },
     {
-        _TRN("Save Attachment..."),
+        TrN("Save Attachment..."),
         CmdSaveAttachment,
     },
     // note: strings cannot be "" or else items are not there
@@ -1063,20 +1063,26 @@ static void TocContextMenu(ContextMenuEvent* ev) {
     }
 
     if (pageNo > 0) {
-        TempStr pageLabel = win->ctrl->GetPageLabeTemp(pageNo);
         bool isBookmarked = IsPageInFavorites(filePath, pageNo, win->ctrl);
+
+        TempStr addText;
+        TempStr delText;
+        if (win->ctrl->HasChapters()) {
+            Location loc = win->ctrl->LocationFromPageNo(pageNo);
+            addText = fmt(Tr("Add chapter %d page %d to favorites").s, loc.chapter, loc.page);
+            delText = fmt(Tr("Remove chapter %d page %d from favorites").s, loc.chapter, loc.page);
+        } else {
+            TempStr pageLabel = win->ctrl->GetPageLabeTemp(pageNo);
+            addText = fmt(Tr("Add page %s to favorites").s, pageLabel);
+            delText = fmt(Tr("Remove page %s from favorites").s, pageLabel);
+        }
+
         if (isBookmarked) {
             MenuRemove(popup, CmdFavoriteAdd);
-
-            // %s and not %d because re-using translation from RebuildFavMenu()
-            Str tr = _TRA("Remove page %s from favorites");
-            TempStr s = fmt(tr.s, pageLabel);
-            MenuSetText(popup, CmdFavoriteDel, s);
+            MenuSetText(popup, CmdFavoriteDel, delText);
         } else {
             MenuRemove(popup, CmdFavoriteDel);
-            // %s and not %d because re-using translation from RebuildFavMenu()
-            TempStr s = fmt(_TRA("Add page %s to favorites").s, pageLabel);
-            s = AppendAccelKeyToMenuStringTemp(s, CmdFavoriteAdd);
+            TempStr s = AppendAccelKeyToMenuStringTemp(addText, CmdFavoriteAdd);
             MenuSetText(popup, CmdFavoriteAdd, s);
         }
     } else {
@@ -1301,7 +1307,7 @@ static bool HasTocFilter(MainWindow* win) {
 // page label, and multi-match "current page" highlight (issue #4642).
 static void DrawTocItemPostPaint(TreeView::CustomDrawEvent* ev, MainWindow* win) {
     TocItem* tocItem = (TocItem*)ev->treeItem;
-    if (!tocItem || !tocItem->title) {
+    if (!tocItem || len(tocItem->title) == 0) {
         return;
     }
 
@@ -1347,7 +1353,7 @@ static void DrawTocItemPostPaint(TreeView::CustomDrawEvent* ev, MainWindow* win)
     TempStr pageLabel{};
     if (showPage) {
         pageLabel = win->ctrl->GetPageLabeTemp(tocItem->pageNo);
-        if (!pageLabel) {
+        if (len(pageLabel) == 0) {
             showPage = false;
         }
     }
@@ -1870,7 +1876,7 @@ void CreateToc(MainWindow* win) {
         Edit::CreateArgs eargs;
         eargs.parent = win->hwndTocBox;
         eargs.withBorder = true;
-        eargs.cueText = _TRA("Search Bookmarks");
+        eargs.cueText = Tr("Search Bookmarks");
         eargs.font = GetAppFont();
         filterEdit->Create(eargs);
     }
@@ -1879,6 +1885,7 @@ void CreateToc(MainWindow* win) {
     SetWindowSubclass(filterEdit->hwnd, WndProcTocFilterEdit, NextSubclassId(), (DWORD_PTR)win);
 
     auto* treeView = new TreeView();
+    treeView->lazyChildren = true;
     TreeView::CreateArgs args;
     args.parent = win->hwndTocBox;
     args.font = GetAppTreeFont();

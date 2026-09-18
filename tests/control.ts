@@ -1,5 +1,5 @@
 import { Socket, createConnection } from "node:net";
-import { killAndWait, testWindowPos } from "./winapi.ts";
+import { ensureModifierKeysUp, killAndWait, testWindowPos } from "./winapi.ts";
 import { SLOW_BUILD_FACTOR } from "./util.ts";
 
 export enum ControlCommand {
@@ -80,6 +80,25 @@ export enum ControlCommand {
   TestGoToLocation = 83,
   TestTocSidebarNav = 84,
   TestSelectionSurvivesRenumber = 85,
+  TestConvertToPdf = 86,
+  TestInvokeCommand = 87,
+  TestCurrentTab = 88,
+  TestCommandVisibility = 89,
+  TestExtractPages = 90,
+  TestAnnotFilter = 91,
+  TestCanvasFlags = 92,
+  CrashMe = 93,
+  TestDocumentProperties = 94,
+  TestHiddenTabGoToPage = 95,
+  TestSaveSelectionAsImage = 96,
+  TestReadingAutoScroll = 97,
+  TestReadingBar = 98,
+  TestSeedTextSelection = 99,
+  TestTtsEngineCrash = 100,
+  StartPerfLog = 101,
+  StopPerfLog = 102,
+  WaitSessionRestored = 103,
+  TestNavFiles = 104,
 }
 
 export type ControlArg = number | string | Uint8Array | ControlArg[];
@@ -376,27 +395,41 @@ export class ControlClient {
     const id = this.nextId++ & 0xffff;
     this.socket.write(encodeRequest(cmd, id, args));
 
-    const sizeBuf = await readExactly(this.socket, 4);
-    const size = sizeBuf.readUInt32LE(0);
-    const payload = await readExactly(this.socket, size);
-    const r = new PacketReader(payload);
-    const responseId = r.u16();
-    if (responseId !== id) {
-      throw new Error(`control response id mismatch: got ${responseId}, expected ${id}`);
-    }
-    const result: ControlArg[] = [];
-    for (;;) {
-      const arg = decodeArg(r);
-      if (arg === undefined) {
-        break;
+    try {
+      const sizeBuf = await readExactly(this.socket, 4);
+      const size = sizeBuf.readUInt32LE(0);
+      const payload = await readExactly(this.socket, size);
+      const r = new PacketReader(payload);
+      const responseId = r.u16();
+      if (responseId !== id) {
+        throw new Error(`control response id mismatch: got ${responseId}, expected ${id}`);
       }
-      result.push(arg);
+      const result: ControlArg[] = [];
+      for (;;) {
+        const arg = decodeArg(r);
+        if (arg === undefined) {
+          break;
+        }
+        result.push(arg);
+      }
+      return result;
+    } catch (e) {
+      const msg = String((e as Error)?.message ?? e);
+      if (/EPIPE|control pipe closed/i.test(msg)) {
+        throw new Error(`SumatraPDF exited while waiting for control response (${msg})`);
+      }
+      throw e;
     }
-    return result;
   }
 
   async quit(): Promise<void> {
     await this.request(ControlCommand.Quit);
+  }
+
+  // Fire-and-forget: the process dies in the crash handler, so there is no reply.
+  crashMe(): void {
+    const id = this.nextId++ & 0xffff;
+    this.socket.write(encodeRequest(ControlCommand.CrashMe, id, []));
   }
 
   // Block until the visible page is cached at the resolution a capture would
@@ -409,6 +442,16 @@ export class ControlClient {
     const info = String(res[1] ?? "");
     if (code !== 0) {
       throw new Error(`WaitRenderIdle failed: ${info || code}`);
+    }
+    return info;
+  }
+
+  async waitForSessionRestored(timeoutMs = 15000): Promise<string> {
+    const res = await this.request(ControlCommand.WaitSessionRestored, [timeoutMs * SLOW_BUILD_FACTOR]);
+    const code = typeof res[0] === "number" ? res[0] : -1;
+    const info = String(res[1] ?? "");
+    if (code !== 0) {
+      throw new Error(`WaitSessionRestored failed: ${info || code}`);
     }
     return info;
   }
@@ -570,6 +613,15 @@ export class ControlClient {
   // 1, lays out `layoutChapter` (triggering SyncWithEngineLayout /
   // PagesRenumbered), and reports whether both survived instead of being
   // wiped (see C9 in the location-chapters plan).
+  async hiddenTabGoToPage(): Promise<void> {
+    const res = await this.request(ControlCommand.TestHiddenTabGoToPage, []);
+    const code = typeof res[0] === "number" ? res[0] : -1;
+    const raw = String(res[1] ?? "").trim();
+    if (code !== 0) {
+      throw new Error(`TestHiddenTabGoToPage failed: ${raw || code}`);
+    }
+  }
+
   async selectionSurvivesRenumber(
     layoutChapter: number,
   ): Promise<{ survived: boolean; pageNo: number; textSurvived: boolean }> {
@@ -583,6 +635,28 @@ export class ControlClient {
     return { survived: false, pageNo: -1, textSurvived };
   }
 
+  // Seeds a glyph-level (quad) text selection on `pageNo` of the current tab
+  // and reports the flat page numbers it holds. A rectangle selection is
+  // null-guarded when painted; only a quad one reaches CvtToScreen unguarded.
+  async seedTextSelection(pageNo: number): Promise<{ parts: number; quads: number; first: number; last: number }> {
+    const res = await this.request(ControlCommand.TestSeedTextSelection, [pageNo]);
+    const code = typeof res[0] === "number" ? res[0] : -1;
+    const raw = String(res[1] ?? "").trim();
+    if (code !== 0) {
+      throw new Error(`TestSeedTextSelection failed: ${raw || code}`);
+    }
+    const m = /^OK parts=(\d+) quads=(\d+) first=(\d+) last=(\d+) pageCount=(\d+)$/.exec(raw);
+    if (!m) {
+      throw new Error(`seedTextSelection: could not parse '${raw}'`);
+    }
+    return {
+      parts: parseInt(m[1], 10),
+      quads: parseInt(m[2], 10),
+      first: parseInt(m[3], 10),
+      last: parseInt(m[4], 10),
+    };
+  }
+
   close(): void {
     this.socket.end();
   }
@@ -593,7 +667,7 @@ export function uniquePipeName(prefix = "sumatra-control"): string {
 }
 
 // exit code SumatraPDF uses when a debug report (ReportIf) fires in a
-// -for-testing run; must match kDebugReportTestExitCode in src/CrashHandler.cpp
+// -for-testing run; must match kDebugReportTestExitCode in src/base/CrashHandler.cpp
 export const DEBUG_REPORT_EXIT_CODE = 105;
 
 // fn also gets the spawned process so a test can combine control commands with
@@ -622,6 +696,8 @@ export async function withControlledSumatra<T>(
   // stderr is piped: on a debug report the app writes the report text there
   // before terminating, and we surface it in the failure below. Drain it
   // immediately so a verbose ASan dump cannot fill the pipe and stall exit.
+  // tests post keys and clicks directly; a held modifier would chord them
+  await ensureModifierKeysUp();
   const proc = Bun.spawn([exe, "-for-testing", ...posArgs, "-dbg-control", pipeName, ...extraArgs], {
     stdout: "ignore",
     stderr: "pipe",

@@ -22,7 +22,7 @@ extern "C" {
 #include "ImageReader.h"
 #include "ImageSaveCropResize.h"
 #include "PdfCreator.h"
-#include "PdfCadDetect.h"
+#include "PdfCad.h"
 #include "DisplayModel.h"
 #include "PdfSync.h"
 #include "ProgressUpdateUI.h"
@@ -32,7 +32,7 @@ extern "C" {
 #include "WindowTab.h"
 #include "Selection.h"
 #include "SearchAndDDE.h"
-#include "ReadAloudHighlight.h"
+#include "ReadAloud.h"
 #include "Translations.h"
 #include "MarkdownModel.h"
 #include "TableOfContents.h"
@@ -138,7 +138,7 @@ class TestPasswordUI : public PasswordUI {
 
     Str GetPassword(Str /*path*/, u8* /*fileDigest*/, u8 /*decryptionKeyOut*/[32], bool* saveKey) override {
         *saveKey = false;
-        if (triedPassword || !password) {
+        if (triedPassword || len(password) == 0) {
             return {};
         }
         triedPassword = true;
@@ -285,7 +285,7 @@ TempStr DestResultTemp(Str pdfPath, int destNo) {
 // Headless test for remote named-destination resolution (issue #5642). Loads the
 // pdf and resolves <name> -- which may carry mupdf's "nameddest=" prefix, as a
 // remote GoToR link's name does -- the same way LinkHandler::LaunchFile does
-// (CleanRemoteDestName + GetNamedDest), returning the resolved page.
+// (CleanRemoteDestNameInPlace + GetNamedDest), returning the resolved page.
 // Used by tests/issue-5642.ts.
 TempStr NamedDestResultTemp(Str pdfPath, Str destName) {
     ScopedGdiPlus gdiPlus;
@@ -296,11 +296,11 @@ TempStr NamedDestResultTemp(Str pdfPath, Str destName) {
     if (!engine) {
         out.Append(fmt("ERROR engine-create-failed pdf=%s\n", pdfPath));
     } else {
-        Str name = CleanRemoteDestName(destName);
+        Str name = destName;
+        CleanRemoteDestNameInPlace(name);
         IPageDestination* dest = engine->GetNamedDest(name);
         if (dest) {
             out.Append(fmt("name=%s page=%d\n", destName, PageDestGetPageNo(dest)));
-            delete dest;
         } else {
             out.Append(fmt("name=%s NOTFOUND\n", destName));
         }
@@ -330,7 +330,7 @@ TempStr ChmResultTemp(Str chmPath, int* exitCodeOut) {
     }
 
     Str fileData = file::ReadFile(chmPath);
-    if (!fileData) {
+    if (len(fileData) == 0) {
         out.Append(fmt("open=FAILED path=%s\n", chmPath));
         ok = false;
     } else {
@@ -702,7 +702,7 @@ TempStr RotatedTextMouseDragResultTemp(Str word, int* exitCodeOut) {
     QuadF* quads = nullptr;
     int textLen = 0;
     Str text = engine->GetTextForPage(pageNo, &textLen, &coords, &quads);
-    if (!text || !coords) {
+    if (len(text) == 0 || !coords) {
         return fail(StrL("ERROR no-page-text"));
     }
     int startGlyph = -1;
@@ -730,8 +730,8 @@ TempStr RotatedTextMouseDragResultTemp(Str word, int* exitCodeOut) {
     bool firstTilted = quads && quads[first].IsRotated();
     out.Append(fmt("quads=%d firstTilted=%d start=%d end=%d\n", quads ? 1 : 0, firstTilted ? 1 : 0, first, last));
 
-    PointF p0{(float)(coords[first].x + coords[first].dx / 2.0), (float)(coords[first].y + coords[first].dy / 2.0)};
-    PointF p1{(float)(coords[last].x + coords[last].dx), (float)(coords[last].y + coords[last].dy / 2.0)};
+    PointF p0{(float)(coords[first].x + (coords[first].dx / 2.0)), (float)(coords[first].y + (coords[first].dy / 2.0))};
+    PointF p1{(float)(coords[last].x + coords[last].dx), (float)(coords[last].y + (coords[last].dy / 2.0))};
     if (quads) {
         p0 = quads[first].Center();
         // past the last glyph along its baseline so the final letter is included
@@ -789,12 +789,12 @@ TempStr RotatedTextMouseDragResultTemp(Str word, int* exitCodeOut) {
 
 // find the [start, end) glyph range of the first occurrence of `word` on a page
 static bool FindWordGlyphRange(EngineBase* engine, int pageNo, Str word, int* startOut, int* endOut) {
-    if (!engine || !word || !startOut || !endOut) {
+    if (!engine || len(word) == 0 || !startOut || !endOut) {
         return false;
     }
     int textLen = 0;
     Str text = engine->GetTextForPage(pageNo, &textLen);
-    if (!text) {
+    if (len(text) == 0) {
         return false;
     }
     int wordLen = Utf8CodepointCount(word);
@@ -929,13 +929,13 @@ TempStr GoToFindMatchResultTemp(Str word, Str typed, int* exitCodeOut) {
 }
 
 static bool FindWordCenter(EngineBase* engine, int pageNo, Str word, double* xOut, double* yOut) {
-    if (!engine || !word || !xOut || !yOut) {
+    if (!engine || len(word) == 0 || !xOut || !yOut) {
         return false;
     }
     Rect* coords = nullptr;
     int textLen = 0;
     Str text = engine->GetTextForPage(pageNo, &textLen, &coords);
-    if (!text) {
+    if (len(text) == 0) {
         return false;
     }
     int wordLen = Utf8CodepointCount(word);
@@ -1383,7 +1383,7 @@ TempStr MarkdownFollowLinkResultTemp(Str href, bool follow, int* exitCodeOut) {
         if (!mm) {
             return finish(StrL("NOTREADY no-markdown"), 2);
         }
-        if (!href) {
+        if (len(href) == 0) {
             return finish(StrL("ERROR no-href"), 1);
         }
         navigate = mm->OnBeforeNavigate(href, false) ? 1 : 0;
@@ -1454,12 +1454,12 @@ TempStr ScrollToLinkResultTemp(int minViewportDelta, int* exitCodeOut) {
     return ToStrTemp(out);
 }
 
-// Verifies _TRA resolves error-path strings through the translation table.
+// Verifies Tr resolves error-path strings through the translation table.
 TempStr I18nErrorStringResultTemp(int* exitCodeOut) {
     str::Builder out;
-    Str err = _TRA("Error");
-    Str crash = _TRA("SumatraPDF crashed");
-    Str printers = _TRA("SumatraPDF - Show Printers");
+    Str err = Tr("Error");
+    Str crash = Tr("SumatraPDF crashed");
+    Str printers = Tr("SumatraPDF - Show Printers");
     bool ok = len(err) > 0 && len(crash) > 0 && len(printers) > 0 &&
               str::Eq(err, trans::GetTranslation(StrL("Error"))) &&
               str::Eq(crash, trans::GetTranslation(StrL("SumatraPDF crashed"))) &&
@@ -1890,7 +1890,7 @@ TempStr ImageInsertResultTemp(Str pdfPath, Str imagePath, int* exitCodeOut) {
 // Open any document, render page 1, and report dest size plus how many
 // red-ish / non-white pixels it has. Used to check that a WebP inside an
 // EPUB actually paints (issue #3415) instead of the IMAGE placeholder.
-TempStr PageRenderColorsResultTemp(Str path, int* exitCodeOut) {
+TempStr PageRenderColorsResultTemp(Str path, int* exitCodeOut, int pageNo) {
     EnsureTestSettings();
 
     str::Builder out;
@@ -1902,31 +1902,62 @@ TempStr PageRenderColorsResultTemp(Str path, int* exitCodeOut) {
         return ToStrTemp(out);
     };
 
-    EngineBase* engine = CreateEngineFromFile(path, nullptr, false);
+    EngineBase* engine = nullptr;
+    bool ownEngine = true;
+    if (len(gWindows) > 0 && gWindows[0]) {
+        WindowTab* tab = gWindows[0]->CurrentTab();
+        if (tab && tab->filePath && str::EqI(tab->filePath, path)) {
+            DisplayModel* dm = tab->AsFixed();
+            engine = dm ? dm->GetEngine() : nullptr;
+            ownEngine = false;
+        }
+    }
+    if (!engine) {
+        engine = CreateEngineFromFile(path, nullptr, false);
+    }
     if (!engine) {
         return fail(fmt("ERROR engine-create-failed path=%s\n", path));
     }
-    if (!engine->BenchLoadPage(1)) {
-        SafeEngineRelease(&engine);
+    if (pageNo < 1) {
+        pageNo = 1;
+    }
+    auto release = [&]() {
+        if (ownEngine) {
+            SafeEngineRelease(&engine);
+        }
+    };
+    if (pageNo > engine->PageCount()) {
+        int nPages = engine->PageCount();
+        release();
+        return fail(fmt("ERROR bad-page page=%d pages=%d\n", pageNo, nPages));
+    }
+    if (!engine->BenchLoadPage(pageNo)) {
+        release();
         return fail(StrL("ERROR page-load-failed\n"));
     }
 
-    RenderPageArgs rargs(1, 1.f, 0, nullptr, RenderTarget::Export);
+    RenderPageArgs rargs(pageNo, 1.f, 0, nullptr, RenderTarget::Export);
     Pixmap* bmp = engine->RenderPage(rargs);
     if (!bmp || !bmp->data) {
         FreePixmap(bmp);
-        SafeEngineRelease(&engine);
-        return fail(StrL("ERROR render-failed\n"));
+        int nPages = engine->PageCount();
+        release();
+        return fail(fmt("ERROR render-failed page=%d pages=%d\n", pageNo, nPages));
     }
-    Pixmap* rgb = (bmp->format == PixmapFormat::BGRA8) ? bmp : PixmapCopyAs32bppDIB(bmp);
+    Pixmap* rgb = bmp;
+    if (bmp->format != PixmapFormat::BGRA8 && bmp->format != PixmapFormat::BGR8 && bmp->format != PixmapFormat::RGBA8) {
+        rgb = PixmapCopyAs32bppDIB(bmp);
+    }
     if (!rgb || !rgb->data) {
         FreePixmap(bmp);
-        SafeEngineRelease(&engine);
+        release();
         return fail(fmt("ERROR pixmap-convert-failed fmt=%d\n", (int)bmp->format));
     }
     int bpp = PixmapBytesPerPixel(rgb->format);
     int red = 0;
+    int blue = 0;
     int nonWhite = 0;
+    int rMin = 255, rMax = 0, gMin = 255, gMax = 0, bMin = 255, bMax = 0;
     if (bpp >= 3) {
         for (int y = 0; y < rgb->height; y++) {
             const u8* row = rgb->data + ((size_t)y * (size_t)rgb->stride);
@@ -1948,16 +1979,40 @@ TempStr PageRenderColorsResultTemp(Str path, int* exitCodeOut) {
                 if (r > 180 && g < 80 && b < 80) {
                     red++;
                 }
+                if (b > 180 && r < 80 && g < 80) {
+                    blue++;
+                }
+                if (r < rMin) {
+                    rMin = r;
+                }
+                if (r > rMax) {
+                    rMax = r;
+                }
+                if (g < gMin) {
+                    gMin = g;
+                }
+                if (g > gMax) {
+                    gMax = g;
+                }
+                if (b < bMin) {
+                    bMin = b;
+                }
+                if (b > bMax) {
+                    bMax = b;
+                }
             }
         }
     }
-    out.Append(
-        fmt("red=%d nonwhite=%d size=%dx%d pages=%d\n", red, nonWhite, rgb->width, rgb->height, engine->PageCount()));
+    int spread = (rMax - rMin) + (gMax - gMin) + (bMax - bMin);
+    out.Append(fmt("red=%d nonwhite=%d size=%dx%d pages=%d page=%d blue=%d spread=%d\n", red, nonWhite, rgb->width,
+                   rgb->height, engine->PageCount(), pageNo, blue, spread));
     if (rgb != bmp) {
         FreePixmap(rgb);
     }
     FreePixmap(bmp);
-    SafeEngineRelease(&engine);
+    if (ownEngine) {
+        SafeEngineRelease(&engine);
+    }
     if (exitCodeOut) {
         *exitCodeOut = 0;
     }
@@ -2194,7 +2249,7 @@ static u16 TiffPhotometric(Str tiff) {
     }
     u16 count = r.UInt16LE((int)ifd);
     for (u16 i = 0; i < count; i++) {
-        int e = (int)ifd + 2 + (int)i * 12;
+        int e = (int)ifd + 2 + ((int)i * 12);
         if (e + 12 > n) {
             break;
         }
@@ -2221,7 +2276,7 @@ TempStr CmykImageSaveResultTemp(Str jpegPath, Str tiffPath, int* exitCodeOut) {
         }
         return ToStrTemp(out);
     };
-    if (!jpegPath || !tiffPath) {
+    if (len(jpegPath) == 0 || len(tiffPath) == 0) {
         return fail(StrL("ERROR bad-args"));
     }
 
@@ -2273,7 +2328,7 @@ TempStr CmykImageSaveResultTemp(Str jpegPath, Str tiffPath, int* exitCodeOut) {
     }
 
     TempStr pdfPath = GetTempFilePathTemp(StrL("cmyksave"));
-    if (!pdfPath || !pdf.SaveToFile(pdfPath)) {
+    if (len(pdfPath) == 0 || !pdf.SaveToFile(pdfPath)) {
         return fail(StrL("ERROR save-pdf"));
     }
 
@@ -2303,7 +2358,7 @@ TempStr CmykImageSaveResultTemp(Str jpegPath, Str tiffPath, int* exitCodeOut) {
     Str jpeg = engine->GetImageDataForPageElement(imgEl);
     SafeEngineRelease(&engine);
     file::Delete(pdfPath);
-    if (!jpeg) {
+    if (len(jpeg) == 0) {
         return fail(StrL("ERROR no-image-data"));
     }
     bool wroteJpeg = file::WriteFile(jpegPath, jpeg);
@@ -2389,6 +2444,113 @@ TempStr GoToLocationResultTemp(int chapter, int page, int* exitCodeOut) {
     ctrl->GoToLocation(want, true);
     Location got = ctrl->CurrentLocation();
     out.Append(fmt("OK chapter=%d page=%d\n", got.chapter, got.page));
+    if (exitCodeOut) {
+        *exitCodeOut = 0;
+    }
+    return ToStrTemp(out);
+}
+
+// GoToPage on a background tab so UpdateScrollbars sees a non-current dm.
+TempStr HiddenTabGoToPageResultTemp(int* exitCodeOut) {
+    str::Builder out;
+    auto fail = [&](Str msg, int code = 1) -> TempStr {
+        out.Append(msg);
+        out.AppendChar('\n');
+        if (exitCodeOut) {
+            *exitCodeOut = code;
+        }
+        return ToStrTemp(out);
+    };
+
+    if (len(gWindows) == 0) {
+        return fail(StrL("NOTREADY no-window"), 2);
+    }
+    MainWindow* win = gWindows[0];
+    if (!win) {
+        return fail(StrL("NOTREADY no-window"), 2);
+    }
+
+    DisplayModel* dm = nullptr;
+    for (WindowTab* tab : win->Tabs()) {
+        if (tab && tab != win->CurrentTab() && tab->AsFixed()) {
+            dm = tab->AsFixed();
+            break;
+        }
+    }
+    if (!dm) {
+        return fail(StrL("NOTREADY no-hidden-doc"), 2);
+    }
+
+    dm->GoToPage(dm->CurrentPageNo(), false);
+    out.Append(StrL("OK\n"));
+    if (exitCodeOut) {
+        *exitCodeOut = 0;
+    }
+    return ToStrTemp(out);
+}
+
+// Seeds a glyph-level (quad) text selection on `pageNo` of the current tab, the
+// way a left-drag across the page would, and reports the flat page numbers it
+// holds. Coordinates would have to be hunted for, so select by glyph index.
+//
+// A rectangle selection is useless for the stale-page question: its paint path
+// (SelectionOnPage::GetRect) null-checks GetPageInfo and silently draws
+// nothing. Only a quad selection reaches DisplayModel::CvtToScreen unguarded,
+// which is where crash 2026-09-12-09-59-1328 reported.
+// Used by tests/epub-relayout-stale-page.ts.
+TempStr SeedTextSelectionResultTemp(int pageNo, int* exitCodeOut) {
+    str::Builder out;
+    auto fail = [&](Str msg, int code = 1) -> TempStr {
+        out.Append(msg);
+        out.AppendChar('\n');
+        if (exitCodeOut) {
+            *exitCodeOut = code;
+        }
+        return ToStrTemp(out);
+    };
+
+    if (len(gWindows) == 0) {
+        return fail(StrL("NOTREADY no-window"), 2);
+    }
+    MainWindow* win = gWindows[0];
+    DisplayModel* dm = win ? win->AsFixed() : nullptr;
+    if (!dm) {
+        return fail(StrL("NOTREADY no-doc"), 2);
+    }
+    WindowTab* tab = win->CurrentTab();
+    if (!tab) {
+        return fail(StrL("ERROR no-tab"));
+    }
+    if (!dm->ValidPageNo(pageNo)) {
+        return fail(fmt("ERROR invalid-page pageNo=%d pageCount=%d", pageNo, dm->PageCount()));
+    }
+
+    EngineBase* engine = dm->GetEngine();
+    int textLen = 0;
+    engine->GetTextForPage(pageNo, &textLen);
+    if (textLen < 2) {
+        return fail(fmt("ERROR no-text pageNo=%d", pageNo));
+    }
+
+    DeleteOldSelectionInfo(win, true);
+    dm->textSelection->StartAt(pageNo, 0);
+    dm->textSelection->SelectUpTo(pageNo, textLen - 1);
+    tab->selectionOnPage = SelectionOnPage::FromTextSelect(&dm->textSelection->result);
+    win->showSelection = tab->selectionOnPage != nullptr;
+    if (!tab->selectionOnPage) {
+        return fail(fmt("ERROR empty-selection pageNo=%d", pageNo));
+    }
+
+    int first = (*tab->selectionOnPage)[0].pageNo;
+    int last = VecLast(*tab->selectionOnPage).pageNo;
+    int quads = 0;
+    for (SelectionOnPage& sel : *tab->selectionOnPage) {
+        if (sel.HasQuad()) {
+            quads++;
+        }
+    }
+    out.Append(fmt("OK parts=%d quads=%d first=%d last=%d pageCount=%d\n", len(*tab->selectionOnPage), quads, first,
+                   last, dm->PageCount()));
     if (exitCodeOut) {
         *exitCodeOut = 0;
     }

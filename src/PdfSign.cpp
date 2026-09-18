@@ -18,7 +18,7 @@
 
 extern "C" {
 #include <mupdf/pdf.h>
-#include <mupdf/helpers/pkcs7-windows.h>
+#include "mupdf/pkcs7-windows.h"
 }
 
 #include "gui/UIModels.h"
@@ -243,7 +243,7 @@ bool EngineMupdfSignDocument(EngineBase* engine, const PdfSignArgs& args, Str* e
         }
         if (args.imagePath) {
             Str imgData = file::ReadFile(args.imagePath);
-            if (!imgData) {
+            if (len(imgData) == 0) {
                 fz_throw(ctx, FZ_ERROR_ARGUMENT, "could not read signature image");
             }
             imgBuf = fz_new_buffer_from_copied_data(ctx, (const unsigned char*)imgData.s, (size_t)len(imgData));

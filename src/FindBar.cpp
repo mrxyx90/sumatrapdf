@@ -33,7 +33,7 @@
 #include "FindWindow.h"
 #include "Translations.h"
 #include "Theme.h"
-#include "DarkMode_win.h"
+#include "DarkMode.h"
 #include "FindBar.h"
 
 // command ids for the bar's toolbar buttons; must not collide with real commands
@@ -182,7 +182,7 @@ struct FindBarWnd : WindowBase {
 // append a command's keyboard shortcut to its tooltip, e.g. "Find Next (F3)"
 static TempStr AppendCmdAccel(Str base, int cmd) {
     TempStr accel = AppendAccelKeyToMenuStringTemp({}, cmd);
-    if (!accel) {
+    if (len(accel) == 0) {
         return base;
     }
     return str::JoinTemp(base, fmt(" (%s)", Str(accel.s + 1, len(accel) - 1))); // +1 skips the leading \t
@@ -191,17 +191,17 @@ static TempStr AppendCmdAccel(Str base, int cmd) {
 static TempStr FindBarButtonTooltip(int cmd) {
     switch (cmd) {
         case CmdFindPrev:
-            return AppendCmdAccel(_TRA("Find Previous"), cmd);
+            return AppendCmdAccel(Tr("Find Previous"), cmd);
         case CmdFindNext:
-            return AppendCmdAccel(_TRA("Find Next"), cmd);
+            return AppendCmdAccel(Tr("Find Next"), cmd);
         case CmdFindToggleMatchCase:
-            return AppendCmdAccel(_TRA("Match Case"), cmd);
+            return AppendCmdAccel(Tr("Match Case"), cmd);
         case CmdFindToggleMatchWholeWord:
-            return AppendCmdAccel(_TRA("Match Whole Word"), cmd);
+            return AppendCmdAccel(Tr("Match Whole Word"), cmd);
         case kFindBarPinCmdId:
-            return _TRA("Open in a window");
+            return Tr("Open in a window");
         case kFindBarCloseCmdId:
-            return _TRA("Close");
+            return Tr("Close");
     }
     return {};
 }
@@ -290,7 +290,7 @@ bool FindBarWnd::Create(MainWindow* mainWin) {
         edit = new DropDown();
         edit->SetColors(colTxt, colBg);
         edit->Create(args);
-        CbSetCueBanner(edit, _TRA("Find"));
+        CbSetCueBanner(edit, Tr("Find"));
         edit->onTextChanged = MkMethod0<FindBarWnd, &FindBarWnd::OnTextChanged>(this);
         edit->onCloseUp = MkMethod0<FindBarWnd, &FindBarWnd::OnHistoryCommitted>(this);
         ApplyFindHistory(edit);

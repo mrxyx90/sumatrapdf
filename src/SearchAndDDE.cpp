@@ -53,7 +53,7 @@ void ApplyFindHistory(DropDown* dd) {
 }
 
 void RememberFindQuery(Str q) {
-    if (!q) {
+    if (len(q) == 0) {
         return;
     }
     TempStr trimmed = str::DupTemp(q);
@@ -445,7 +445,7 @@ static void StartIncrementalFind(MainWindow* win) {
 // allowed. Invalid input returns false (caller treats that as all pages).
 bool ParseFindPageRange(Str s, int nPages, Vec<bool>& allowedOut) {
     VecReset(allowedOut);
-    if (!s || len(s) == 0 || nPages < 1) {
+    if (len(s) == 0 || nPages < 1) {
         return true;
     }
     const char* p = s.s;
@@ -1004,7 +1004,7 @@ void InvalidateFindForDocumentChange(MainWindow* win) {
 static TempStr BuildSnippet(EngineBase* engine, const FindMatch& m) {
     int textLen = 0;
     Str pageText = engine->GetTextForPage(m.startPage, &textLen);
-    if (!pageText) {
+    if (len(pageText) == 0) {
         return {};
     }
     int mStart = limitValue(m.startGlyph, 0, textLen);
@@ -1782,7 +1782,7 @@ void StartPendingSearch(MainWindow* win) {
         return;
     }
     WindowTab* tab = win->CurrentTab();
-    if (!tab || !tab->pendingFindText) {
+    if (!tab || len(tab->pendingFindText) == 0) {
         return;
     }
     TempStr text = str::DupTemp(tab->pendingFindText);
@@ -2068,7 +2068,7 @@ void PaintForwardSearchMark(MainWindow* win, Gfx* gfx) {
 // Replace in 'pattern' the macros %f %l %c by 'path', 'line' and 'col'
 static TempStr BuildOpenFileCmdTemp(Str pattern, Str path, int line, int col) {
     str::Builder cmdline;
-    str::BuilderReserve(nullptr, cmdline, 256);
+    str::BuilderReserve(cmdline, 256);
 
     logf("BuildOpenFileCmdTemp: path: '%s', pattern: '%s'\n", path, pattern);
     Str s = pattern;
@@ -2142,7 +2142,7 @@ bool OnInverseSearch(MainWindow* win, int x, int y) {
         if (err != PDFSYNCERR_SUCCESS) {
             NotificationCreateArgs args;
             args.hwndParent = win->hwndCanvas;
-            args.msg = _TRA("Synchronization file cannot be opened");
+            args.msg = Tr("Synchronization file cannot be opened");
             ShowNotification(args);
             return true;
         }
@@ -2161,13 +2161,13 @@ bool OnInverseSearch(MainWindow* win, int x, int y) {
     if (err != PDFSYNCERR_SUCCESS) {
         NotificationCreateArgs args;
         args.hwndParent = win->hwndCanvas;
-        args.msg = _TRA("No synchronization info at this position");
+        args.msg = Tr("No synchronization info at this position");
         ShowNotification(args);
         return true;
     }
 
     Str inverseSearch = gSettings->inverseSearchCmdLine;
-    if (!inverseSearch) {
+    if (len(inverseSearch) == 0) {
         Vec<TextEditor*> editors;
         DetectTextEditors(editors);
         if (len(editors) > 0) {
@@ -2183,7 +2183,7 @@ bool OnInverseSearch(MainWindow* win, int x, int y) {
 
     NotificationCreateArgs args;
     args.hwndParent = win->hwndCanvas;
-    args.msg = _TRA("Cannot start inverse search command. Please check the command line in the settings.");
+    args.msg = Tr("Cannot start inverse search command. Please check the command line in the settings.");
     if (len(cmdLine) > 0) {
         // resolve relative paths with relation to SumatraPDF.exe's directory
         TempStr appDir = GetSelfExeDirTemp();
@@ -2332,19 +2332,19 @@ void ShowForwardSearchResult(MainWindow* win, Str fileName, int line, int /* col
     // several of these embed a file name read from the .synctex / .pdfsync file
     args.plainText = true;
     if (ret == PDFSYNCERR_SYNCFILE_NOTFOUND) {
-        args.msg = _TRA("No synchronization file found");
+        args.msg = Tr("No synchronization file found");
     } else if (ret == PDFSYNCERR_SYNCFILE_CANNOT_BE_OPENED) {
-        args.msg = _TRA("Synchronization file cannot be opened");
+        args.msg = Tr("Synchronization file cannot be opened");
     } else if (ret == PDFSYNCERR_INVALID_PAGE_NUMBER) {
-        buf = fmt(_TRA("Page %u does not exist").s, page);
+        buf = fmt(Tr("Page %u does not exist").s, page);
     } else if (ret == PDFSYNCERR_NO_SYNC_AT_LOCATION) {
-        args.msg = _TRA("No synchronization info at this position");
+        args.msg = Tr("No synchronization info at this position");
     } else if (ret == PDFSYNCERR_UNKNOWN_SOURCEFILE) {
-        buf = fmt(_TRA("Unknown source file (%s)").s, fileName);
+        buf = fmt(Tr("Unknown source file (%s)").s, fileName);
     } else if (ret == PDFSYNCERR_NORECORD_IN_SOURCEFILE) {
-        buf = fmt(_TRA("Source file %s has no synchronization point").s, fileName);
+        buf = fmt(Tr("Source file %s has no synchronization point").s, fileName);
     } else if (ret == PDFSYNCERR_NORECORD_FOR_THATLINE || ret == PDFSYNCERR_NOSYNCPOINT_FOR_LINERECORD) {
-        buf = fmt(_TRA("No result found around line %u in file %s").s, line, fileName);
+        buf = fmt(Tr("No result found around line %u in file %s").s, line, fileName);
     }
     if (buf) {
         args.msg = buf;
@@ -2478,12 +2478,12 @@ static Str HandleSearchCmd(HWND hwnd, Str cmd, bool* ack) {
     // Manual parse so search terms may contain " via "" escapes; str::Parse
     // stops at the first " and cannot express that.
     Str kPrefix = StrL("[Search(\"");
-    if (!str::StartsWith(cmd, kPrefix)) {
+    if (!str::TrimPrefix(cmd, kPrefix)) {
         return {};
     }
     int endFile = 0;
     TempStr pdfFile;
-    if (!ParseDdeQuoted(cmd, kPrefix.len, &pdfFile, &endFile)) {
+    if (!ParseDdeQuoted(cmd, 0, &pdfFile, &endFile)) {
         return {};
     }
     // expect "," after the closing quote of the path
@@ -3134,7 +3134,7 @@ LRESULT OnDDERequest(HWND hwnd, WPARAM wp, LPARAM lp) {
     }
     ATOM a = HIWORD(lp);
     TempStr cmd = AtomToStrTemp(a);
-    if (!cmd) {
+    if (len(cmd) == 0) {
         return 0;
     }
 

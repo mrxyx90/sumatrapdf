@@ -123,16 +123,20 @@ Str PageDestinationJsMenu::GetValue2() {
     return tooltip;
 }
 
-IPageDestination* NewSimpleDest(int pageNo, RectF rect, float zoom, Str value) {
+IPageDestination* NewSimpleDest(Arena* arena, int pageNo, RectF rect, float zoom, Str value) {
     if (value) {
-        return new PageDestinationURL(value);
+        return arena ? New<PageDestinationURL>(arena, value) : new PageDestinationURL(value);
     }
-    auto* res = new PageDestination();
+    auto* res = arena ? New<PageDestination>(arena) : new PageDestination();
     res->pageNo = pageNo;
     res->rect = rect;
     res->kind = kindDestinationScrollTo;
     res->zoom = zoom;
     return res;
+}
+
+IPageDestination* NewSimpleDest(int pageNo, RectF rect, float zoom, Str value) {
+    return NewSimpleDest(nullptr, pageNo, rect, zoom, value);
 }
 
 bool IPageElement::Is(Kind expectedKind) {
@@ -149,7 +153,7 @@ Kind kindTocDjvu = "tocDjvu";
 // separators into spaces, so they don't render as a stray hyphen or as
 // boxes (#2647).
 static TempStr CleanupTreeViewControlStringTemp(Str s) {
-    if (!s) {
+    if (len(s) == 0) {
         return {};
     }
     TempWStr ws = ToWStrTemp(s);
@@ -182,8 +186,14 @@ void FreeTocItemRec(Arena* arena, TocItem* item) {
         return;
     }
     FreeTocItemRec(arena, item->child);
-    if (!item->destNotOwned) {
-        delete item->dest;
+    // arena dests: destructor only; heap dests: delete
+    if (!item->destNotOwned && item->dest) {
+        if (arena) {
+            item->dest->~IPageDestination();
+        } else {
+            delete item->dest;
+        }
+        item->dest = nullptr;
     }
     FreeTocItemRec(arena, item->next);
     Free(arena, item->title.s);
@@ -274,12 +284,25 @@ bool TocItem::PageNumbersMatch() const {
     return true;
 }
 
-TocTree::TocTree(TocItem* root) {
-    this->root = root;
+TocTree* AllocTocTree(Arena* arena, TocItem* root) {
+    return New<TocTree>(arena, root, arena);
 }
 
+void DestroyTocTree(TocTree* tree) {
+    if (tree) {
+        tree->~TocTree();
+    }
+}
+
+TocTree::TocTree(TocItem* root, Arena* arena) {
+    this->root = root;
+    this->arena = arena;
+}
+
+// arena items are not heap-freed; dests still run their destructor
 TocTree::~TocTree() {
-    FreeTocItemRec(nullptr, root);
+    FreeTocItemRec(arena, root);
+    root = nullptr;
 }
 
 // TreeModel
@@ -678,7 +701,11 @@ TempStr EngineBase::GetErrorsTextTemp() {
     return ToStr(errors);
 }
 
+Func1<EngineBase*> gOnEngineDestroyed;
+
 EngineBase::~EngineBase() {
+    onDestroy.Call(this);
+    gOnEngineDestroyed.Call(this);
     delete pageTextCache;
     str::Free(defaultExt);
     LogArenaStats(StrL("engine"), arena);
@@ -775,7 +802,7 @@ void EngineBase::RequestTextExtraction(int pageNo) {
     {
         ScopedMutex scope(&textCacheLock);
         ChapterTextCache* ct = pageTextCache->Ensure(loc.chapter, count);
-        if (ct && loc.page <= len(ct->text) && !ct->text[loc.page - 1].text) {
+        if (ct && loc.page <= len(ct->text) && len(ct->text[loc.page - 1].text) == 0) {
             ct->state[loc.page - 1] = TextExtractionState::NotExtracted;
         }
     }
@@ -1034,8 +1061,7 @@ float EngineBase::GetFileDPI() const {
     return fileDPI;
 }
 
-// creates a PageDestination from a name (or nullptr for invalid names)
-// caller must delete the result
+// named dest; engine-owned, do not delete
 IPageDestination* EngineBase::GetNamedDest(Str /*name*/) {
     return nullptr;
 }

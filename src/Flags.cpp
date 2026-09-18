@@ -12,7 +12,7 @@
 #if OS_WIN
 #include "Print.h"
 #endif
-#if OS_WIN && !defined(SUMATRA_TEST_UTIL)
+#if OS_WIN
 #include "Translations.h"
 #endif
 #include "Flags.h"
@@ -44,7 +44,8 @@ enum class Arg {
     DDE = 76, Pwd = 77, EngineDump = 78, SetColorRange = 79,
     UpgradeFrom = 80, ForTesting = 81, QuickLook = 82, QuickLookAgent = 83,
     WindowPos = 84, DumpExif = 85, DumpChm = 86, Control = 87,
-    UnitTests = 88, NewWindowTabs = 89,
+    UnitTests = 88, ForAi = 89, NewWindowTabs = 90, HtmlBackend = 91,
+    StartPerfLog = 92, LogPerfFile = 93,
 };
 
 static SeqStrings gArgNames =
@@ -70,7 +71,8 @@ static SeqStrings gArgNames =
     "dde\0" "pwd\0" "engine-dump\0" "set-color-range\0"
     "upgrade-from\0" "for-testing\0" "quicklook\0" "quicklook-agent\0"
     "window-pos\0" "dump-exif\0" "dump-chm\0" "dbg-control\0"
-    "unit-tests\0" "new-window-tabs\0";
+    "unit-tests\0" "for-ai\0" "new-window-tabs\0" "html-backend\0"
+    "start-perf-log\0" "log-perf-file\0";
 // clang-format on
 // @gen-end flags
 
@@ -86,7 +88,6 @@ void ShowPrintersDialog(bool consoleOnly) {
     log(ToStr(out));
 
     gLogToConsole = false;
-#ifndef SUMATRA_TEST_UTIL
     // CLI (-list-printers with -console/-silent, or stdout already a console):
     // print only. Otherwise show the text dialog (e.g. CmdListPrinters).
     if (!consoleOnly) {
@@ -97,11 +98,8 @@ void ShowPrintersDialog(bool consoleOnly) {
         }
     }
     if (!consoleOnly) {
-        ShowTextInWindowDialog(_TRA("SumatraPDF - Show Printers"), ToStr(out));
+        ShowTextInWindowDialog(Tr("SumatraPDF - Show Printers"), ToStr(out));
     }
-#else
-    (void)consoleOnly;
-#endif
 }
 #else
 static TempStr GetDefaultPrinterNameTemp() {
@@ -120,7 +118,7 @@ void ShowPrintersDialog(bool) {}
 // into an interable list (returns nullptr on parsing errors)
 // caller must delete the result
 bool ParsePageRanges(Str ranges, Vec<PageRange>& result) {
-    if (!ranges) {
+    if (len(ranges) == 0) {
         return false;
     }
 
@@ -245,12 +243,12 @@ static Str EatParam(StrNode*& next) {
 
 static void SkipOptionalAdobePrinterParams(StrNode*& next) {
     Str driver = AdditionalParam(next);
-    if (!driver || CouldBeArg(driver)) {
+    if (len(driver) == 0 || CouldBeArg(driver)) {
         return;
     }
     EatParam(next);
     Str port = AdditionalParam(next);
-    if (!port || CouldBeArg(port)) {
+    if (len(port) == 0 || CouldBeArg(port)) {
         return;
     }
     EatParam(next);
@@ -426,7 +424,7 @@ void ParseFlags(Arena* a, WStr cmdLine, Flags& i, Str toolNames) {
         }
         if (arg == Arg::PrintToDefault) {
             i.printerName = str::Dup(a, GetDefaultPrinterNameTemp());
-            if (!i.printerName) {
+            if (len(i.printerName) == 0) {
                 i.printDialog = true;
             }
             i.exitWhenDone = true;
@@ -440,7 +438,7 @@ void ParseFlags(Arena* a, WStr cmdLine, Flags& i, Str toolNames) {
             // Adobe Reader: /t <file> <printer> [<driver> [<port>]]
             // also: <file> /t <printer> when the file is given earlier on the cmd-line
             Str p1 = EatParam(nextArg);
-            if (!p1) {
+            if (len(p1) == 0) {
                 goto CollectFile;
             }
             Str p2 = AdditionalParam(nextArg);
@@ -454,7 +452,7 @@ void ParseFlags(Arena* a, WStr cmdLine, Flags& i, Str toolNames) {
             } else {
                 i.fileNames.Append(p1);
                 i.printerName = str::Dup(a, GetDefaultPrinterNameTemp());
-                if (!i.printerName) {
+                if (len(i.printerName) == 0) {
                     i.printDialog = true;
                 }
             }
@@ -569,8 +567,16 @@ void ParseFlags(Arena* a, WStr cmdLine, Flags& i, Str toolNames) {
             i.exitImmediately = true;
             continue;
         }
+        if (arg == Arg::ForAi) {
+            i.forAi = true;
+            continue;
+        }
         if (arg == Arg::Log) {
             i.log = true;
+            continue;
+        }
+        if (arg == Arg::StartPerfLog) {
+            i.startPerfLog = true;
             continue;
         }
         if (arg == Arg::RunInstallNow) {
@@ -598,7 +604,7 @@ void ParseFlags(Arena* a, WStr cmdLine, Flags& i, Str toolNames) {
             continue;
         }
         if ((arg == Arg::ArgEnumPrinters) || (arg == Arg::ListPrinters)) {
-            // defer UI until after SetCurrentLang() so _TRA resolves (issue #5697).
+            // defer UI until after SetCurrentLang() so Tr resolves (issue #5697).
             // Do not return early: later flags like -console / -silent must still apply.
             i.showPrintersDialog = true;
             i.exitImmediately = true;
@@ -607,7 +613,7 @@ void ParseFlags(Arena* a, WStr cmdLine, Flags& i, Str toolNames) {
         param = EatParam(nextArg);
         // following args require at least one param
         // if no params here, assume this is a file
-        if (!param) {
+        if (len(param) == 0) {
             // argName starts with '-' but there are no params after that and it's not
             // one of the args without params, so assume this is a file that starts with '-'
             goto CollectFile;
@@ -617,6 +623,10 @@ void ParseFlags(Arena* a, WStr cmdLine, Flags& i, Str toolNames) {
         if (arg == Arg::LogToFile) {
             i.logFile = str::Dup(a, param);
             i.log = true;
+            continue;
+        }
+        if (arg == Arg::LogPerfFile) {
+            i.perfLogFile = str::Dup(a, param);
             continue;
         }
 
@@ -679,6 +689,10 @@ void ParseFlags(Arena* a, WStr cmdLine, Flags& i, Str toolNames) {
         }
         if (arg == Arg::WindowPos) {
             ParseWindowPos(&i.windowPos, param);
+            continue;
+        }
+        if (arg == Arg::HtmlBackend) {
+            i.htmlBackend = str::Dup(a, param);
             continue;
         }
         if (arg == Arg::AppData) {
@@ -845,7 +859,7 @@ void ParseFlags(Arena* a, WStr cmdLine, Flags& i, Str toolNames) {
         // silently extract files to directory given if /d
         // or current directory if no /d given
         i.silent = true;
-        if (!i.installDir) {
+        if (len(i.installDir) == 0) {
             i.installDir = str::Dup(a, StrL("."));
         }
     }

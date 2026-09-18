@@ -750,7 +750,11 @@ static bool PrintPageInBands(EngineBase& engine, HDC hdc, int pageNo, float zoom
         if (abortCookie) {
             abortCookie->Clear();
         }
-        if (!bmp || !bmp->hbmp) {
+        // BlitPixmap() draws a heap-backed pixmap through StretchDIBits, so only
+        // a missing pixel buffer is a failure. Requiring a DIB section (hbmp)
+        // threw away every band the image engine rendered -- it returns heap
+        // pixmaps -- and printed a blank page (issue #6150).
+        if (!bmp || !bmp->data) {
             FreePixmap(bmp);
             // couldn't allocate even a band: try thinner bands before giving up,
             // so we still print at full resolution (never the old whole-page shrink)
@@ -811,7 +815,7 @@ static bool PrintToDevice(const PrintData& pd) {
     } else if (gPluginMode) {
         TempStr fileName = url::GetFileNameTemp(gPluginURL);
         // fall back to a generic "filename" instead of the more confusing temporary filename
-        if (!fileName) {
+        if (len(fileName) == 0) {
             fileName = StrL("filename");
         }
         di.lpszDocName = CWStrTemp(fileName);
@@ -1081,7 +1085,7 @@ struct UpdatePrintProgressData {
 
 static void UpdatePrintProgress(UpdatePrintProgressData* d) {
     int perc = CalcPerc(d->current, d->total);
-    TempStr msg = fmt(_TRA("Printing page %d of %d...").s, d->current, d->total);
+    TempStr msg = fmt(Tr("Printing page %d of %d...").s, d->current, d->total);
     UpdateNotificationProgress(d->wnd, msg, perc);
     delete d;
 }
@@ -1097,7 +1101,9 @@ class PrintThreadData {
     ThreadHandle thread = nullptr; // close the print thread handle after execution
 
     // called when printing has been canceled
-    void RemovePrintNotification(NotificationWnd* = nullptr) {
+    void OnNotifClosed(NotificationClosedEvent*) { RemovePrintNotification(); }
+
+    void RemovePrintNotification() {
         isCanceled = true;
         cookie.Abort();
         if (this->wnd && IsMainWindowValid(win)) {
@@ -1112,8 +1118,8 @@ class PrintThreadData {
         NotificationCreateArgs args;
         args.hwndParent = win->hwndCanvas;
         args.timeoutMs = 0;
-        auto fn = MkMethod1<PrintThreadData, NotificationWnd*, &PrintThreadData::RemovePrintNotification>(this);
-        args.onRemoved = fn;
+        auto fn = MkMethod1<PrintThreadData, NotificationClosedEvent*, &PrintThreadData::OnNotifClosed>(this);
+        args.onClosed = fn;
         // don't use a groupId for this notification so that
         // multiple printing notifications could coexist between tabs
         args.groupId = nullptr;
@@ -1273,6 +1279,19 @@ static int CollateDefaultPref() {
     return -1;
 }
 
+// The PrinterUI setting. Empty, "auto" and "modern" all take the Windows 11
+// dialog where it's available and the classic one everywhere else; they differ
+// only in saying so. "classic" never takes the Windows 11 one: only the classic
+// dialog has a Preferences button, which opens the printer driver's own property
+// sheet. The modern dialog has no way to show that sheet (discussion #6202), so
+// this is how a driver-only setting is reached.
+static bool PrinterUIWantsClassic() {
+    if (!gSettings) {
+        return false;
+    }
+    return str::EqI(gSettings->printerUI, StrL("classic"));
+}
+
 // apply a collate preference (1 = collate, 0 = no-collate) to a DEVMODE handle
 static void SetDevModeCollate(HGLOBAL hDevMode, int collate) {
     if (!hDevMode || collate < 0) {
@@ -1357,6 +1376,8 @@ void PrintCurrentFile(MainWindow* win, bool waitForCompletion) {
     // the print dialog needs the real total up front; no progress UI here
     EnsureFullLayout(dm);
     int nPages = dm->PageCount();
+    logf("PrintCurrentFile: start wait=%d file='%s' pages=%d selection=%d\n", (int)waitForCompletion,
+         engine->FilePath(), nPages, (int)(win->CurrentTab()->selectionOnPage != nullptr));
 
 #ifndef DISABLE_DOCUMENT_RESTRICTIONS
     if (!engine->AllowsPrinting()) {
@@ -1366,8 +1387,8 @@ void PrintCurrentFile(MainWindow* win, bool waitForCompletion) {
 
     if (win->printThread) {
         uint type = MB_ICONEXCLAMATION | MB_YESNO | MbRtlReadingMaybe();
-        Str title = _TRA("Printing in progress.");
-        Str msg = _TRA("Printing is still in progress. Abort and start over?");
+        Str title = Tr("Printing in progress.");
+        Str msg = Tr("Printing is still in progress. Abort and start over?");
         int res = MsgBox(win->hwndFrame, msg, title, type);
         if (res == IDNO) {
             return;
@@ -1377,8 +1398,12 @@ void PrintCurrentFile(MainWindow* win, bool waitForCompletion) {
 
     // the Windows 11 dialog runs the whole job itself; -print-to and friends
     // need the synchronous classic path
-    if (!waitForCompletion && TryPrintCurrentFileWin11(win, defaultScaleAdv)) {
-        return;
+    if (!waitForCompletion && !PrinterUIWantsClassic()) {
+        bool usedWin11Dialog = TryPrintCurrentFileWin11(win, defaultScaleAdv);
+        logf("PrintCurrentFile: Windows 11 dialog=%d\n", (int)usedWin11Dialog);
+        if (usedWin11Dialog) {
+            return;
+        }
     }
 
     PRINTDLGEXW pdex{};
@@ -1445,7 +1470,11 @@ void PrintCurrentFile(MainWindow* win, bool waitForCompletion) {
         }
     }
 
+    logf("PrintCurrentFile: PrintDlgEx start flags=0x%x pages=%d hDevMode=%p hDevNames=%p collate=%d\n", pdex.Flags,
+         nPages, pdex.hDevMode, pdex.hDevNames, collatePref);
     HRESULT res = PrintDlgExW(&pdex);
+    logf("PrintCurrentFile: PrintDlgEx result=0x%08x action=%u flags=0x%x ranges=%u hDevMode=%p hDevNames=%p\n",
+         (uint)res, pdex.dwResultAction, pdex.Flags, pdex.nPageRanges, pdex.hDevMode, pdex.hDevNames);
 
     // PrintDlgExW pumps messages, so the window may have been closed/destroyed while the dialog was open
     if (!IsMainWindowValidAndNotClosing(win)) {
@@ -1457,12 +1486,13 @@ void PrintCurrentFile(MainWindow* win, bool waitForCompletion) {
     }
 
     if (res != S_OK) {
-        logf("PrintCurrentFile: PrintDlgEx failed\n");
-        MessageBoxWarning(win->hwndFrame, _TRA("Couldn't initialize printer"), _TRA("Printing problem."));
+        logf("PrintCurrentFile: PrintDlgEx failed, CommDlgExtendedError=0x%x\n", (uint)CommDlgExtendedError());
+        MessageBoxWarning(win->hwndFrame, Tr("Couldn't initialize printer"), Tr("Printing problem."));
     }
     auto action = pdex.dwResultAction;
     if (action != PD_RESULT_PRINT) {
         // it's cancel or apply so silently ignore as it's not an error
+        logf("PrintCurrentFile: PrintDlgEx ended without print, action=%u\n", action);
         goto Exit;
     }
 
@@ -1483,7 +1513,8 @@ void PrintCurrentFile(MainWindow* win, bool waitForCompletion) {
     nPages = dm->PageCount();
 
     if (!pdex.hDevNames) {
-        MessageBoxWarning(win->hwndFrame, _TRA("Couldn't get printer name"), _TRA("Printing problem."));
+        logf("PrintCurrentFile: PrintDlgEx returned no hDevNames\n");
+        MessageBoxWarning(win->hwndFrame, Tr("Couldn't get printer name"), Tr("Printing problem."));
         goto Exit;
     }
 
@@ -1493,6 +1524,7 @@ void PrintCurrentFile(MainWindow* win, bool waitForCompletion) {
             // printerInfo.pDriverName = (LPWSTR)devNames + devNames->wDriverOffset;
             WCHAR* printerName = (WCHAR*)devNames + devNames->wDeviceOffset;
             TempStr name = ToUtf8Temp(printerName);
+            logf("PrintCurrentFile: selected printer='%s'\n", name);
             printer = NewPrinter(name);
             // printerInfo.pPortName = (LPWSTR)devNames + devNames->wOutputOffset;
             GlobalUnlock(pdex.hDevNames);
@@ -1500,11 +1532,15 @@ void PrintCurrentFile(MainWindow* win, bool waitForCompletion) {
     }
 
     if (!printer) {
-        MessageBoxWarning(win->hwndFrame, _TRA("Couldn't initialize printer"), _TRA("Printing problem."));
+        logf("PrintCurrentFile: couldn't create selected printer\n");
+        MessageBoxWarning(win->hwndFrame, Tr("Couldn't initialize printer"), Tr("Printing problem."));
         goto Exit;
     }
 
     devMode = (DEVMODEW*)GlobalLock(pdex.hDevMode);
+    if (!devMode) {
+        logf("PrintCurrentFile: GlobalLock(hDevMode) failed, err=%u\n", GetLastError());
+    }
 
     if (pdex.dwResultAction == PD_RESULT_PRINT || pdex.dwResultAction == PD_RESULT_APPLY) {
         // remember settings for this process
@@ -1836,7 +1872,7 @@ static short GetPaperSourceByName(Printer* printer, Str binName) {
 static Str kIgnorePdfPrintSettingsToken = StrL("ignore-pdf-print-settings");
 
 static bool PrintSettingsHaveToken(Str settings, Str token) {
-    if (!settings) {
+    if (len(settings) == 0) {
         return false;
     }
     StrVec list;
@@ -1883,7 +1919,6 @@ static void ApplyPdfViewerPrintPrefs(const PdfViewerPrintPrefs& prefs, DEVMODEW*
 static void ApplyPrintSettings(Printer* printer, Str settings, int pageCount, Vec<PRINTPAGERANGE>& ranges,
                                Print_Advanced_Data& advanced) {
     auto* devMode = printer->devMode;
-    auto suffix = [](Str s, int n) -> Str { return Str(s.s + n, s.len - n); };
 
     StrVec rangeList;
     if (settings) {
@@ -1936,10 +1971,10 @@ static void ApplyPrintSettings(Printer* printer, Str settings, int pageCount, Ve
             devMode->dmFields |= DM_ORIENTATION;
         } else if (str::EqI(s, StrL("disable-auto-rotation"))) {
             advanced.autoRotate = false;
-        } else if (str::StartsWithI(s, StrL("rotate="))) {
+        } else if (str::TrimPrefixI(s, StrL("rotate="))) {
             // extra rotation of the printout in degrees: 90, 180 or 270 (#1246)
             int deg = 0;
-            if (!str::IsNull(str::Parse(suffix(s, 7), "%d%$", &deg))) {
+            if (!str::IsNull(str::Parse(s, "%d%$", &deg))) {
                 deg = ((deg % 360) + 360) % 360;
                 if (deg == 90 || deg == 180 || deg == 270) {
                     advanced.extraRotation = deg;
@@ -1978,32 +2013,32 @@ static void ApplyPrintSettings(Printer* printer, Str settings, int pageCount, Ve
         } else if (str::EqI(s, StrL("nocollate"))) {
             devMode->dmCollate = DMCOLLATE_FALSE;
             devMode->dmFields |= DM_COLLATE;
-        } else if (str::StartsWithI(s, StrL("bin="))) {
-            devMode->dmDefaultSource = GetPaperSourceByName(printer, suffix(s, 4));
+        } else if (str::TrimPrefixI(s, StrL("bin="))) {
+            devMode->dmDefaultSource = GetPaperSourceByName(printer, s);
             devMode->dmFields |= DM_DEFAULTSOURCE;
-        } else if (str::StartsWithI(s, StrL("paper="))) {
+        } else if (str::TrimPrefixI(s, StrL("paper="))) {
             float mmW = 0, mmH = 0;
-            if (str::EqI(suffix(s, 6), StrL("auto"))) {
+            if (str::EqI(s, StrL("auto"))) {
                 // set the paper size per page from the document's page size, for
                 // mixed page size documents (issue #533)
                 advanced.perPagePaperSize = true;
-            } else if (!str::IsNull(str::Parse(suffix(s, 6), "%fmm x %fmm%$", &mmW, &mmH)) && mmW > 0 && mmH > 0) {
+            } else if (!str::IsNull(str::Parse(s, "%fmm x %fmm%$", &mmW, &mmH)) && mmW > 0 && mmH > 0) {
                 // custom paper size specified as dimensions e.g. "paper=76mm x 130mm"
                 // SetCustomPaperSize expects tenths of a millimeter
                 SizeF size(mmW * 10.f, mmH * 10.f);
                 SetCustomPaperSize(printer, size);
             } else {
-                devMode->dmPaperSize = GetPaperByName(printer, suffix(s, 6));
+                devMode->dmPaperSize = GetPaperByName(printer, s);
                 devMode->dmFields |= DM_PAPERSIZE;
             }
-        } else if (str::StartsWithI(s, StrL("paperkind="))) {
+        } else if (str::TrimPrefixI(s, StrL("paperkind="))) {
             // alternatively allow indicating the paper kind directly by number
-            devMode->dmPaperSize = GetPaperKind(suffix(s, 10));
+            devMode->dmPaperSize = GetPaperKind(s);
             devMode->dmFields |= DM_PAPERSIZE;
-        } else if (str::StartsWithI(s, StrL("output="))) {
-            printer->output = str::Dup(suffix(s, 7));
-        } else if (str::StartsWithI(s, StrL("docname="))) {
-            printer->docName = str::Dup(suffix(s, 8));
+        } else if (str::TrimPrefixI(s, StrL("output="))) {
+            printer->output = str::Dup(s);
+        } else if (str::TrimPrefixI(s, StrL("docname="))) {
+            printer->docName = str::Dup(s);
         } else if (str::EqI(s, kIgnorePdfPrintSettingsToken)) {
             // handled before ApplyPrintSettings (see PrintFile2); ignore here
         }
@@ -2077,14 +2112,14 @@ PrintResult PrintFile2(EngineBase* engine, Str printerName, bool displayErrors, 
 
 #ifndef DISABLE_DOCUMENT_RESTRICTIONS
     if (engine && !engine->AllowsPrinting()) {
-        MessageBoxWarningCond(displayErrors, _TRA("Cannot print this file"), _TRA("Printing problem."));
+        MessageBoxWarningCond(displayErrors, Tr("Cannot print this file"), Tr("Printing problem."));
         logf("PrintFile2: printing not allowed by the document\n");
         return PrintResult::PrintingNotAllowed;
     }
 #endif
 
     if (!engine) {
-        MessageBoxWarningCond(displayErrors, _TRA("Cannot print this file"), _TRA("Printing problem."));
+        MessageBoxWarningCond(displayErrors, Tr("Cannot print this file"), Tr("Printing problem."));
         logf("PrintFile2: engine is null\n");
         return PrintResult::CannotLoadFile;
     }
@@ -2095,7 +2130,7 @@ PrintResult PrintFile2(EngineBase* engine, Str printerName, bool displayErrors, 
         printer = NewPrinter(printerName);
     } else {
         TempStr defName = GetDefaultPrinterNameTemp();
-        if (!defName) {
+        if (len(defName) == 0) {
             logf("PrintFile: GetDefaultPrinterName() failed\n");
             return PrintResult::PrinterNotFound;
         }
@@ -2103,8 +2138,8 @@ PrintResult PrintFile2(EngineBase* engine, Str printerName, bool displayErrors, 
     }
 
     if (!printer) {
-        TempStr msg = fmt(_TRA("Printer '%s' doesn't exist").s, printerName);
-        MessageBoxWarningCond(displayErrors, msg, _TRA("Printing problem."));
+        TempStr msg = fmt(Tr("Printer '%s' doesn't exist").s, printerName);
+        MessageBoxWarningCond(displayErrors, msg, Tr("Printing problem."));
         return PrintResult::PrinterNotFound;
     }
 
@@ -2146,7 +2181,7 @@ PrintResult PrintFile2(EngineBase* engine, Str printerName, bool displayErrors, 
         ok = PrintToDevice(pd);
         if (!ok) {
             logf("PrintToDevice: failed\n");
-            MessageBoxWarningCond(displayErrors, _TRA("Couldn't initialize printer"), _TRA("Printing problem."));
+            MessageBoxWarningCond(displayErrors, Tr("Couldn't initialize printer"), Tr("Printing problem."));
         }
     }
     if (!ok) {
@@ -2162,7 +2197,7 @@ PrintResult PrintFile(Str fileName, Str printerName, bool displayErrors, Str set
     EngineBase* engine = CreateEngineFromFile(fileName, nullptr, true);
     if (!engine) {
         TempStr msg = fmt("Couldn't open file '%s' for printing", fileName);
-        MessageBoxWarningCond(displayErrors, msg, _TRA("Error"));
+        MessageBoxWarningCond(displayErrors, msg, Tr("Error"));
         return PrintResult::CannotLoadFile;
     }
     PrintResult res = PrintFile2(engine, printerName, displayErrors, settings);

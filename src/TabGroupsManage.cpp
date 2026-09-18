@@ -23,7 +23,7 @@
 #include "Translations.h"
 #include "SumatraConfig.h"
 #include "Theme.h"
-#include "DarkMode_win.h"
+#include "DarkMode.h"
 #include "TabGroupsManage.h"
 
 constexpr int kPadding = 8;
@@ -105,7 +105,7 @@ void TabGroupsWnd::SaveTabGroup() {
         if (tab->IsAboutTab()) {
             continue;
         }
-        if (!tab->filePath) {
+        if (len(tab->filePath) == 0) {
             continue;
         }
         auto* tf = AllocStruct<TabFile>();
@@ -117,7 +117,7 @@ void TabGroupsWnd::SaveTabGroup() {
         gSettings->tabGroups = new Vec<TabGroup*>();
     }
     VecAppend(*gSettings->tabGroups, group);
-    SaveSettings();
+    ScheduleSaveSettings();
     Close();
 }
 
@@ -200,7 +200,7 @@ void TabGroupsWnd::DeleteTabGroup(VirtMouseEvent*) {
     TabGroup* group = (*groups)[sel];
     VecRemove(*groups, group);
     FreeTabGroup(group);
-    SaveSettings();
+    ScheduleSaveSettings();
     PopulateListBox(this);
     UpdateDeleteButton();
 }
@@ -298,7 +298,7 @@ bool TabGroupsWnd::Create(MainWindow* winIn, TabGroupDialogMode modeIn) {
     hwndParent = win->hwndFrame;
     bool isRtl = IsUIRtl();
 
-    Str titleStr = (mode == TabGroupDialogMode::Save) ? Str(_TRA("Save Tab Group")) : Str(_TRA("Restore Tab Group"));
+    Str titleStr = (mode == TabGroupDialogMode::Save) ? Str(Tr("Save Tab Group")) : Str(Tr("Restore Tab Group"));
     {
         CreateCustomArgs args;
         args.title = titleStr;
@@ -353,14 +353,14 @@ bool TabGroupsWnd::Create(MainWindow* winIn, TabGroupDialogMode modeIn) {
         btnRow->alignCross = CrossAxisAlign::CrossCenter;
         btnRow->gap = font->averageCharWidth;
 
-        btnCancel = NewThemedButton(hwnd, _TRA("Cancel"), font, false);
+        btnCancel = NewThemedButton(hwnd, Tr("Cancel"), font, false);
         btnCancel->onClick = MkMethod1<TabGroupsWnd, VirtMouseEvent*, &TabGroupsWnd::OnCancel>(this);
         btnRow->AddChild(btnCancel);
-        btnDelete = NewThemedButton(hwnd, _TRA("Delete"), font, false);
+        btnDelete = NewThemedButton(hwnd, Tr("Delete"), font, false);
         btnDelete->onClick = MkMethod1<TabGroupsWnd, VirtMouseEvent*, &TabGroupsWnd::DeleteTabGroup>(this);
         btnDelete->SetIsEnabled(false);
         btnRow->AddChild(btnDelete);
-        Str okText = (mode == TabGroupDialogMode::Save) ? Str(_TRA("Save")) : Str(_TRA("Restore"));
+        Str okText = (mode == TabGroupDialogMode::Save) ? Str(Tr("Save")) : Str(Tr("Restore"));
         btnOk = NewThemedButton(hwnd, okText, font, true);
         btnOk->onClick = MkMethod1<TabGroupsWnd, VirtMouseEvent*, &TabGroupsWnd::OnOk>(this);
         btnRow->AddChild(btnOk);

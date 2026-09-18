@@ -143,8 +143,8 @@ bool UninstallPreviewDll() {
 // TODO: is anyone using this functionality?
 void DisablePreviewInstallExts(Str cmdLine) {
     // allows installing only a subset of available preview handlers
-    if (str::StartsWithI(cmdLine, StrL("exts:"))) {
-        TempStr extsList = str::DupTemp(Str(cmdLine.s + 5, cmdLine.len - 5));
+    if (str::TrimPrefixI(cmdLine, StrL("exts:"))) {
+        TempStr extsList = str::DupTemp(cmdLine);
         str::ToLowerInPlace(extsList);
         str::TransCharsInPlace(extsList, StrL(";. :"), StrL(",,,\0"));
         StrVec exts;
@@ -189,7 +189,7 @@ void SetPdfPreviewLoggingEnabled(bool enable) {
 // per-build data dir, same one SumatraPDF.exe uses (...\SumatraPDF-data\<sha1>)
 TempStr GetPdfPreviewLogDirTemp() {
     TempStr exeDir = GetSelfExeDirTemp();
-    if (!exeDir) {
+    if (len(exeDir) == 0) {
         return {};
     }
     TempStr exePath = path::JoinTemp(exeDir, StrL("SumatraPDF.exe"));
@@ -205,7 +205,7 @@ TempStr GetPdfPreviewLogDirTemp() {
         sprintf_s(&id[(size_t)2 * i], 3, "%02x", sha1[i]);
     }
     TempStr local = GetSpecialFolderTemp(CSIDL_LOCAL_APPDATA, false);
-    if (!local) {
+    if (len(local) == 0) {
         return {};
     }
     TempStr dir = path::JoinTemp(local, StrL("SumatraPDF-data"));
@@ -215,7 +215,7 @@ TempStr GetPdfPreviewLogDirTemp() {
 // pdfpreview.log.<month>-<day>.<hour>-<minute>.<unique>.txt
 static TempStr GetNewPdfPreviewLogFilePathTemp() {
     TempStr dir = GetPdfPreviewLogDirTemp();
-    if (!dir) {
+    if (len(dir) == 0) {
         return {};
     }
     SYSTEMTIME st{};
@@ -236,7 +236,7 @@ void StartPdfPreviewLoggingIfEnabled() {
     }
     started = true;
     TempStr path = GetNewPdfPreviewLogFilePathTemp();
-    if (!path) {
+    if (len(path) == 0) {
         return;
     }
     // WriteCurrentLogToFile creates the directory and flushes whatever we've

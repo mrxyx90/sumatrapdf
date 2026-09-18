@@ -26,7 +26,7 @@
 //                    site you're logged into. Custom headers are impossible
 //                    this way (a form submission can't set them).
 //
-// Why WinHTTP rather than the WinINet used elsewhere in base/Http_win.cpp:
+// Why WinHTTP rather than the WinINet used elsewhere in base/Http.cpp:
 // WinINet shares Internet Explorer's cookie jar and cache, so a request would
 // carry whatever cookies happen to be lying around to a third-party endpoint.
 // For calls that are meant to be authenticated only by an explicit api key,
@@ -181,11 +181,11 @@ static void PostRequestFinished(PostRequest* req) {
     bool ok = req->statusCode >= 200 && req->statusCode < 300;
     TempStr msg;
     if (req->winErr != 0) {
-        msg = fmt(_TRA("Sending selection failed (error %d)").s, (int)req->winErr);
+        msg = fmt(Tr("Sending selection failed (error %d)").s, (int)req->winErr);
     } else if (ok) {
-        msg = fmt(_TRA("Sent selection (HTTP %d)").s, (int)req->statusCode);
+        msg = fmt(Tr("Sent selection (HTTP %d)").s, (int)req->statusCode);
     } else {
-        msg = fmt(_TRA("Sending selection failed (HTTP %d)").s, (int)req->statusCode);
+        msg = fmt(Tr("Sending selection failed (HTTP %d)").s, (int)req->statusCode);
     }
     if (len(req->response) > 0) {
         TempStr body = req->response;
@@ -304,13 +304,13 @@ void SelectionHandlerPostViaBrowser(WindowTab* tab, Str url, Str bodyPattern, St
 
     TempStr dir = GetTempDirTemp();
     if (str::IsEmptyOrWhiteSpace(dir)) {
-        ShowSelectionHandlerNotification(tab, _TRA("Couldn't create a temporary file"), true);
+        ShowSelectionHandlerNotification(tab, Tr("Couldn't create a temporary file"), true);
         return;
     }
     TempStr name = fmt("SumatraPDF-post-%d.html", (int)GetCurrentProcessId());
     TempStr path = path::JoinTemp(dir, name);
     if (!file::WriteFile(path, ToStr(html))) {
-        ShowSelectionHandlerNotification(tab, _TRA("Couldn't create a temporary file"), true);
+        ShowSelectionHandlerNotification(tab, Tr("Couldn't create a temporary file"), true);
         return;
     }
     // the file stays behind after the browser reads it; it's overwritten on the

@@ -131,7 +131,7 @@ TempStr GetRegPathUninstTemp(Str appName) {
 }
 
 void NotifyFailed(Str msg) {
-    if (!gFirstError) {
+    if (len(gFirstError) == 0) {
         gFirstError = str::Dup(msg);
     }
     logf("NotifyFailed: %s\n", msg);
@@ -153,7 +153,7 @@ TempStr GetExistingInstallationDirTemp() {
     log(StrL("GetExistingInstallationDir()\n"));
     TempStr regPathUninst = GetRegPathUninstTemp(StrL(kAppName));
     TempStr dir = LoggedReadRegStr2Temp(regPathUninst, StrL("InstallLocation"));
-    if (!dir) {
+    if (len(dir) == 0) {
         return {};
     }
     if (str::EndsWithI(dir, StrL(".exe"))) {
@@ -168,7 +168,7 @@ TempStr GetExistingInstallationDirTemp() {
 
 bool IsOurExeInstalled() {
     TempStr installedDir = GetExistingInstallationDirTemp();
-    if (!installedDir) {
+    if (len(installedDir) == 0) {
         return false;
     }
     TempStr exeDir = GetSelfExeDirTemp();
@@ -177,7 +177,7 @@ bool IsOurExeInstalled() {
 
 // Walk path and parents; true if any component equals dir (junction-aware via path::IsSame).
 static bool IsPathUnderOrEqualDir(Str path, Str dir) {
-    if (!path || !dir) {
+    if (len(path) == 0 || len(dir) == 0) {
         return false;
     }
     TempStr cur = str::DupTemp(path);
@@ -186,7 +186,7 @@ static bool IsPathUnderOrEqualDir(Str path, Str dir) {
             return true;
         }
         TempStr parent = path::GetDirTemp(cur);
-        if (!parent || len(parent) == 0 || len(parent) >= len(cur)) {
+        if (len(parent) == 0 || len(parent) >= len(cur)) {
             break;
         }
         cur = parent;
@@ -196,7 +196,7 @@ static bool IsPathUnderOrEqualDir(Str path, Str dir) {
 
 // true if path is under Program Files / Program Files (x86)
 bool IsPathUnderProgramFiles(Str path) {
-    if (!path) {
+    if (len(path) == 0) {
         return false;
     }
     TempStr pf = GetSpecialFolderTemp(CSIDL_PROGRAM_FILES);
@@ -212,18 +212,18 @@ bool IsPathUnderProgramFiles(Str path) {
 
 // Probe whether the current process can create a file under dir (or a parent that exists).
 static bool CanWriteToDirectory(Str dir) {
-    if (!dir) {
+    if (len(dir) == 0) {
         return false;
     }
     TempStr probeDir = str::DupTemp(dir);
     while (probeDir && !dir::Exists(probeDir)) {
         TempStr parent = path::GetDirTemp(probeDir);
-        if (!parent || len(parent) == 0 || len(parent) >= len(probeDir)) {
+        if (len(parent) == 0 || len(parent) >= len(probeDir)) {
             break;
         }
         probeDir = parent;
     }
-    if (!probeDir || !dir::Exists(probeDir)) {
+    if (len(probeDir) == 0 || !dir::Exists(probeDir)) {
         return false;
     }
     TempStr probe = path::JoinTemp(probeDir, fmt("sumatra-write-test-%u.tmp", GetCurrentProcessId()));
@@ -257,7 +257,7 @@ bool InstallNeedsElevation(Str installDir, bool allUsers) {
 
 void GetPreviousInstallInfo(PreviousInstallationInfo* info) {
     info->installationDir = str::Dup(GetExistingInstallationDirTemp());
-    if (!info->installationDir) {
+    if (len(info->installationDir) == 0) {
         info->typ = PreviousInstallationType::None;
         log(StrL("GetPreviousInstallInfo: not installed\n"));
         return;
@@ -290,7 +290,7 @@ void GetPreviousInstallInfo(PreviousInstallationInfo* info) {
 
 static TempStr GetExistingInstallationFilePathTemp(Str name) {
     TempStr dir = GetExistingInstallationDirTemp();
-    if (!dir) {
+    if (len(dir) == 0) {
         return {};
     }
     return path::JoinTemp(dir, name);
@@ -304,7 +304,7 @@ TempStr GetInstallationFilePathTemp(Str installDir, Str name) {
 
 TempStr GetShortcutPathTemp(int csidl) {
     TempStr dir = GetSpecialFolderTemp(csidl, false);
-    if (!dir) {
+    if (len(dir) == 0) {
         return {};
     }
     TempStr lnkName = str::JoinTemp(StrL(kAppName), StrL(".lnk"));
@@ -316,7 +316,7 @@ static bool IsProcessUsingFiles(DWORD procId, Str file1, Str file2) {
     if (procId == 0 || procId == GetCurrentProcessId()) {
         return false;
     }
-    if (!file1 && !file2) {
+    if (len(file1) == 0 && len(file2) == 0) {
         return false;
     }
     AutoCloseHandle snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, procId);
@@ -352,7 +352,7 @@ void RegisterSearchFilter(bool allUsers, Str installDir) {
         return;
     }
     log(StrL("  failed to register\n"));
-    NotifyFailed(_TRA("Couldn't install PDF search filter"));
+    NotifyFailed(Tr("Couldn't install PDF search filter"));
 }
 
 void UnRegisterSearchFilter() {
@@ -364,7 +364,7 @@ void UnRegisterSearchFilter() {
         return;
     }
     log(StrL("  failed to unregister\n"));
-    NotifyFailed(_TRA("Couldn't uninstall Sumatra search filter"));
+    NotifyFailed(Tr("Couldn't uninstall Sumatra search filter"));
 }
 
 constexpr const char* kPreviewDllName = "PdfPreview.dll";
@@ -378,7 +378,7 @@ void RegisterPreviewer(bool allUsers, Str installDir) {
         return;
     }
     log(StrL("  failed to register\n"));
-    NotifyFailed(_TRA("Couldn't install PDF previewer"));
+    NotifyFailed(Tr("Couldn't install PDF previewer"));
 }
 
 void UnRegisterPreviewer() {
@@ -390,7 +390,7 @@ void UnRegisterPreviewer() {
         return;
     }
     log(StrL(" failed to unregister\n"));
-    NotifyFailed(_TRA("Couldn't uninstall PDF previewer"));
+    NotifyFailed(Tr("Couldn't uninstall PDF previewer"));
 }
 
 static bool IsProcWithModule(DWORD processId, Str modulePath) {
@@ -501,7 +501,7 @@ int KillProcessesWithModule(Str modulePath, bool waitUntilTerminated) {
 // returns false if there are processes and we failed to kill them
 static bool KillProcessesUsingInstallationDir(Str dir) {
     logf("KillProcessesUsingInstallationDir('%s')\n", dir);
-    if (!dir) {
+    if (len(dir) == 0) {
         return true;
     }
     TempStr libsumatrapdf = path::JoinTemp(dir, StrL("libsumatrapdf.dll"));
@@ -583,7 +583,7 @@ void FreeInstallationFilesInUse(Str installDir, bool allUsers, ShellExtInstallSt
         KillProcessesUsingInstallationDir(installDir);
     }
     TempStr existing = GetExistingInstallationDirTemp();
-    if (existing && (!installDir || !str::EqI(existing, installDir))) {
+    if (existing && (len(installDir) == 0 || !str::EqI(existing, installDir))) {
         KillProcessesUsingInstallationDir(existing);
     }
 
@@ -601,7 +601,7 @@ void FreeInstallationFilesInUse(Str installDir, bool allUsers, ShellExtInstallSt
 }
 
 void RestoreShellExtensions(const ShellExtInstallState& state) {
-    if (!state.installDir) {
+    if (len(state.installDir) == 0) {
         log(StrL("RestoreShellExtensions: no installDir, skip\n"));
         return;
     }
@@ -620,7 +620,7 @@ void RestoreShellExtensions(const ShellExtInstallState& state) {
 static void ProcessesUsingInstallation(StrVec& names) {
     log(StrL("ProcessesUsingInstallation()\n"));
     TempStr dir = GetExistingInstallationDirTemp();
-    if (!dir) {
+    if (len(dir) == 0) {
         return;
     }
     TempStr libsumatrapdf = path::JoinTemp(dir, StrL("libsumatrapdf.dll"));
@@ -683,7 +683,7 @@ static void SetCloseProcessMsg() {
             procNames = str::JoinTemp(procNames, StrL(" and "), name);
         }
     }
-    TempStr s = fmt(_TRA("Please close %s to proceed!").s, procNames);
+    TempStr s = fmt(Tr("Please close %s to proceed!").s, procNames);
     SetMsg(s, kColorMsgFailed);
 }
 

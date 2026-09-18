@@ -2,12 +2,13 @@
    License: Simplified BSD */
 
 #include "base/Base.h"
-#include "CrashHandler.h"
 
-void _uploadDebugReport(Str /*condStr*/, Str /*fileLine*/, bool /*isCrash*/, bool /*captureCallstack*/) {
+// stubs for what SumatraPDF.cpp provides, for the tools that don't link it
+void CrashHandlerSetSettings(Str) {}
+
+void _uploadDebugReport(Str /*condStr*/, Str /*fileLine*/, bool /*isCrash*/) {
 #if OS_WIN
     // outside of SumatraPDF binary, this only breaks if running under debugger
-    // for the benefit of test_util
     if (IsDebuggerPresent()) {
         DebugBreak();
     }

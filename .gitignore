@@ -7,7 +7,6 @@
 *.cov
 out.txt
 out/
-deps/
 agent-tools/
 ext/mupdf/generated/
 .vs/
@@ -32,6 +31,7 @@ cmd/tmp/
 
 .work/
 log.txt
+inlined.txt
 sumlog.txt
 vs2022/enc_temp_folder
 docs/md/.obsidian

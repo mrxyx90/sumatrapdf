@@ -32,16 +32,16 @@ constexpr i64 kMemoryMapMinFileSize = 128LL * 1024 * 1024;
 
 // parses "123", "#123", "# 123"; returns -1 for invalid page
 static int ParseDjvuDecLink(Str link) {
-    str::SkipChar(link, '#');
-    str::SkipChar(link, ' ');
-    if (!link) {
+    str::TrimChar(link, '#');
+    str::TrimChar(link, ' ');
+    if (len(link) == 0) {
         return -1;
     }
     return ParseInt(link);
 }
 
 static bool DjvuDecCouldBeURL(Str link) {
-    if (!link) {
+    if (len(link) == 0) {
         return false;
     }
     if (str::StartsWithI(link, StrL("http:")) || str::StartsWithI(link, StrL("https:")) ||
@@ -79,14 +79,18 @@ struct PageDestinationDjvuDec : IPageDestination {
     }
 };
 
-static IPageDestination* NewDjvuDecDestination(Str link, Str comment) {
-    if (!link || str::Eq(link, StrL("#"))) {
+static IPageDestination* NewDjvuDecDestination(Arena* arena, Str link, Str comment) {
+    if (len(link) == 0 || str::Eq(link, StrL("#"))) {
         return nullptr;
     }
-    auto* res = new PageDestinationDjvuDec(link, comment);
+    auto* res = arena ? New<PageDestinationDjvuDec>(arena, link, comment) : new PageDestinationDjvuDec(link, comment);
     res->rect = RectF(kDestUseDefault, kDestUseDefault, kDestUseDefault, kDestUseDefault);
     res->pageNo = ParseDjvuDecLink(link);
     return res;
+}
+
+static IPageDestination* NewDjvuDecDestination(Str link, Str comment) {
+    return NewDjvuDecDestination(nullptr, link, comment);
 }
 
 static IPageElement* NewDjvuDecLink(int pageNo, Rect rect, Str link, Str comment) {
@@ -100,10 +104,10 @@ static IPageElement* NewDjvuDecLink(int pageNo, Rect rect, Str link, Str comment
     return res;
 }
 
-static TocItem* NewDjvuDecTocItem(TocItem* parent, Str title, Str link) {
-    auto* res = AllocTocItem(nullptr, title, 0);
+static TocItem* NewDjvuDecTocItem(Arena* arena, TocItem* parent, Str title, Str link) {
+    auto* res = AllocTocItem(arena, title, 0);
     res->parent = parent;
-    res->dest = NewDjvuDecDestination(link, {});
+    res->dest = NewDjvuDecDestination(arena, link, {});
     if (res->dest) {
         res->pageNo = PageDestGetPageNo(res->dest);
     }
@@ -243,7 +247,7 @@ EngineDjvuDec::EngineDjvuDec() {
 }
 
 EngineDjvuDec::~EngineDjvuDec() {
-    delete tocTree;
+    DestroyTocTree(tocTree);
     DeleteVecMembers(pages);
     if (doc) {
         djvu_doc_close(doc);
@@ -784,7 +788,7 @@ PageText EngineDjvuDec::ExtractPageText(int pageNo) {
 
 // returns a numeric DjVu link to a named page (if the name resolves)
 static TempStr ResolveNamedDestDjvuDecTemp(djvu_doc* doc, Str name) {
-    if (!name) {
+    if (len(name) == 0) {
         return {};
     }
     int pageNo = djvu_doc_page_by_name(doc, CStrTemp(name));
@@ -815,13 +819,13 @@ Vec<IPageElement*> EngineDjvuDec::GetElements(int pageNo) {
     for (int i = 0; i < links->nlinks; i++) {
         djvu_link& l = links->links[i];
         Str url = Str(l.url);
-        if (!url) {
+        if (len(url) == 0) {
             continue;
         }
         Rect rect((int)((float)l.x * dpiF), (int)((float)l.y * dpiF), (int)((float)l.w * dpiF),
                   (int)((float)l.h * dpiF));
         TempStr link = ResolveNamedDestDjvuDecTemp(doc, url);
-        if (!link) {
+        if (len(link) == 0) {
             link = url;
         }
         auto* el = NewDjvuDecLink(pageNo, rect, link, Str(l.comment));
@@ -878,12 +882,13 @@ bool EngineDjvuDec::HandleLink(IPageDestination* dest, ILinkHandler* linkHandler
     return true;
 }
 
+// engine-owned; do not delete
 IPageDestination* EngineDjvuDec::GetNamedDest(Str name) {
     Str n = name;
     str::TrimPrefix(n, StrL("#"));
     TempStr link = ResolveNamedDestDjvuDecTemp(doc, n);
     if (link) {
-        return NewDjvuDecDestination(link, {});
+        return NewDjvuDecDestination(arena, link, {});
     }
     return nullptr;
 }
@@ -904,7 +909,7 @@ TocItem* EngineDjvuDec::BuildTocTree(TocItem* parent, djvu_outline_item* items, 
         } else if (it.page_no >= 0) {
             link = fmt("#%d", it.page_no + 1);
         }
-        TocItem* tocItem = NewDjvuDecTocItem(parent, title, link);
+        TocItem* tocItem = NewDjvuDecTocItem(arena, parent, title, link);
         tocItem->id = ++idCounter;
         tocItem->child = BuildTocTree(tocItem, it.children, it.nchildren, idCounter, depth + 1);
         if (!node) {
@@ -934,9 +939,9 @@ TocTree* EngineDjvuDec::GetToc() {
     if (!rootItem) {
         return nullptr;
     }
-    auto* realRoot = AllocTocItem(nullptr, {}, 0);
+    auto* realRoot = AllocTocItem(arena, {}, 0);
     realRoot->child = rootItem;
-    tocTree = new TocTree(realRoot);
+    tocTree = AllocTocTree(arena, realRoot);
     return tocTree;
 }
 

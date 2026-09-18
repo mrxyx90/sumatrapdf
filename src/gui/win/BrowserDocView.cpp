@@ -268,7 +268,7 @@ struct NotifyArgsState {
         return v;
     }
     Str Text(int idx) const {
-        if (idx < 0 || idx >= kMaxArgs || !args[idx]) {
+        if (idx < 0 || idx >= kMaxArgs || len(args[idx]) == 0) {
             return {};
         }
         return args[idx];
@@ -325,7 +325,7 @@ static TempStr ChmMimeFromPathTemp(Str path, Str data) {
 
     TempStr imgExt = GfxFileExtFromDataTemp(data);
     TempStr mime = MimeTypeFromExtTemp(ext, imgExt);
-    if (!mime) {
+    if (len(mime) == 0) {
         mime = StrL("text/html");
     }
     return mime;
@@ -495,8 +495,16 @@ LRESULT BrowserDocView::ParentWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
 
         case WM_MOUSEWHEEL:
         case WM_MOUSEHWHEEL:
+            // WebView2 often delivers the wheel to this parent; swallowing it
+            // left markdown/CHM unscrollable when the browser wasn't focused (#6142).
             if (view->wv && view->wv->hwnd) {
-                return 0;
+                if (view->forwardingWheel) {
+                    return 0;
+                }
+                view->forwardingWheel = true;
+                LRESULT res = view->SendMsg(msg, wp, lp);
+                view->forwardingWheel = false;
+                return res;
             }
             break;
 
@@ -564,6 +572,13 @@ bool BrowserDocView::CreateWebView2() {
     return true;
 }
 
+static HtmlBackend gHtmlBackend = HtmlBackend::Auto;
+
+// -html-backend forces IE or WebView2 so tests can exercise both paths.
+void SetHtmlBackend(HtmlBackend backend) {
+    gHtmlBackend = backend;
+}
+
 BrowserDocView* BrowserDocView::Create(HWND hwndParent, HtmlWindowCallback* cb, Str virtualHostPrefix) {
     if (!hwndParent || !cb) {
         return nullptr;
@@ -581,7 +596,8 @@ BrowserDocView* BrowserDocView::Create(HWND hwndParent, HtmlWindowCallback* cb, 
     }
 
 #ifdef _MSC_VER
-    if (HasWebView() && view->CreateWebView2()) {
+    bool wantWebView = gHtmlBackend != HtmlBackend::IE && HasWebView();
+    if (wantWebView && view->CreateWebView2()) {
         // leave hidden; caller shows with SetVisible(true) when the tab is active
         return view;
     }
@@ -608,7 +624,7 @@ BrowserDocView::~BrowserDocView() {
 }
 
 void BrowserDocView::NavigateToDataUrl(Str url) {
-    if (!url) {
+    if (len(url) == 0) {
         return;
     }
     if (backend == Backend::WebView2 && wv) {
@@ -840,6 +856,18 @@ void BrowserDocView::CopySelection() {
 
 LRESULT BrowserDocView::SendMsg(UINT msg, WPARAM wp, LPARAM lp) {
     if (backend == Backend::WebView2 && wv && wv->hwnd) {
+        if (msg == WM_MOUSEWHEEL || msg == WM_MOUSEHWHEEL) {
+            // Chromium ignores WM_MOUSEWHEEL on the host hwnd. When the frame
+            // (focused) or canvas parent gets the wheel, scroll via JS (#6142).
+            if ((LOWORD(wp) & MK_CONTROL) || IsCtrlPressed()) {
+                return SendMessageW(wv->hwnd, msg, wp, lp);
+            }
+            short delta = GET_WHEEL_DELTA_WPARAM(wp);
+            bool horiz = (msg == WM_MOUSEHWHEEL) || (LOWORD(wp) & MK_SHIFT) || IsShiftPressed();
+            int d = -(int)delta;
+            wv->Eval(horiz ? fmt("window.scrollBy(%d, 0)", d) : fmt("window.scrollBy(0, %d)", d));
+            return 0;
+        }
         return SendMessageW(wv->hwnd, msg, wp, lp);
     }
     if (backend == Backend::IE && ie) {

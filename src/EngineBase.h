@@ -165,7 +165,7 @@ static inline Str PageDestGetValue(IPageDestination* dest) {
 // file path). A link inside the document has no address; its value is the
 // description the PDF gives it, which is for showing, not for copying
 static inline bool PageDestHasAddress(IPageDestination* dest) {
-    if (!dest || !dest->GetValue2()) {
+    if (!dest || len(dest->GetValue2()) == 0) {
         return false;
     }
     Kind k = dest->GetKind();
@@ -205,7 +205,7 @@ struct PageDestinationURL : IPageDestination {
     PageDestinationURL() = delete;
 
     PageDestinationURL(Str u) {
-        ReportIf(!u);
+        ReportIf(len(u) == 0);
         kind = kindDestinationLaunchURL;
         url = str::Dup(u);
     }
@@ -216,10 +216,10 @@ struct PageDestinationURL : IPageDestination {
     }
 
     Str GetValue2() override {
-        if (!url) {
+        if (len(url) == 0) {
             return {};
         }
-        if (!displayUrl) {
+        if (len(displayUrl) == 0) {
             displayUrl = str::Dup(url::DecodeTemp(url));
         }
         return displayUrl;
@@ -237,7 +237,7 @@ struct PageDestinationFile : IPageDestination {
     PageDestinationFile() = delete;
 
     PageDestinationFile(Str u, Str dest) {
-        ReportIf(!u);
+        ReportIf(len(u) == 0);
         kind = kindDestinationLaunchFile;
         path = str::Dup(u);
         this->dest = str::Dup(dest);
@@ -278,6 +278,7 @@ struct PageDestinationJsMenu : IPageDestination {
 };
 
 IPageDestination* NewSimpleDest(int pageNo, RectF rect, float zoom = 0.f, Str value = {});
+IPageDestination* NewSimpleDest(Arena* arena, int pageNo, RectF rect, float zoom = 0.f, Str value = {});
 
 // use in PageDestination::GetDestRect for values that don't matter
 constexpr float kDestUseDefault = -999.9f;
@@ -336,13 +337,19 @@ struct PageElementComment : IPageElement {
 
 struct PageElementDestination : IPageElement {
     IPageDestination* dest;
+    bool destOwned = true; // false if dest is engine-owned (GetNamedDest)
 
-    PageElementDestination(IPageDestination* d) {
+    PageElementDestination(IPageDestination* d, bool owned = true) {
         kind = kindPageElementDest;
         dest = d;
+        destOwned = owned;
     }
 
-    ~PageElementDestination() override { delete dest; }
+    ~PageElementDestination() override {
+        if (destOwned) {
+            delete dest;
+        }
+    }
 
     Str GetValue() override {
         if (dest) {
@@ -425,9 +432,10 @@ void FreeTocItemRec(Arena* arena, TocItem* item);
 
 struct TocTree : TreeModel {
     TocItem* root = nullptr;
+    Arena* arena = nullptr;
 
     TocTree() = default;
-    explicit TocTree(TocItem* root);
+    explicit TocTree(TocItem* root, Arena* arena = nullptr);
     ~TocTree() override;
 
     TreeItem Root() override;
@@ -442,6 +450,9 @@ struct TocTree : TreeModel {
     void SetUserData(TreeItem, uintptr_t) override;
     uintptr_t GetUserData(TreeItem) override;
 };
+
+TocTree* AllocTocTree(Arena* arena, TocItem* root);
+void DestroyTocTree(TocTree* tree);
 
 void ResolveTocPages(EngineBase* engine, TocTree* toc);
 
@@ -557,6 +568,7 @@ class EngineBase {
     void EnsureAllChaptersLaidOut();
     // called (from any thread) whenever LayoutGeneration() actually changes
     void SetOnLayoutChanged(const Func0& fn) { onLayoutChanged = fn; }
+    void SetOnDestroy(const Func1<EngineBase*>& fn) { onDestroy = fn; }
 
     // real page count for a chapter; engines with more than one chapter override this
     virtual int LayOutChapter(int chapter);
@@ -623,6 +635,7 @@ class EngineBase {
     // returns the element at a given point or nullptr if there's none
     virtual IPageElement* GetElementAtPos(int pageNo, PointF pt) = 0;
 
+    // engine-owned; do not delete
     virtual IPageDestination* GetNamedDest(Str name);
 
     // 1-based page from safe PDF /OpenAction GoTo, or 0 (issue #1631)
@@ -676,6 +689,7 @@ class EngineBase {
 
     ChapterTable chapters;
     Func0 onLayoutChanged;
+    Func1<EngineBase*> onDestroy;
     int notifiedGeneration = 0;
 
     // per-chapter cached text (PageTextCache, defined in EngineBase.cpp)
@@ -688,6 +702,8 @@ class EngineBase {
   private:
     void EnsureChapterTable();
 };
+
+extern Func1<EngineBase*> gOnEngineDestroyed;
 
 struct PasswordUI {
     virtual Str GetPassword(Str path, u8* fileDigest, u8 decryptionKeyOut[32], bool* saveKey) = 0;

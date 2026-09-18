@@ -32,7 +32,6 @@
 
 ImageEditHost gImageEditHost;
 
-// The host's translation of s, or s itself when it has none.
 // A warning box. The host may have a styled one, but a plain one is fine here.
 static void WarnBox(HWND hwnd, Str msg, Str title) {
     MessageBoxWarningSimple(hwnd, ToWStrTemp(msg), ToWStrTemp(title));
@@ -48,7 +47,8 @@ static PlatformFont* ImageEditFont(HWND hwnd) {
     return GetDefaultGuiFont();
 }
 
-static Str Tr(Str s) {
+// The host's translation of s, or s itself when it has none.
+static Str HostTr(Str s) {
     if (gImageEditHost.Translate) {
         Str t = gImageEditHost.Translate(s);
         if (t) {
@@ -57,8 +57,8 @@ static Str Tr(Str s) {
     }
     return s;
 }
-static Str Tr(const char* s) {
-    return Tr(Str(s));
+static Str HostTr(const char* s) {
+    return HostTr(Str(s));
 }
 
 using Gdiplus::Bitmap;
@@ -145,7 +145,7 @@ Str ImageSaveExtFromData(Str data) {
 }
 
 static bool ExtMatchesOriginal(Str ext, Str originalExt) {
-    if (!ext || !originalExt) {
+    if (len(ext) == 0 || len(originalExt) == 0) {
         return false;
     }
     if (str::EqI(ext, originalExt)) {
@@ -633,7 +633,7 @@ static void UpdateSaveButtonText(ImageEditWindow* ew) {
         return;
     }
     TempStr dest = ew->destEdit->GetTextTemp();
-    Str text = file::Exists(dest) ? Str(Tr(StrL("&Overwrite"))) : Str(Tr("&Save"));
+    Str text = file::Exists(dest) ? Str(HostTr(StrL("&Overwrite"))) : Str(HostTr("&Save"));
     ew->btnSave->SetLabel(text);
     // re-layout since button width may have changed
     LayoutControls(ew);
@@ -1205,7 +1205,7 @@ static void OnBrowse(ImageEditWindow* ew) {
 // Save a GDI+ Bitmap using WIC. Supports all formats that have a WIC encoder installed,
 // including WebP on Windows 10+.
 static bool SaveBitmapWithWIC(Bitmap* bmp, WStr destPath, const GUID* containerFormat) {
-    if (!bmp || !destPath || !containerFormat) {
+    if (!bmp || len(destPath) == 0 || !containerFormat) {
         return false;
     }
 
@@ -1315,14 +1315,14 @@ Done:
 // Uncompressed chunky CMYK TIFF (PhotometricInterpretation = Separated).
 // samples are packed C,M,Y,K, stride = w*4, PDF polarity (0 = no ink).
 static bool WriteCmykTiff(Str destPath, int w, int h, int srcStride, const u8* samples) {
-    if (!destPath || w <= 0 || h <= 0 || srcStride < w * 4 || !samples) {
+    if (len(destPath) == 0 || w <= 0 || h <= 0 || srcStride < w * 4 || !samples) {
         return false;
     }
     const int rowBytes = w * 4;
     const u32 dataLen = (u32)rowBytes * (u32)h;
     const int nTags = 11;
     const u32 ifdOff = 8;
-    const u32 ifdSize = 2 + (u32)nTags * 12 + 4;
+    const u32 ifdSize = 2 + ((u32)nTags * 12) + 4;
     const u32 bitsOff = ifdOff + ifdSize;
     const u32 dataOff = bitsOff + 8;
 
@@ -1468,14 +1468,14 @@ static void OnSave(ImageEditWindow* ew) {
         Gdiplus::Rect srcRect(ew->cropX, ew->cropY, ew->cropW, ew->cropH);
         result = ew->srcBitmap->Clone(srcRect, ew->srcBitmap->GetPixelFormat());
         if (!result) {
-            WarnBox(ew->hwnd, StrL("Failed to create cropped image"), Tr("Crop Image"));
+            WarnBox(ew->hwnd, StrL("Failed to create cropped image"), HostTr("Crop Image"));
             return;
         }
     } else {
         // create resized bitmap
         result = new Bitmap(ew->newW, ew->newH, ew->srcBitmap->GetPixelFormat());
         if (!result) {
-            WarnBox(ew->hwnd, StrL("Failed to create resized image"), Tr("Resize Image"));
+            WarnBox(ew->hwnd, StrL("Failed to create resized image"), HostTr("Resize Image"));
             return;
         }
         Graphics g(result);
@@ -1552,20 +1552,20 @@ static bool IsResizeChanged(ImageEditWindow* ew) {
 
 static void UpdateModeButtons(ImageEditWindow* ew) {
     if (ew->mode == ImageEditMode::Crop) {
-        ew->btnCrop->SetLabel(Tr(StrL("&Apply Crop")));
+        ew->btnCrop->SetLabel(HostTr(StrL("&Apply Crop")));
         ew->btnCrop->SetIsEnabled(IsCropChanged(ew));
-        ew->btnResize->SetLabel(Tr(StrL("&Resize")));
+        ew->btnResize->SetLabel(HostTr(StrL("&Resize")));
         ew->btnResize->SetIsEnabled(true);
     } else if (ew->mode == ImageEditMode::Resize) {
-        ew->btnCrop->SetLabel(Tr(StrL("&Crop")));
+        ew->btnCrop->SetLabel(HostTr(StrL("&Crop")));
         ew->btnCrop->SetIsEnabled(true);
-        ew->btnResize->SetLabel(Tr(StrL("&Apply Resize")));
+        ew->btnResize->SetLabel(HostTr(StrL("&Apply Resize")));
         ew->btnResize->SetIsEnabled(IsResizeChanged(ew));
     } else {
         // Save mode
-        ew->btnCrop->SetLabel(Tr(StrL("&Crop")));
+        ew->btnCrop->SetLabel(HostTr(StrL("&Crop")));
         ew->btnCrop->SetIsEnabled(true);
-        ew->btnResize->SetLabel(Tr(StrL("&Resize")));
+        ew->btnResize->SetLabel(HostTr(StrL("&Resize")));
         ew->btnResize->SetIsEnabled(true);
     }
 }
@@ -2228,7 +2228,7 @@ void ShowImageEditWindow(HWND parent, ImageEditMode mode, Str filePath, Rendered
         }
     } else {
         // the caller names the image; there is nothing to edit without one
-        if (!filePath) {
+        if (len(filePath) == 0) {
             return;
         }
         Str data = file::ReadFile(filePath);
@@ -2383,10 +2383,10 @@ void ShowImageEditWindow(HWND parent, ImageEditMode mode, Str filePath, Rendered
     });
 
     // buttons
-    ew->btnSave = NewImageEditButton(ew, Tr(StrL("&Save")), MkFunc0(OnSave, ew));
-    ew->btnCrop = NewImageEditButton(ew, Tr(StrL("&Crop")), MkFunc0(OnCropButton, ew));
-    ew->btnResize = NewImageEditButton(ew, Tr(StrL("&Resize")), MkFunc0(OnResizeButton, ew));
-    ew->btnCopy = NewImageEditButton(ew, Tr(StrL("C&opy")), MkFunc0(OnCopyButton, ew));
+    ew->btnSave = NewImageEditButton(ew, HostTr(StrL("&Save")), MkFunc0(OnSave, ew));
+    ew->btnCrop = NewImageEditButton(ew, HostTr(StrL("&Crop")), MkFunc0(OnCropButton, ew));
+    ew->btnResize = NewImageEditButton(ew, HostTr(StrL("&Resize")), MkFunc0(OnResizeButton, ew));
+    ew->btnCopy = NewImageEditButton(ew, HostTr(StrL("C&opy")), MkFunc0(OnCopyButton, ew));
 
     // format dropdown
     {

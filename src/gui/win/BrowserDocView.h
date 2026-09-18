@@ -5,6 +5,15 @@ struct HtmlWindowCallback;
 struct WebViewResourceResult;
 struct BrowserWebviewWnd;
 
+// Which embedded browser hosts the document. Auto = WebView2 when installed.
+enum class HtmlBackend {
+    Auto,
+    IE,
+    WebView2,
+};
+
+void SetHtmlBackend(HtmlBackend);
+
 // Hosts a document's HTML content (CHM, markdown) in an embedded browser:
 // WebView2 when available, otherwise IE.
 class BrowserDocView {
@@ -71,6 +80,7 @@ class BrowserDocView {
     void SubclassParent();
     void UnsubclassParent();
     bool visible = false;
+    bool forwardingWheel = false;
     static LRESULT CALLBACK ParentWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId,
                                           DWORD_PTR data);
     static bool ResourceGet(void* ctx, Str path, WebViewResourceResult* res);

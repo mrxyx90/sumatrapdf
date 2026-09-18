@@ -5,6 +5,8 @@
 #include "base/File.h"
 #include "base/Pixmap.h"
 #include "base/ScopedWin.h"
+#include "base/HtmlTags.h"
+#include "base/CssParser.h"
 
 extern "C" {
 #include <mupdf/pdf.h>
@@ -58,12 +60,9 @@ AnnotationType AnnotationTypeFromName(Str name) {
     }
     int idx = 0;
     SeqStrings names = gAnnotationTypeNames;
-    for (int off = 0; SeqStrAt(names, off); idx++) {
-        if (str::EqI(SeqStrAt(names, off), want)) {
+    for (Str item = SeqStrFirst(names); len(item) > 0; item = SeqStrNext(item), idx++) {
+        if (str::EqI(item, want)) {
             return (AnnotationType)idx;
-        }
-        if (!SeqStrAdvance(names, off)) {
-            break;
         }
     }
     return AnnotationType::Unknown;
@@ -72,7 +71,7 @@ AnnotationType AnnotationTypeFromName(Str name) {
 // Translate an English annotation type label for the UI.
 // When menuKey is set (e.g. "&Highlight"), use that key — those strings are
 // already translated for context menus. Otherwise use english (already in
-// translations.txt for Circle/Line/…). _TRN at the call site marks bare names
+// translations.txt for Circle/Line/…). TrN at the call site marks bare names
 // for future extraction. Strip '&' access-key markers for non-menu display.
 static Str TranslateAnnotTypeNameTemp(Str english, Str menuKey = {}) {
     Str key = menuKey ? menuKey : english;
@@ -86,69 +85,69 @@ static Str TranslateAnnotTypeNameTemp(Str english, Str menuKey = {}) {
 }
 
 // Human-readable annotation type names for UI (list box, hover tip, menus).
-// _TRN marks strings for extraction; TranslateAnnotTypeNameTemp localizes.
+// TrN marks strings for extraction; TranslateAnnotTypeNameTemp localizes.
 // Order matches AnnotationType / pdf_annot_type.
 Str AnnotationReadableNameTemp(AnnotationType tp) {
     switch (tp) {
         case AnnotationType::Text:
-            return TranslateAnnotTypeNameTemp(_TRN("Text"), StrL("&Text"));
+            return TranslateAnnotTypeNameTemp(TrN("Text"), StrL("&Text"));
         case AnnotationType::Link:
-            return TranslateAnnotTypeNameTemp(_TRN("Link"));
+            return TranslateAnnotTypeNameTemp(TrN("Link"));
         case AnnotationType::FreeText:
-            return TranslateAnnotTypeNameTemp(_TRN("Free Text"), StrL("&Free Text"));
+            return TranslateAnnotTypeNameTemp(TrN("Free Text"), StrL("&Free Text"));
         case AnnotationType::Line:
-            return TranslateAnnotTypeNameTemp(_TRN("Line"));
+            return TranslateAnnotTypeNameTemp(TrN("Line"));
         case AnnotationType::Square:
-            return TranslateAnnotTypeNameTemp(_TRN("Square"));
+            return TranslateAnnotTypeNameTemp(TrN("Square"));
         case AnnotationType::Circle:
-            return TranslateAnnotTypeNameTemp(_TRN("Circle"));
+            return TranslateAnnotTypeNameTemp(TrN("Circle"));
         case AnnotationType::Polygon:
-            return TranslateAnnotTypeNameTemp(_TRN("Polygon"));
+            return TranslateAnnotTypeNameTemp(TrN("Polygon"));
         case AnnotationType::PolyLine:
-            return TranslateAnnotTypeNameTemp(_TRN("Polyline"));
+            return TranslateAnnotTypeNameTemp(TrN("Polyline"));
         case AnnotationType::Highlight:
-            return TranslateAnnotTypeNameTemp(_TRN("Highlight"), StrL("&Highlight"));
+            return TranslateAnnotTypeNameTemp(TrN("Highlight"), StrL("&Highlight"));
         case AnnotationType::Underline:
-            return TranslateAnnotTypeNameTemp(_TRN("Underline"), StrL("&Underline"));
+            return TranslateAnnotTypeNameTemp(TrN("Underline"), StrL("&Underline"));
         case AnnotationType::Squiggly:
-            return TranslateAnnotTypeNameTemp(_TRN("Squiggly"), StrL("S&quiggly"));
+            return TranslateAnnotTypeNameTemp(TrN("Squiggly"), StrL("S&quiggly"));
         case AnnotationType::StrikeOut:
-            return TranslateAnnotTypeNameTemp(_TRN("Strike Out"), StrL("&Strike Out"));
+            return TranslateAnnotTypeNameTemp(TrN("Strike Out"), StrL("&Strike Out"));
         case AnnotationType::Redact:
-            return TranslateAnnotTypeNameTemp(_TRN("Redact"));
+            return TranslateAnnotTypeNameTemp(TrN("Redact"));
         case AnnotationType::Stamp:
-            return TranslateAnnotTypeNameTemp(_TRN("Stamp"), StrL("&Stamp"));
+            return TranslateAnnotTypeNameTemp(TrN("Stamp"), StrL("&Stamp"));
         case AnnotationType::Caret:
-            return TranslateAnnotTypeNameTemp(_TRN("Caret"), StrL("&Caret"));
+            return TranslateAnnotTypeNameTemp(TrN("Caret"), StrL("&Caret"));
         case AnnotationType::Ink:
-            return TranslateAnnotTypeNameTemp(_TRN("Ink"));
+            return TranslateAnnotTypeNameTemp(TrN("Ink"));
         case AnnotationType::Popup:
-            return TranslateAnnotTypeNameTemp(_TRN("Popup"));
+            return TranslateAnnotTypeNameTemp(TrN("Popup"));
         case AnnotationType::FileAttachment:
-            return TranslateAnnotTypeNameTemp(_TRN("File Attachment"));
+            return TranslateAnnotTypeNameTemp(TrN("File Attachment"));
         case AnnotationType::Sound:
-            return TranslateAnnotTypeNameTemp(_TRN("Sound"));
+            return TranslateAnnotTypeNameTemp(TrN("Sound"));
         case AnnotationType::Movie:
-            return TranslateAnnotTypeNameTemp(_TRN("Movie"));
+            return TranslateAnnotTypeNameTemp(TrN("Movie"));
         case AnnotationType::RichMedia:
-            return TranslateAnnotTypeNameTemp(_TRN("RichMedia"));
+            return TranslateAnnotTypeNameTemp(TrN("RichMedia"));
         case AnnotationType::Widget:
-            return TranslateAnnotTypeNameTemp(_TRN("Widget"));
+            return TranslateAnnotTypeNameTemp(TrN("Widget"));
         case AnnotationType::Screen:
-            return TranslateAnnotTypeNameTemp(_TRN("Screen"));
+            return TranslateAnnotTypeNameTemp(TrN("Screen"));
         case AnnotationType::PrinterMark:
-            return TranslateAnnotTypeNameTemp(_TRN("Printer Mark"));
+            return TranslateAnnotTypeNameTemp(TrN("Printer Mark"));
         case AnnotationType::TrapNet:
-            return TranslateAnnotTypeNameTemp(_TRN("Trap Net"));
+            return TranslateAnnotTypeNameTemp(TrN("Trap Net"));
         case AnnotationType::Watermark:
-            return TranslateAnnotTypeNameTemp(_TRN("Watermark"));
+            return TranslateAnnotTypeNameTemp(TrN("Watermark"));
         case AnnotationType::ThreeD:
-            return TranslateAnnotTypeNameTemp(_TRN("3D"));
+            return TranslateAnnotTypeNameTemp(TrN("3D"));
         case AnnotationType::Projection:
-            return TranslateAnnotTypeNameTemp(_TRN("Projection"));
+            return TranslateAnnotTypeNameTemp(TrN("Projection"));
         case AnnotationType::Unknown:
         default:
-            return TranslateAnnotTypeNameTemp(_TRN("Unknown"));
+            return TranslateAnnotTypeNameTemp(TrN("Unknown"));
     }
 }
 
@@ -200,16 +199,16 @@ RectF GetBounds(Annotation* annot) {
     auto* a = annot->pdfannot;
     auto* ctx = e->Ctx();
     ScopedRecursiveMutex cs(&e->docLock);
-    fz_rect rc = {};
+    RectF rc;
 
     fz_try(ctx) {
-        rc = pdf_bound_annot(ctx, a);
+        rc = PdfAnnotBounds(ctx, a);
     }
     fz_catch(ctx) {
         fz_report_error(ctx);
         logf("GetBounds(): pdf_bound_annot() failed\n");
     }
-    annot->bounds = ToRectF(rc);
+    annot->bounds = rc;
     return annot->bounds;
 }
 
@@ -332,7 +331,7 @@ static Str MupdfCStrDupTemp(const char* s) {
 }
 
 static Str MupdfCStrTemp(const char* s) {
-    if (!s || str::IsEmptyOrWhiteSpace(Str(s))) {
+    if (str::IsEmptyOrWhiteSpace(Str(s))) {
         return {};
     }
     return str::DupTemp(Str(s));
@@ -390,6 +389,10 @@ static bool IsValidQuadding(int i) {
     return i >= 0 && i <= 2;
 }
 
+static bool IsCustomFreeTextFont(Str family, int style);
+static void ReadFreeTextFontLocked(fz_context* ctx, pdf_annot* a, Str& family, int& style);
+static void WriteFreeTextFontLocked(fz_context* ctx, pdf_annot* a, Str family, int style);
+
 // return true if changed
 bool SetQuadding(Annotation* annot, int newQuadding) {
     if (!AnnotationIsLive(annot)) {
@@ -407,6 +410,15 @@ bool SetQuadding(Annotation* annot, int newQuadding) {
         }
         fz_try(ctx) {
             pdf_set_annot_quadding(ctx, a, newQuadding);
+            // /DS has its own text-align, which wins over /Q
+            if (Type(annot) == AnnotationType::FreeText) {
+                Str family;
+                int style = 0;
+                ReadFreeTextFontLocked(ctx, a, family, style);
+                if (IsCustomFreeTextFont(family, style)) {
+                    WriteFreeTextFontLocked(ctx, a, family, style);
+                }
+            }
             pdf_update_annot(ctx, a);
         }
         fz_catch(ctx) {
@@ -1085,7 +1097,7 @@ Str LoadEmbeddedFile(Annotation* annot) {
 }
 
 bool SetEmbeddedFileFromPath(Annotation* annot, Str path) {
-    if (!AnnotationIsLive(annot) || !path || !file::Exists(path)) {
+    if (!AnnotationIsLive(annot) || len(path) == 0 || !file::Exists(path)) {
         return false;
     }
     EngineMupdf* e = annot->engine;
@@ -1244,7 +1256,7 @@ PdfColor GetColor(Annotation* annot) {
 }
 
 // Highlight, Underline, StrikeOut and Squiggly: /C is the only thing drawn
-static bool IsTextMarkupAnnot(AnnotationType tp) {
+bool AnnotationIsTextMarkup(AnnotationType tp) {
     switch (tp) {
         case AnnotationType::Highlight:
         case AnnotationType::Underline:
@@ -1308,7 +1320,7 @@ bool SetColor(Annotation* annot, PdfColor c) {
                 // Other types keep their opacity: a Square with a transparent
                 // stroke still shows /IC, and a FreeText with a transparent
                 // background still shows its text.
-                if (IsTextMarkupAnnot(Type(annot))) {
+                if (AnnotationIsTextMarkup(Type(annot))) {
                     pdf_set_annot_opacity(ctx, a, 0.f);
                 }
             } else {
@@ -1396,45 +1408,212 @@ bool SetInteriorColor(Annotation* annot, PdfColor c) {
     return true;
 }
 
-Str DefaultAppearanceTextFont(Annotation* annot) {
-    if (!AnnotationIsLive(annot)) {
+// clang-format off
+SeqStrings gBase14FontFamilies = "Courier\0Helvetica\0Times\0";
+// the /DA font of each of gBase14FontFamilies
+static SeqStrings gBase14DaFonts = "Cour\0Helv\0TiRo\0";
+static SeqStrings gCssTextAligns = "left\0center\0right\0";
+// clang-format on
+
+bool IsBase14FontFamily(Str family) {
+    return SeqStrIndexIS(gBase14FontFamilies, family) >= 0;
+}
+
+static bool IsCustomFreeTextFont(Str family, int style) {
+    return style != 0 || !IsBase14FontFamily(family);
+}
+
+static Str TrimWS(Str s) {
+    int start = 0;
+    int end = len(s);
+    while (start < end && str::IsWs(s.s[start])) {
+        start++;
+    }
+    while (end > start && str::IsWs(s.s[end - 1])) {
+        end--;
+    }
+    return Str(s.s + start, end - start);
+}
+
+// the first family of a CSS list: Georgia for "'Georgia', serif"
+static TempStr FirstCssFontFamilyTemp(Str families) {
+    int end = 0;
+    while (end < len(families) && families.s[end] != ',') {
+        end++;
+    }
+    TempStr family = str::DupTemp(TrimWS(Str(families.s, end)));
+    family.len -= str::RemoveCharsInPlace(family, StrL("'\""));
+    return family;
+}
+
+static bool IsCssBold(Str v) {
+    return str::EqI(v, StrL("bold")) || str::EqI(v, StrL("bolder")) || atoi(CStrTemp(v)) >= 600;
+}
+
+static bool IsCssItalic(Str v) {
+    return str::EqI(v, StrL("italic")) || str::EqI(v, StrL("oblique"));
+}
+
+// "bold 12pt Georgia" or, the way Acrobat writes it, "Helvetica,sans-serif 12.0pt"
+static void ParseCssFontShorthand(Str v, Str& family, int& style) {
+    str::Builder names;
+    int i = 0;
+    while (i < len(v)) {
+        while (i < len(v) && str::IsWs(v.s[i])) {
+            i++;
+        }
+        int start = i;
+        while (i < len(v) && !str::IsWs(v.s[i])) {
+            i++;
+        }
+        Str token(v.s + start, i - start);
+        if (len(token) == 0) {
+            break;
+        }
+        if (IsCssBold(token)) {
+            style |= kFreeTextBold;
+            continue;
+        }
+        if (IsCssItalic(token)) {
+            style |= kFreeTextItalic;
+            continue;
+        }
+        // a size, a number weight or a keyword like "normal"
+        bool isSize = isdigit((u8)token.s[0]) || token.s[0] == '.';
+        if (isSize || str::EqI(token, StrL("normal")) || str::EqI(token, StrL("small-caps"))) {
+            continue;
+        }
+        if (names.len > 0) {
+            names.AppendChar(' ');
+        }
+        names.Append(token);
+    }
+    if (names.len > 0) {
+        family = FirstCssFontFamilyTemp(ToStrTemp(names));
+    }
+}
+
+// The font of a free text: its /DS style if it has one, else its /DA base-14 font.
+static void ReadFreeTextFontLocked(fz_context* ctx, pdf_annot* a, Str& family, int& style) {
+    const char* daFont = nullptr;
+    float size = 0;
+    int n = 0;
+    float color[4]{};
+    pdf_annot_default_appearance(ctx, a, &daFont, &size, &n, color);
+    int idx = daFont ? SeqStrIndexIS(gBase14DaFonts, Str(daFont)) : -1;
+    family = SeqStrByIndex(gBase14FontFamilies, idx >= 0 ? idx : 1);
+    style = 0;
+
+    CssPullParser parser(Str(pdf_annot_rich_defaults(ctx, a)));
+    for (const CssProperty* prop = parser.NextProperty(); prop; prop = parser.NextProperty()) {
+        switch (prop->type) {
+            case Css_Font_Family:
+                family = FirstCssFontFamilyTemp(prop->s);
+                break;
+            case Css_Font_Weight:
+                style |= IsCssBold(TrimWS(prop->s)) ? kFreeTextBold : 0;
+                break;
+            case Css_Font_Style:
+                style |= IsCssItalic(TrimWS(prop->s)) ? kFreeTextItalic : 0;
+                break;
+            case Css_Text_Decoration:
+                style |= str::ContainsI(prop->s, StrL("underline")) ? kFreeTextUnderline : 0;
+                break;
+            case Css_Font:
+                ParseCssFontShorthand(prop->s, family, style);
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+// Setting /DA drops /DS, so write both together: /DA names a base-14 font
+// (Helvetica for any other family) for readers that ignore /DS, and /DS, which
+// MuPDF lays the text out with, is only there for a font /DA can't describe.
+static void WriteFreeTextFontLocked(fz_context* ctx, pdf_annot* a, Str family, int style) {
+    const char* daFont = nullptr;
+    float size = 0;
+    int n = 0;
+    float color[4]{};
+    pdf_annot_default_appearance(ctx, a, &daFont, &size, &n, color);
+    int idx = SeqStrIndexIS(gBase14FontFamilies, family);
+    Str newDaFont = SeqStrByIndex(gBase14DaFonts, idx >= 0 ? idx : 1);
+    pdf_set_annot_default_appearance(ctx, a, newDaFont.s, size, n, color);
+    if (!IsCustomFreeTextFont(family, style)) {
+        return;
+    }
+
+    TempStr cssFamily = str::DupTemp(family);
+    cssFamily.len -= str::RemoveCharsInPlace(cssFamily, StrL("'\";{}"));
+    u8 r;
+    u8 g;
+    u8 b;
+    u8 alpha;
+    UnpackPdfColor(PdfColorFromFloat(ctx, n, color), r, g, b, alpha);
+    Str align = SeqStrByIndex(gCssTextAligns, std::clamp(pdf_annot_quadding(ctx, a), 0, 2));
+    str::Builder ds;
+    ds.Append(fmt("font-family:'%s';font-size:%gpt;color:#%02x%02x%02x;text-align:%s", cssFamily, size, (int)r, (int)g,
+                  (int)b, align));
+    if (style & kFreeTextBold) {
+        ds.Append(StrL(";font-weight:bold"));
+    }
+    if (style & kFreeTextItalic) {
+        ds.Append(StrL(";font-style:italic"));
+    }
+    if (style & kFreeTextUnderline) {
+        ds.Append(StrL(";text-decoration:underline"));
+    }
+    pdf_set_annot_rich_defaults(ctx, a, CStrTemp(ToStrTemp(ds)));
+}
+
+Str FreeTextFontFamily(Annotation* annot) {
+    if (!AnnotationIsLive(annot) || Type(annot) != AnnotationType::FreeText) {
         return {};
     }
     EngineMupdf* e = annot->engine;
-    auto* a = annot->pdfannot;
     auto* ctx = e->Ctx();
     ScopedRecursiveMutex cs(&e->docLock);
-    const char* fontNameZ = nullptr;
-    float sizeF{0.0};
-    int n = 0;
-    float textColor[4]{};
+    Str family;
+    int style = 0;
     fz_try(ctx) {
-        pdf_annot_default_appearance(ctx, a, &fontNameZ, &sizeF, &n, textColor);
+        ReadFreeTextFontLocked(ctx, annot->pdfannot, family, style);
     }
     fz_catch(ctx) {
         fz_report_error(ctx);
     }
-    return MupdfCStrDupTemp(fontNameZ);
+    return family;
 }
 
-void SetDefaultAppearanceTextFont(Annotation* annot, Str sv) {
-    if (!AnnotationIsLive(annot)) {
+int FreeTextFontStyle(Annotation* annot) {
+    if (!AnnotationIsLive(annot) || Type(annot) != AnnotationType::FreeText) {
+        return 0;
+    }
+    EngineMupdf* e = annot->engine;
+    auto* ctx = e->Ctx();
+    ScopedRecursiveMutex cs(&e->docLock);
+    Str family;
+    int style = 0;
+    fz_try(ctx) {
+        ReadFreeTextFontLocked(ctx, annot->pdfannot, family, style);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
+    return style;
+}
+
+void SetFreeTextFont(Annotation* annot, Str family, int style) {
+    if (!AnnotationIsLive(annot) || Type(annot) != AnnotationType::FreeText || len(family) == 0) {
         return;
     }
     EngineMupdf* e = annot->engine;
-    auto* a = annot->pdfannot;
-    TempStr fontZ = str::DupTemp(sv);
     {
         auto* ctx = e->Ctx();
         ScopedRecursiveMutex cs(&e->docLock);
-        const char* fontNameZ = nullptr;
-        float sizeF{0.0};
-        int n = 0;
-        float textColor[4]{};
         fz_try(ctx) {
-            pdf_annot_default_appearance(ctx, a, &fontNameZ, &sizeF, &n, textColor);
-            pdf_set_annot_default_appearance(ctx, a, len(fontZ) == 0 ? "" : fontZ.s, sizeF, n, textColor);
-            pdf_update_annot(ctx, a);
+            WriteFreeTextFontLocked(ctx, annot->pdfannot, family, style);
+            pdf_update_annot(ctx, annot->pdfannot);
         }
         fz_catch(ctx) {
             fz_report_error(ctx);
@@ -1477,9 +1656,15 @@ void SetDefaultAppearanceTextSize(Annotation* annot, int textSize) {
         float sizeF{0.0};
         int n = 0;
         float textColor[4]{};
+        Str family;
+        int style = 0;
         fz_try(ctx) {
+            ReadFreeTextFontLocked(ctx, a, family, style);
             pdf_annot_default_appearance(ctx, a, &fontNameZ, &sizeF, &n, textColor);
             pdf_set_annot_default_appearance(ctx, a, fontNameZ, (float)textSize, n, textColor);
+            if (IsCustomFreeTextFont(family, style)) {
+                WriteFreeTextFontLocked(ctx, a, family, style);
+            }
             pdf_update_annot(ctx, a);
         }
         fz_catch(ctx) {
@@ -1524,10 +1709,16 @@ void SetDefaultAppearanceTextColor(Annotation* annot, PdfColor col) {
         float sizeF{0.0};
         int n = 0;
         float textColor[4]{}; // must be at least 4
+        Str family;
+        int style = 0;
         fz_try(ctx) {
+            ReadFreeTextFontLocked(ctx, a, family, style);
             pdf_annot_default_appearance(ctx, a, &fontNameZ, &sizeF, &n, textColor);
             PdfColorToFloat(col, textColor);
             pdf_set_annot_default_appearance(ctx, a, fontNameZ, sizeF, 3, textColor);
+            if (IsCustomFreeTextFont(family, style)) {
+                WriteFreeTextFontLocked(ctx, a, family, style);
+            }
             pdf_update_annot(ctx, a);
         }
         fz_catch(ctx) {
@@ -1692,7 +1883,7 @@ void SetVertices(Annotation* annot, const Vec<PointF>& points) {
     MarkNotificationAsModified(e, annot);
 }
 
-static void GetInkList(Annotation* annot, Vec<int>& strokeCounts, Vec<PointF>& points) {
+void GetInkList(Annotation* annot, Vec<int>& strokeCounts, Vec<PointF>& points) {
     VecReset(strokeCounts);
     VecReset(points);
     if (!AnnotationIsLive(annot) || annot->type != AnnotationType::Ink) {
@@ -1719,6 +1910,112 @@ static void GetInkList(Annotation* annot, Vec<int>& strokeCounts, Vec<PointF>& p
         VecReset(strokeCounts);
         VecReset(points);
     }
+}
+
+static float PointSegmentDistSq(PointF p, PointF a, PointF b) {
+    float dx = b.x - a.x;
+    float dy = b.y - a.y;
+    float lengthSq = (dx * dx) + (dy * dy);
+    float t = 0.f;
+    if (lengthSq > 0.f) {
+        t = (((p.x - a.x) * dx) + ((p.y - a.y) * dy)) / lengthSq;
+        if (t < 0.f) {
+            t = 0.f;
+        } else if (t > 1.f) {
+            t = 1.f;
+        }
+    }
+    float px = a.x + (t * dx);
+    float py = a.y + (t * dy);
+    dx = p.x - px;
+    dy = p.y - py;
+    return (dx * dx) + (dy * dy);
+}
+
+static bool InkStrokeHit(const Vec<PointF>& points, int start, int count, PointF pt, float radiusSq) {
+    if (count == 1) {
+        return PointSegmentDistSq(pt, points[start], points[start]) <= radiusSq;
+    }
+    for (int i = start + 1; i < start + count; i++) {
+        if (PointSegmentDistSq(pt, points[i - 1], points[i]) <= radiusSq) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool EraseInkStrokes(Vec<int>& strokeCounts, Vec<PointF>& points, PointF pt, float radius) {
+    int pointCount = 0;
+    for (int count : strokeCounts) {
+        if (count < 0) {
+            return false;
+        }
+        pointCount += count;
+    }
+    if (pointCount != len(points)) {
+        ReportIf(true);
+        return false;
+    }
+
+    bool erased = false;
+    float radiusSq = radius * radius;
+    int end = len(points);
+    for (int i = len(strokeCounts) - 1; i >= 0; i--) {
+        int count = strokeCounts[i];
+        int start = end - count;
+        if (count > 0 && InkStrokeHit(points, start, count, pt, radiusSq)) {
+            VecRemoveAtN(points, start, count);
+            VecRemoveAt(strokeCounts, i);
+            erased = true;
+        }
+        end = start;
+    }
+    return erased;
+}
+
+InkEraseResult EraseAnnotationInk(Annotation* annot, PointF pt, float radius) {
+    if (!AnnotationIsLive(annot) || annot->type != AnnotationType::Ink) {
+        return InkEraseResult::None;
+    }
+
+    Vec<int> strokeCounts;
+    Vec<PointF> points;
+    GetInkList(annot, strokeCounts, points);
+    radius += (float)BorderWidth(annot) / 2.f;
+    if (!EraseInkStrokes(strokeCounts, points, pt, radius)) {
+        return InkEraseResult::None;
+    }
+    if (len(strokeCounts) == 0) {
+        return InkEraseResult::Empty;
+    }
+
+    Vec<fz_point> pts;
+    VecGrow(pts, len(points));
+    for (PointF p : points) {
+        VecAppend(pts, {p.x, p.y});
+    }
+    EngineMupdf* e = annot->engine;
+    auto* a = annot->pdfannot;
+    bool failed = false;
+    {
+        auto* ctx = e->Ctx();
+        ScopedRecursiveMutex cs(&e->docLock);
+        fz_try(ctx) {
+            pdf_set_annot_ink_list(ctx, a, len(strokeCounts), strokeCounts.els, pts.els);
+            pdf_update_annot(ctx, a);
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
+            failed = true;
+            logf("EraseAnnotationInk: pdf_set_annot_ink_list() failed\n");
+        }
+    }
+    if (failed) {
+        return InkEraseResult::None;
+    }
+    annot->bounds = GetBounds(annot);
+    MarkNotificationAsModified(e, annot);
+    return InkEraseResult::Changed;
 }
 
 int BorderWidth(Annotation* annot) {
@@ -1811,10 +2108,10 @@ void SetOpacity(Annotation* annot, int newOpacity) {
 
 static Str GetUserTemp() {
     Str u = Str(getenv("USER"));
-    if (!u) {
+    if (len(u) == 0) {
         u = Str(getenv("USERNAME"));
     }
-    if (!u) {
+    if (len(u) == 0) {
         return StrL("user");
     }
     return u;
@@ -2185,10 +2482,11 @@ Annotation* EngineMupdfCreateAnnotation(EngineBase* engine, int pageNo, PointF p
                     fz_rethrow(ctx);
                 }
             }
+            // e.g. [CmdCreateAnnotPolyLine borderwidth=2] (#6208)
+            if (args->borderWidth >= 0 && AnnotationSupportsBorder(typ)) {
+                pdf_set_annot_border_width(ctx, annot, (float)args->borderWidth);
+            }
             if (typ == AnnotationType::FreeText) {
-                if (args->borderWidth >= 0) {
-                    pdf_set_annot_border_width(ctx, annot, (float)args->borderWidth);
-                }
                 // left is MuPDF's default; leave /Q out of the file for it
                 if (args->quadding > kQuaddingLeft) {
                     pdf_set_annot_quadding(ctx, annot, args->quadding);
@@ -2230,9 +2528,6 @@ Annotation* EngineMupdfCreateAnnotation(EngineBase* engine, int pageNo, PointF p
             if (typ == AnnotationType::Ink) {
                 // the highlighter brush is an ink stroke as wide and as
                 // translucent as a marker
-                if (args->borderWidth >= 0) {
-                    pdf_set_annot_border_width(ctx, annot, (float)args->borderWidth);
-                }
                 if (args->opacity < 100) {
                     pdf_set_annot_opacity(ctx, annot, (float)args->opacity / 100.0f);
                 }
@@ -2279,6 +2574,11 @@ Annotation* EngineMupdfCreateAnnotation(EngineBase* engine, int pageNo, PointF p
             SetColor(res, col.pdfCol);
         }
     }
+    // SetColor copies the color's alpha (opaque for #rrggbb like HighlightColor)
+    // and would wipe args->opacity set during create (highlighter is 40%).
+    if (args->opacity < 100) {
+        SetOpacity(res, (args->opacity * 255) / 100);
+    }
     pdf_drop_annot(ctx, annot);
     return res;
 }
@@ -2291,7 +2591,8 @@ struct AnnotationClipboard {
     RectF rect{};
     Str contents;
     Str iconName;
-    Str fontName;
+    Str fontFamily;
+    int fontStyle = 0;
     PdfColor color = 0;
     bool hasColor = false;
     PdfColor interiorColor = 0;
@@ -2320,7 +2621,8 @@ static void ClearAnnotationClipboard() {
     gPendingCutAnnotation = nullptr;
     str::FreePtr(&gAnnotClipboard.contents);
     str::FreePtr(&gAnnotClipboard.iconName);
-    str::FreePtr(&gAnnotClipboard.fontName);
+    str::FreePtr(&gAnnotClipboard.fontFamily);
+    gAnnotClipboard.fontStyle = 0;
     FreePixmap(gAnnotClipboard.stampImage);
     gAnnotClipboard.stampImage = nullptr;
     gAnnotClipboard.valid = false;
@@ -2375,8 +2677,8 @@ static Pixmap* PixmapFromRgbFzPixmap(fz_context* ctx, fz_pixmap* src) {
     p->hasAlpha = true;
     int alphaOff = use->alpha ? n - 1 : -1;
     for (int y = 0; y < use->h; y++) {
-        const u8* s = use->samples + y * use->stride;
-        u8* d = p->data + y * p->stride;
+        const u8* s = use->samples + (y * use->stride);
+        u8* d = p->data + (y * p->stride);
         for (int x = 0; x < use->w; x++) {
             d[0] = s[0];
             d[1] = s[1];
@@ -2508,7 +2810,8 @@ bool CopyAnnotation(Annotation* annot) {
     if (annot->type == AnnotationType::FreeText) {
         gAnnotClipboard.quadding = Quadding(annot);
         gAnnotClipboard.textSize = DefaultAppearanceTextSize(annot);
-        gAnnotClipboard.fontName = str::Dup(DefaultAppearanceTextFont(annot));
+        gAnnotClipboard.fontFamily = str::Dup(FreeTextFontFamily(annot));
+        gAnnotClipboard.fontStyle = FreeTextFontStyle(annot);
         gAnnotClipboard.textColor = DefaultAppearanceTextColor(annot);
         gAnnotClipboard.hasTextColor = true;
         gAnnotClipboard.color = GetColor(annot);
@@ -2614,8 +2917,8 @@ Annotation* PasteCopiedAnnotation(EngineBase* engine, int pageNo, PointF topLeft
     if (clip.iconName) {
         SetIconName(annot, clip.iconName);
     }
-    if (clip.fontName) {
-        SetDefaultAppearanceTextFont(annot, clip.fontName);
+    if (clip.fontFamily) {
+        SetFreeTextFont(annot, clip.fontFamily, clip.fontStyle);
     }
     if (clip.hasLine || clip.type == AnnotationType::PolyLine || clip.type == AnnotationType::Line) {
         SetLineStartStyles(annot, clip.lineStartStyle);
@@ -2680,7 +2983,7 @@ AnnotationType CmdIdToAnnotationType(int cmdId) {
         case CmdCreateAnnotStamp:          return AnnotationType::Stamp;
         case CmdCreateAnnotCaret:          return AnnotationType::Caret;
         case CmdCreateAnnotInk:            return AnnotationType::Ink;
-        case CmdAnnotationHighlightBrush:  return AnnotationType::Ink;
+        case CmdAnnotationHighlightBrush:  return AnnotationType::Highlight;
         case CmdCreateAnnotPopup:          return AnnotationType::Popup;
         case CmdCreateAnnotFileAttachment: return AnnotationType::FileAttachment;
     }

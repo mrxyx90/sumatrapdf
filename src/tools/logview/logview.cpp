@@ -38,14 +38,14 @@
 // ---- logging required by the base library (we don't link SumatraLog.cpp) ----
 
 void log(Str s) {
-    if (!s) {
+    if (len(s) == 0) {
         return;
     }
     OutputDebugStringA(s.s);
 }
 
 // base's ReportIf() references this crash-reporting hook; we don't crash-report.
-void _uploadDebugReport(Str, Str, bool, bool) {}
+void _uploadDebugReport(Str, Str, bool) {}
 
 // opt into the v6 common controls (themed edit box / buttons = modern look).
 // combined with InitCommonControlsEx() at startup.
@@ -360,20 +360,20 @@ static int MeasureLineWidth(HDC hdc, Str line) {
 
 // process one received line for a client. mirrors plog() in the web ui.
 static void IngestLine(HDC measureDC, int connNo, Str raw) {
-    Str line = str::TrimSuffixWhitespace(raw); // trimEnd
+    str::TrimSuffixWhitespace(raw);
 
     Tab* tab = FindOrCreateTab(connNo);
 
-    if (str::StartsWith(line, kValuePrefix)) {
-        HandleValueLine(tab, line);
+    if (str::StartsWith(raw, kValuePrefix)) {
+        HandleValueLine(tab, raw);
         return; // value lines are not added to the log
     }
 
-    Str stored = tab->logs.Append(line);
+    Str stored = tab->logs.Append(raw);
     tab->logBytes += stored.len + 1; // +1 for the newline that was trimmed
-    if (str::StartsWith(line, kAppPrefix)) {
+    if (str::StartsWith(raw, kAppPrefix)) {
         str::Free(tab->name);
-        tab->name = str::Dup(Str(line.s + kAppPrefix.len, line.len - kAppPrefix.len));
+        tab->name = str::Dup(Str(raw.s + kAppPrefix.len, raw.len - kAppPrefix.len));
         InvalidateTabBar();
     }
 
@@ -547,7 +547,7 @@ static void ComputeHighlight(const WCHAR* lc, int n, char* mask) {
     int nTerms = len(gTerms);
     for (int t = 0; t < nTerms; t++) {
         WStr tw = ToWStrTemp(gTerms[t]);
-        if (tw.len == 0) {
+        if (len(tw) == 0) {
             continue;
         }
         // lowercase the term in place
@@ -571,7 +571,7 @@ static void ComputeHighlight(const WCHAR* lc, int n, char* mask) {
 
 static void DrawLogLine(HDC hdc, int x, int y, Str line) {
     WStr w = ToWStrTemp(line);
-    if (w.len == 0) {
+    if (len(w) == 0) {
         return;
     }
     SetBkMode(hdc, TRANSPARENT);

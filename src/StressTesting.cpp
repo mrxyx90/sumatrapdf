@@ -32,7 +32,7 @@
 #include "WindowTab.h"
 #include "Flags.h"
 #include "SearchAndDDE.h"
-#include "CrashHandler.h"
+#include "base/CrashHandler.h"
 #include "StressTesting.h"
 
 constexpr int kFirstStressTimerID = 101;
@@ -165,7 +165,7 @@ static void BenchFile(Str path, Str pagesSpec) {
     TocTree* toc = engine->GetToc();
     logf("toc: %.2f ms (%s)\n", TimeSinceInMs(tToc), Str(toc ? "present" : "none"));
 
-    if (!pagesSpec) {
+    if (len(pagesSpec) == 0) {
         for (int i = 1; i <= pages; i++) {
             BenchLoadRender(engine, i);
         }
@@ -256,7 +256,7 @@ static bool IsStressTestSupportedFile(Str filePath, Str filter) {
     if (IsSupportedFileType(kind, true) || DocIsSupportedFileType(kind) || ChmModel::IsSupportedFileType(kind)) {
         return true;
     }
-    if (!filter) {
+    if (len(filter) == 0) {
         return false;
     }
     // sniff the file's content if it matches the filter but
@@ -426,10 +426,10 @@ again:
         auto fn = MkFunc1(GetNextFileCb, &path);
         bool ok = queue.Access(fn);
         if (!ok) {
-            ReportIf(path);
+            ReportIf(len(path) != 0);
             return {};
         }
-        ReportIf(!path);
+        ReportIf(len(path) == 0);
         if (!IsStressTestSupportedFile(path, fileFilter)) {
             goto again;
         }
@@ -895,14 +895,14 @@ Next:
 }
 
 // note: used from CrashHandler, shouldn't allocate memory
-static void GetLogInfo(StressTest* st) {
-    CrashInfoAppend(fmt(", stress test rendered %d files in ", st->nFilesProcessed));
-    CrashInfoAppend(FormatTimeTemp(SecsSinceSystemTime(st->stressStartTime)));
-    CrashInfoAppend(fmt(", currPage: %d", st->currPageNo));
+static void GetLogInfo(str::Builder& b, StressTest* st) {
+    b.Append(fmt(", stress test rendered %d files in ", st->nFilesProcessed));
+    b.Append(FormatTimeTemp(SecsSinceSystemTime(st->stressStartTime)));
+    b.Append(fmt(", currPage: %d", st->currPageNo));
 }
 
 // note: used from CrashHandler.cpp, should not allocate memory
-void GetStressTestInfo() {
+void GetStressTestInfo(str::Builder& b) {
     // only add paths to files encountered during an explicit stress test
     // (for privacy reasons, users should be able to decide themselves
     // whether they want to share what files they had opened during a crash)
@@ -912,15 +912,15 @@ void GetStressTestInfo() {
 
     for (int i = 0; i < len(gWindows); i++) {
         MainWindow* w = gWindows[i];
-        if (!w || !w->CurrentTab() || !w->CurrentTab()->filePath) {
+        if (!w || !w->CurrentTab() || len(w->CurrentTab()->filePath) == 0) {
             continue;
         }
 
-        CrashInfoAppend(StrL("File: "));
+        b.Append(StrL("File: "));
         Str filePath = w->CurrentTab()->filePath;
-        CrashInfoAppend(filePath);
-        GetLogInfo(w->stressTest);
-        CrashInfoAppend(StrL("\r\n"));
+        b.Append(filePath);
+        GetLogInfo(b, w->stressTest);
+        b.Append(StrL("\n"));
     }
 }
 

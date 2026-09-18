@@ -7,7 +7,6 @@
 #include "base/Pixmap.h"
 #include "base/CssParser.h"
 
-#include "GumboHelpers.h"
 #include "GumboHtmlParser.h"
 #include "ImageReader.h"
 
@@ -881,7 +880,7 @@ void HtmlFormatter::EmitTextRun(Str s) {
 // allocated in textAllocator.
 // emits a synthetic, persistent string (e.g. a list bullet/number)
 void HtmlFormatter::EmitTextMarker(Str s) {
-    if (!s) {
+    if (len(s) == 0) {
         return;
     }
     textMeasure->SetFont(CurrFont());

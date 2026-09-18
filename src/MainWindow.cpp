@@ -30,7 +30,8 @@
 #include "DisplayModel.h"
 #include "ProgressUpdateUI.h"
 #include "Notifications.h"
-#include "ReadAloudPlaybackBar.h"
+#include "ReadAloud.h"
+#include "ReadingAutoScroll.h"
 #include "TextSelection.h"
 #include "TextSearch.h"
 #include "SumatraPDF.h"
@@ -132,6 +133,7 @@ void CreateMovePatternLazy(MainWindow* win) {
 MainWindow::~MainWindow() {
     CancelAnnotationResizeRerender(this);
     KillTimer(hwndCanvas, kSmoothScrollTimerID);
+    KillTimer(hwndCanvas, kReadingAutoScrollTimerID);
     if (scrollAnimHiResTimer) {
         timeEndPeriod(1);
         scrollAnimHiResTimer = false;
@@ -226,6 +228,7 @@ MainWindow::~MainWindow() {
 
     delete frameRateWnd;
     ReadAloudPlaybackBarDestroy(this);
+    ReadingAutoScrollDestroy(this);
     UnregisterOnWindowMoved(&overlayScrollOnMoved);
     ReportIf(onWindowMoved);
     delete infotip;
@@ -388,6 +391,7 @@ void MainWindow::UpdateCanvasSize() {
 
     RelayoutNotifications(hwndCanvas);
     ReadAloudPlaybackBarRelayout(hwndCanvas);
+    ReadingAutoScrollRelayout(hwndCanvas);
 }
 
 Size MainWindow::GetViewPortSize() const {
@@ -543,7 +547,7 @@ static void LaunchEmbeddedDestination(MainWindow* win, PageDestination* pd) {
         return;
     }
     TempStr tmpDir = GetTempDirTemp();
-    if (!tmpDir) {
+    if (len(tmpDir) == 0) {
         str::Free(data);
         return;
     }
@@ -621,7 +625,7 @@ void LinkHandler::GotoLink(IPageDestination* dest) {
         int colon = str::IndexOf(chosen, StrL(": "));
         if (colon >= 0) {
             url = Str(chosen.s + colon + 2, chosen.len - colon - 2);
-            str::SkipWs(url);
+            str::TrimWs(url);
         }
         if (IsExternalUrl(url) || str::StartsWithI(url, StrL("ftp://"))) {
             LaunchURL(url);
@@ -703,11 +707,10 @@ void LinkHandler::ScrollTo(int pageNo, RectF rect, float zoom) {
 // Convert file:// / file:/// / file: URIs to a local path (+ optional #fragment).
 // Returns false if uri is not a file: scheme.
 static bool PathFromFileUriTemp(Str uri, TempStr* pathOut, Str* fragmentOut) {
-    if (!str::StartsWithI(uri, StrL("file:"))) {
+    Str rest = uri;
+    if (!str::TrimPrefixI(rest, StrL("file:"))) {
         return false;
     }
-    // Skip "file:" case-insensitively (str::TrimPrefix is case-sensitive).
-    Str rest = Str(uri.s + 5, uri.len - 5);
     // file://host/path or file:///path → drop authority (// or ///)
     if (str::TrimPrefix(rest, StrL("//"))) {
         // empty host: next char is / of absolute path
@@ -735,7 +738,7 @@ static bool PathFromFileUriTemp(Str uri, TempStr* pathOut, Str* fragmentOut) {
 }
 
 void LinkHandler::LaunchURL(Str uri) {
-    if (!uri) {
+    if (len(uri) == 0) {
         /* ignore missing URLs */;
         return;
     }
@@ -783,13 +786,9 @@ static bool IsFileSupportedByContent(Str filePath) {
 // fragment, but EngineBase::GetNamedDest prepends "#nameddest=" itself -- so the
 // prefix must be stripped or the lookup becomes "#nameddest=nameddest=<name>"
 // and fails, leaving the remote PDF on page 1 (issue #5642).
-// strips mupdf's "nameddest=" prefix from a remote link's destination name
-// so it can be passed to GetNamedDest (issue #5642)
-Str CleanRemoteDestName(Str destName) {
-    if (destName && str::StartsWithI(destName, StrL("nameddest="))) {
-        return Str(destName.s + 10, destName.len - 10);
-    }
-    return destName;
+// Strips mupdf's "nameddest=" prefix so the name can be passed to GetNamedDest.
+void CleanRemoteDestNameInPlace(Str& destName) {
+    str::TrimPrefixI(destName, StrL("nameddest="));
 }
 
 // for safety, only handle relative paths and only open them in SumatraPDF
@@ -887,10 +886,10 @@ void LinkHandler::LaunchFile(Str pathOrig, IPageDestination* remoteLink) {
 
     Str destName = PageDestGetName(remoteLink);
     if (destName) {
-        IPageDestination* dest = targetWin->ctrl->GetNamedDest(CleanRemoteDestName(destName));
+        CleanRemoteDestNameInPlace(destName);
+        IPageDestination* dest = targetWin->ctrl->GetNamedDest(destName);
         if (dest) {
             targetWin->linkHandler->ScrollTo(dest);
-            delete dest;
         }
     } else {
         targetWin->linkHandler->ScrollTo(remoteLink);
@@ -979,7 +978,6 @@ void LinkHandler::GotoNamedDest(Str name) {
     bool hasDest = dest != nullptr;
     if (dest) {
         ScrollTo(dest);
-        delete dest;
     } else if (ctrl->HasToc()) {
         auto* docTree = ctrl->GetToc();
         TocItem* root = docTree->root;

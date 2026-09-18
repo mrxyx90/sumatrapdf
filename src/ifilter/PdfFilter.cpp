@@ -53,9 +53,9 @@ HRESULT PdfFilter::OnInit() {
     return S_OK;
 }
 
-// copied from SumatraProperties.cpp
+// copied from DocumentProperties.cpp
 static bool PdfDateParse(Str pdfDate, SYSTEMTIME* timeOut) {
-    if (!pdfDate) {
+    if (len(pdfDate) == 0) {
         return false;
     }
     ZeroMemory(timeOut, sizeof(SYSTEMTIME));
@@ -112,7 +112,7 @@ HRESULT PdfFilter::GetNextChunkValue(ChunkValue& chunkValue) {
         case PdfFilterState::Title:
             m_state = PdfFilterState::Date;
             prop = m_pdfEngine->GetPropertyTemp(DocProp::Title);
-            if (!prop) {
+            if (len(prop) == 0) {
                 prop = m_pdfEngine->GetPropertyTemp(DocProp::Subject);
             }
             if (len(prop) > 0) {
@@ -126,7 +126,7 @@ HRESULT PdfFilter::GetNextChunkValue(ChunkValue& chunkValue) {
         case PdfFilterState::Date:
             m_state = PdfFilterState::Content;
             prop = m_pdfEngine->GetPropertyTemp(DocProp::ModificationDate);
-            if (!prop) {
+            if (len(prop) == 0) {
                 prop = m_pdfEngine->GetPropertyTemp(DocProp::CreationDate);
             }
             if (len(prop) > 0) {
@@ -143,14 +143,14 @@ HRESULT PdfFilter::GetNextChunkValue(ChunkValue& chunkValue) {
         case PdfFilterState::Content:
             while (++m_iPageNo <= m_pdfEngine->PageCount()) {
                 PageText pageText = m_pdfEngine->ExtractPageText(m_iPageNo);
-                if (!pageText.text) {
+                if (len(pageText.text) == 0) {
                     FreePageText(&pageText);
                     continue;
                 }
                 // IFilter text is CRLF; extraction uses \n. CHUNK_EOP: each
                 // page is its own paragraph so the indexer doesn't glue pages
                 // together (#4859).
-                TempStr crlfText = str::ReplaceTemp(pageText.text, StrL("\n"), StrL("\r\n"));
+                TempStr crlfText = str::LFToCRLFTemp(pageText.text);
                 TempWStr text = ToWStrTemp(crlfText);
                 chunkValue.SetTextValue(PKEY_Search_Contents, text.s, CHUNK_TEXT, 0, 0, 0, CHUNK_EOP);
                 FreePageText(&pageText);

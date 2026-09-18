@@ -11,6 +11,7 @@
 
 #include "Theme.h"
 #include "FilterHighlightDraw.h"
+#include "FilterUtil.h"
 
 // approximate "is this UTF-8 byte part of a word character?": any byte >= 0x80
 // is part of a multi-byte rune (CJK / Cyrillic / accented Latin -> treat as a
@@ -32,17 +33,17 @@ void DrawMaybeHighlightedText(Gfx* gfx, Rect rc, Str text, const StrVec& filterW
 
     // find all match ranges in text
     int textLen = text.len;
-    u8* hl = VecReserve(highlighted, textLen);
+    u8* hl = VecGrow(highlighted, textLen);
     memset(hl, 0, textLen);
     for (int w = 0; w < nWords; w++) {
         Str word = filterWords[w];
-        int wordLen = word.len;
         if (len(word) == 0) {
             continue;
         }
         Str rest = text;
         while (rest) {
-            int idx = str::IndexOfI(rest, word);
+            int wordLen = 0;
+            int idx = FilterIndexOf(rest, word, &wordLen);
             if (idx < 0) {
                 break;
             }
@@ -230,7 +231,7 @@ void DrawTreeItemFilterHighlight(Gfx* gfx, Rect labelRect, Str text, const StrVe
     // disappear on the focused selected row.
     // Use the tree's font for GetTextExtentPoint32 / DrawText or the bars
     // misalign and look oversized relative to the control's text.
-    if (!text || len(text) == 0) {
+    if (len(text) == 0) {
         return;
     }
 
@@ -243,13 +244,13 @@ void DrawTreeItemFilterHighlight(Gfx* gfx, Rect labelRect, Str text, const StrVe
     memset(hl, 0, textLen);
     for (int w = 0; w < len(filterWords); w++) {
         Str word = filterWords[w];
-        int wordLen = word.len;
-        if (wordLen == 0) {
+        if (len(word) == 0) {
             continue;
         }
         Str rest = text;
         while (len(rest) > 0) {
-            int idx = str::IndexOfI(rest, word);
+            int wordLen = 0;
+            int idx = FilterIndexOf(rest, word, &wordLen);
             if (idx < 0) {
                 break;
             }

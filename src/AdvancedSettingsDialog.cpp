@@ -32,7 +32,7 @@
 #include "MainWindow.h"
 #include "PdfDarkMode.h"
 #include "Theme.h"
-#include "DarkMode_win.h"
+#include "DarkMode.h"
 #include "SumatraConfig.h"
 #include "SumatraPDF.h"
 #include "Translations.h"
@@ -42,78 +42,6 @@
 constexpr const char* kSettingsDocsUrl = "https://www.sumatrapdfreader.org/settings/settings3-7.html";
 // smallest client width the user can drag the dialog to (96 dpi pixels)
 constexpr int kAdvSettingsMinClientDx = 480;
-
-// enum settings: string settings restricted to a fixed set of values.
-// Fixed string values for the in-place enum drop-down. Matched by full path
-// or by the last path segment so nested settings reuse the same list
-// (e.g. Fullscreen.Toolbar → Toolbar).
-// clang-format off
-static const char* gEnumDisplayMode[] = {
-    "automatic", "single page", "facing", "book view",
-    "continuous", "continuous facing", "continuous book view", "page aspect", nullptr,
-};
-static const char* gEnumToolbar[] = {"show", "hide", "overlay", nullptr};
-static const char* gEnumToolbarPosition[] = {"top", "bottom", nullptr};
-static const char* gEnumScrollbars[] = {"windows", "smart", "overlay", "hidden", nullptr};
-static const char* gEnumEngineeringDrawingEnhance[] = {"off", "auto", "on", nullptr};
-static const char* gEnumDocumentColorsFollowTheme[] = {"off", "smart", "legacy", nullptr};
-static const char* gEnumHomePageViewMode[] = {"thumbnails", "list", nullptr};
-static const char* gEnumFilePicker[] = {"", "os", "sumatrapdf", nullptr};
-static const char* gEnumPrintScale[] = {"shrink", "fit", "none", nullptr};
-static const char* gEnumCollate[] = {"default", "collate", "nocollate", nullptr};
-static const char* gEnumFreeTextAlignment[] = {"left", "center", "right", nullptr};
-
-namespace {
-struct EnumSettingDef {
-    const char* name; // full path or leaf name (last dotted segment)
-    const char** values;
-};
-} // namespace
-static const char* gEnumFullscreenDisplayMode[] = {
-    "", "automatic", "single page", "facing", "book view",
-    "continuous", "continuous facing", "continuous book view", nullptr,
-};
-
-static const EnumSettingDef gEnumSettings[] = {
-    {"DefaultDisplayMode", gEnumDisplayMode},
-    {"Fullscreen.DisplayMode", gEnumFullscreenDisplayMode},
-    {"Toolbar", gEnumToolbar},
-    {"ToolbarPosition", gEnumToolbarPosition},
-    {"Scrollbars", gEnumScrollbars},
-    {"EngineeringDrawingEnhance", gEnumEngineeringDrawingEnhance},
-    {"DocumentColorsFollowTheme", gEnumDocumentColorsFollowTheme},
-    {"HomePageViewMode", gEnumHomePageViewMode},
-    {"FilePicker", gEnumFilePicker},
-    {"PrintScale", gEnumPrintScale},
-    {"Collate", gEnumCollate},
-    {"FreeTextAlignment", gEnumFreeTextAlignment},
-};
-// clang-format on
-
-// Leaf name of a dotted path: "Fullscreen.Toolbar" → "Toolbar"
-static Str SettingPathLeaf(Str name) {
-    if (!name || name.len == 0) {
-        return name;
-    }
-    const char* s = name.s;
-    const char* last = s;
-    for (int i = 0; i < name.len; i++) {
-        if (s[i] == '.') {
-            last = s + i + 1;
-        }
-    }
-    return Str(last, name.len - (int)(last - s));
-}
-
-static const char** GetEnumValuesForSetting(Str name) {
-    Str leaf = SettingPathLeaf(name);
-    for (const auto& def : gEnumSettings) {
-        if (str::EqI(name, Str(def.name)) || str::EqI(leaf, Str(def.name))) {
-            return def.values;
-        }
-    }
-    return nullptr;
-}
 
 // a single editable setting; fieldPtr points into gSettings, the pending
 // (possibly edited) value is kept here and only written back on Save
@@ -182,11 +110,11 @@ static void ApplyCompactInts(const StructInfo* info, u8* base, Str s) {
             continue;
         }
         Str rest = Str(s.s + off, len(s) - off);
-        off += str::SkipWs(rest);
+        off += str::TrimWs(rest);
         int val = (int)f.value;
         if (len(rest) > 0) {
             val = ParseInt(rest);
-            off += str::SkipNonWs(rest);
+            off += str::TrimNonWs(rest);
         }
         *(int*)(base + f.offset) = val;
     }
@@ -360,7 +288,7 @@ static void CollectSettings(Vec<SettingItem*>& items, const StructInfo* info, u8
                         item->strVal = str::Dup(*(Str*)fieldPtr);
                         item->defStr = str::Dup(Str((const char*)field.value));
                         if (field.type == SettingType::String) {
-                            item->enumValues = GetEnumValuesForSetting(path);
+                            item->enumValues = GetSettingsEnumValues(path);
                         }
                         break;
                 }
@@ -514,6 +442,9 @@ struct AdvancedSettingsWnd : WindowBase {
     void CheckDropDownClosed();
     void CloseEnumEdit(bool keepValue);
     void KeepFocus();
+    void RelayoutInPlaceEditor();
+    void OnEditValueKillFocus();
+    void PostedRefocusEditValue();
 
     void OnOpenSettingsFile(VirtMouseEvent* ev = nullptr);
     void OnHelp(VirtMouseEvent* ev = nullptr);
@@ -746,6 +677,7 @@ void AdvancedSettingsWnd::BeginEditValue(int idx) {
     }
     editValue = c;
     editItemIdx = idx;
+    c->onKillFocus = MkMethod0<AdvancedSettingsWnd, &AdvancedSettingsWnd::OnEditValueKillFocus>(this);
     SetWindowPos(c->hwnd, HWND_TOP, r.x, r.y, r.dx, r.dy, SWP_SHOWWINDOW);
     EditSelectAll(c);
     EditSetFocus(c);
@@ -842,6 +774,54 @@ void AdvancedSettingsWnd::KeepFocus() {
         return;
     }
     HwndSetFocus(hwnd);
+}
+
+void AdvancedSettingsWnd::RelayoutInPlaceEditor() {
+    if (editItemIdx < 0) {
+        return;
+    }
+    Rect r = ValueRectForItem(editItemIdx);
+    if (r.IsEmpty()) {
+        return;
+    }
+    HWND h = nullptr;
+    if (editValue) {
+        h = editValue->hwnd;
+    } else if (dropDownValue) {
+        h = dropDownValue->hwnd;
+    }
+    if (h) {
+        SetWindowPos(h, HWND_TOP, r.x, r.y, r.dx, r.dy, SWP_NOACTIVATE);
+    }
+}
+
+void AdvancedSettingsWnd::PostedRefocusEditValue() {
+    if (gAdvancedSettingsWnd != this || !editValue || !editValue->hwnd) {
+        return;
+    }
+    if (GetFocus() == editValue->hwnd) {
+        return;
+    }
+    HwndSetFocus(editValue->hwnd);
+}
+
+void AdvancedSettingsWnd::OnEditValueKillFocus() {
+    if (!editValue) {
+        return;
+    }
+    HWND next = GetFocus();
+    if (next == editValue->hwnd) {
+        return;
+    }
+    if (!next || HwndIsOnScreenKeyboard(next)) {
+        auto fn = MkMethod0<AdvancedSettingsWnd, &AdvancedSettingsWnd::PostedRefocusEditValue>(this);
+        uitask::Post(fn, "AdvSettingsRefocusEdit");
+        return;
+    }
+    if (hwnd && (next == hwnd || IsChild(hwnd, next))) {
+        return;
+    }
+    CommitEditValue();
 }
 
 void AdvancedSettingsWnd::OnEnumSelectionChanged() {
@@ -1006,7 +986,7 @@ void AdvancedSettingsWnd::ApplyChangesAndSave() {
     if (!didChange) {
         return;
     }
-    SaveSettings();
+    ScheduleSaveSettings();
     // reload so that all state derived from settings (theme, fonts, parsed
     // colors, custom commands, accelerators ...) is re-computed and applied
     ForceReloadSettings();
@@ -1169,10 +1149,8 @@ void AdvancedSettingsWnd::OnSize(WindowBase::SizeEvent* ev) {
     }
     gAdvSettingsLastClientDx = dx;
     gAdvSettingsLastClientDy = dy;
-    // in-place editors are positioned over a specific item rect; that rect
-    // moves on resize, so close them
-    CancelEditValue();
     DoLayout({dx, dy});
+    RelayoutInPlaceEditor();
     HwndInvalidate(hwnd);
 }
 
@@ -1212,7 +1190,7 @@ void AdvancedSettingsWnd::UpdateChangedCountLabel() {
     bool show = n > 0;
     Visibility vis = show ? Visibility::Visible : Visibility::Collapse;
     if (show) {
-        changedCountText->SetText(fmt(_TRA("Unsaved changes: %d").s, n));
+        changedCountText->SetText(fmt(Tr("Unsaved changes: %d").s, n));
     }
     changedCountRow->SetVisibility(vis);
     changedCountText->SetIsVisible(show);
@@ -1245,13 +1223,13 @@ static void PositionDialog(HWND hwnd, HWND hwndRelative) {
 // system: a filled box with a border, brighter on hover (like the other dialogs)
 bool AdvancedSettingsWnd::Create(MainWindow* mainWin) {
     win = mainWin;
-    // OnSize closes in-place editors before DoLayout; skip the generic path
+    // OnSize repositions in-place editors after DoLayout; skip the generic path
     autoLayout = false;
     CollectSettings(items, &gSettingsInfo, (u8*)gSettings, {});
 
     {
         CreateCustomArgs args;
-        args.title = _TRA("Advanced Settings");
+        args.title = Tr("Advanced Settings");
         args.visible = false;
         args.style = WS_POPUPWINDOW | WS_CAPTION | WS_THICKFRAME;
         args.font = GetFont();
@@ -1277,7 +1255,7 @@ bool AdvancedSettingsWnd::Create(MainWindow* mainWin) {
         args.parent = hwnd;
         args.isMultiLine = false;
         args.withBorder = true;
-        args.cueText = _TRA("enter search term to filter settings");
+        args.cueText = Tr("enter search term to filter settings");
         args.font = GetFont();
         args.isRtl = isRtl;
         auto* c = new Edit();
@@ -1350,7 +1328,7 @@ bool AdvancedSettingsWnd::Create(MainWindow* mainWin) {
         hbox->alignMain = MainAxisAlign::MainCenter;
         hbox->alignCross = CrossAxisAlign::CrossCenter;
         auto* c = NewVirtText({
-            .s = _TRA("Enter or double-click to edit. Bold value: different from default"),
+            .s = Tr("Enter or double-click to edit. Bold value: different from default"),
             .font = font,
             .isRtl = isRtl,
         });
@@ -1370,19 +1348,19 @@ bool AdvancedSettingsWnd::Create(MainWindow* mainWin) {
         left->alignMain = MainAxisAlign::MainStart;
         left->alignCross = CrossAxisAlign::CrossCenter;
         left->gap = font->averageCharWidth;
-        btnSave = NewThemedButton(hwnd, _TRA("Save"), font, true);
+        btnSave = NewThemedButton(hwnd, Tr("Save"), font, true);
         btnSave->onClick = MkMethod1<AdvancedSettingsWnd, VirtMouseEvent*, &AdvancedSettingsWnd::OnSave>(this);
         left->AddChild(new Padding(btnSave, pad));
-        btnCancel = NewThemedButton(hwnd, _TRA("Cancel"), font, false);
+        btnCancel = NewThemedButton(hwnd, Tr("Cancel"), font, false);
         btnCancel->onClick = MkMethod1<AdvancedSettingsWnd, VirtMouseEvent*, &AdvancedSettingsWnd::OnCancel>(this);
         left->AddChild(new Padding(btnCancel, pad));
-        btnOpenSettingsFile = NewThemedButton(hwnd, _TRA("Open Settings File"), font, false);
+        btnOpenSettingsFile = NewThemedButton(hwnd, Tr("Open Settings File"), font, false);
         btnOpenSettingsFile->onClick =
             MkMethod1<AdvancedSettingsWnd, VirtMouseEvent*, &AdvancedSettingsWnd::OnOpenSettingsFile>(this);
         left->AddChild(new Padding(btnOpenSettingsFile, pad));
         hbox->AddChild(left);
 
-        btnHelp = NewThemedButton(hwnd, _TRA("Help"), font, false);
+        btnHelp = NewThemedButton(hwnd, Tr("Help"), font, false);
         btnHelp->onClick = MkMethod1<AdvancedSettingsWnd, VirtMouseEvent*, &AdvancedSettingsWnd::OnHelp>(this);
         hbox->AddChild(new Padding(btnHelp, pad));
         vbox->AddChild(hbox);
@@ -1545,6 +1523,51 @@ TempStr AdvSettingsRowsResultTemp(Str action, int arg, int* exitCodeOut) {
         wnd->HandleEscapeKey(editingValue, editingEnum);
         bool closing = !gAdvancedSettingsWnd || gAdvancedSettingsWnd->deleteScheduled;
         out.Append(fmt("closed=%d\n", closing ? 1 : 0));
+        return finish(0);
+    }
+    if (str::Eq(action, StrL("save"))) {
+        wnd->OnSave(nullptr);
+        out.Append(StrL("saved=1\n"));
+        return finish(0);
+    }
+    if (str::Eq(action, StrL("state"))) {
+        out.Append(fmt("editing=%d\n", wnd->editValue ? 1 : 0));
+        return finish(0);
+    }
+    if (str::Eq(action, StrL("edit"))) {
+        int idx = -1;
+        if (wnd->model) {
+            int n = wnd->model->ItemsCount();
+            for (int i = 0; i < n; i++) {
+                SettingItem* item = wnd->model->ItemAt(i);
+                if (item && !item->enumValues && item->type != SettingType::Bool) {
+                    idx = wnd->model->filtered[i];
+                    break;
+                }
+            }
+        }
+        if (idx < 0) {
+            out.Append(StrL("ERROR no-edit-item\n"));
+            return finish(1);
+        }
+        wnd->BeginEditValue(idx);
+        out.Append(fmt("editing=%d\n", wnd->editValue ? 1 : 0));
+        return finish(0);
+    }
+    if (str::Eq(action, StrL("killfocus"))) {
+        if (wnd->editValue && wnd->editValue->hwnd) {
+            HWND edit = wnd->editValue->hwnd;
+            int id = GetDlgCtrlID(edit);
+            SendMessageW(wnd->hwnd, WM_COMMAND, MAKEWPARAM(id, EN_KILLFOCUS), (LPARAM)edit);
+        }
+        out.Append(fmt("editing=%d\n", wnd->editValue ? 1 : 0));
+        return finish(0);
+    }
+    if (str::Eq(action, StrL("resize"))) {
+        WindowBase::SizeEvent ev;
+        ev.size = HwndClientRect(wnd->hwnd).Size();
+        wnd->OnSize(&ev);
+        out.Append(fmt("editing=%d\n", wnd->editValue ? 1 : 0));
         return finish(0);
     }
     if (!wnd->listBox) {

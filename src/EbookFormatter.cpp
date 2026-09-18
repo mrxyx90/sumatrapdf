@@ -5,7 +5,6 @@
 #include "base/Archive.h"
 #include "base/HtmlTags.h"
 
-#include "GumboHelpers.h"
 #include "GumboHtmlParser.h"
 
 #include "DocProperties.h"
@@ -29,7 +28,7 @@ MobiFormatter::MobiFormatter(HtmlFormatterArgs* args, MobiDoc* doc, MobiCoverIma
     }
 
     Str img = doc->GetCoverImage();
-    if (!img) {
+    if (len(img) == 0) {
         return;
     }
 
@@ -109,7 +108,7 @@ void MobiFormatter::HandleTagImg(HtmlToken* t) {
     }
     if (n > 0) {
         Str img = doc->GetImage(n);
-        needAlt = !img || !EmitImage(img);
+        needAlt = len(img) == 0 || !EmitImage(img);
     }
     if (needAlt) {
         attr = t->GetAttrByName(StrL("alt"));
@@ -159,7 +158,7 @@ void EpubFormatter::HandleTagImg(HtmlToken* t) {
     if (attr) {
         TempStr src = url::DecodeTemp(attr->val);
         Str img = epubDoc->GetImageData(src, pagePath);
-        needAlt = !img || !EmitImage(img);
+        needAlt = len(img) == 0 || !EmitImage(img);
     }
     if (needAlt) {
         attr = t->GetAttrByName(StrL("alt"));
@@ -261,7 +260,7 @@ Fb2Formatter::Fb2Formatter(HtmlFormatterArgs* args, Fb2Doc* doc)
         return;
     }
     Str cover = doc->GetCoverImage();
-    if (!cover) {
+    if (len(cover) == 0) {
         return;
     }
     EmitImage(cover);
@@ -359,7 +358,7 @@ void HtmlFileFormatter::HandleTagImg(HtmlToken* t) {
     if (attr) {
         TempStr src = url::DecodeTemp(attr->val);
         Str img = htmlDoc->GetImageData(src);
-        needAlt = !img || !EmitImage(img);
+        needAlt = len(img) == 0 || !EmitImage(img);
     }
     if (needAlt) {
         attr = t->GetAttrByName(StrL("alt"));

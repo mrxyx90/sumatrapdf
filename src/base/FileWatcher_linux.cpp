@@ -4,10 +4,6 @@
 #include "base/Base.h"
 #include "base/File.h"
 
-#if IS_DEBUG
-#include "base/UtAssert.h"
-#endif
-
 #include <errno.h>
 #include <poll.h>
 #include <sys/eventfd.h>
@@ -194,7 +190,7 @@ WatchedFile* FileWatcherSubscribe(Str path, const Func0& onFileChangedCb, bool) 
         return nullptr;
     }
     TempStr dirPath = path::GetDirTemp(path);
-    if (!dirPath) {
+    if (len(dirPath) == 0) {
         dirPath = StrL(".");
     }
     TempStr name = path::GetBaseNameTemp(path);
@@ -275,27 +271,3 @@ void FileWatcherWaitForShutdown(void) {
     gWakeFd = -1;
     gThreadRunning = false;
 }
-
-#if IS_DEBUG
-
-static void NoteFileWatcherChange(AtomicInt* count) {
-    AtomicIntInc(count);
-}
-
-void FileWatcher_UnitTests() {
-    TempStr tempPath = GetTempFilePathTemp(StrL("sumatra-watcher-"));
-    utassert(!!tempPath);
-    AtomicInt changeCount = 0;
-    WatchedFile* watched = FileWatcherSubscribe(tempPath, MkFunc0(NoteFileWatcherChange, &changeCount));
-    utassert(watched != nullptr);
-    utassert(file::WriteFile(tempPath, StrL("changed")));
-    for (int i = 0; i < 300 && AtomicIntGet(&changeCount) == 0; i++) {
-        SleepInMs(10);
-    }
-    utassert(AtomicIntGet(&changeCount) > 0);
-    FileWatcherUnsubscribe(watched);
-    FileWatcherWaitForShutdown();
-    utassert(file::Delete(tempPath));
-}
-
-#endif

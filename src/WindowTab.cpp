@@ -19,7 +19,9 @@
 #include "SumatraPDF.h"
 #include "MainWindow.h"
 #include "Selection.h"
-#include "ReadAloudHighlight.h"
+#include "ReadAloud.h"
+#include "ReadingAutoScroll.h"
+#include "ReadingBar.h"
 #include "Translations.h"
 #include "AnnotEditToolbar.h"
 #include "WindowTab.h"
@@ -64,6 +66,8 @@ WindowTab::~WindowTab() {
     // whatever a close path forgot, nothing may be left pointing at a tab that
     // is going away (the read-aloud playback bar holds one)
     ReadAloudForgetTab(this);
+    ReadingAutoScrollForgetTab(this);
+    ReadingBarForgetTab(this);
     // Drop MainWindow pointers into this tab / its controller before we free
     // them: DestroyWindow during WebView teardown can re-enter the canvas
     // WndProc, which reads win->ctrl / CurrentTab().
@@ -171,13 +175,13 @@ Str WindowTab::GetTabTitle() const {
     if (displayName) {
         return displayName;
     }
-    if (!filePath) {
+    if (len(filePath) == 0) {
         if (IsAboutTab()) {
             return StrL("Home");
         }
         if (IsFavoritesTab()) {
             // same label as Favorites menu / sidebar header
-            return _TRA("Favorites");
+            return Tr("Favorites");
         }
         return StrL("");
     }
@@ -265,7 +269,7 @@ bool SaveDataToFile(HWND hwndParent, Str fileName, Str data) {
     // Prepare the file filters (use \1 instead of \0 so that the
     // double-zero terminated string isn't cut by the string handling
     // methods too early on)
-    TempStr fileFilterA = fmt("%s\1*.*\1", _TRA("All files"));
+    TempStr fileFilterA = fmt("%s\1*.*\1", Tr("All files"));
     TempWStr fileFilter = ToWStrTemp(fileFilterA);
     wstr::TransCharsInPlace(fileFilter, WStrL(L"\1"), WStrL(L"\0"));
     ofn.lpstrFilter = fileFilter.s;

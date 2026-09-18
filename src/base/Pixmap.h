@@ -68,6 +68,7 @@ struct RenderedBitmap;
 // or must adopt a GDI HBITMAP / Native DIB. Heap pixels blit via StretchDIBits
 // with no extra copy (BlitPixmap / BlitPixmapAlpha).
 Pixmap* AllocPixmapDIB(int w, int h);
+Pixmap* PixmapFromHICON(HICON);
 bool BlitPixmap(Pixmap* p, HDC hdc, Rect target);
 bool BlitPixmapAlpha(Pixmap* p, HDC hdc, Rect target);
 bool BlitPixmapRegion(Pixmap* p, HDC hdc, Rect target, Rect source);
@@ -105,7 +106,7 @@ inline Pixmap* AllocPixmap(int w, int h, PixmapFormat fmt = PixmapFormat::BGRA8,
     if (stride > INT_MAX || nBytes / stride != (size_t)h) {
         return nullptr;
     }
-    u8* data = (u8*)malloc(nBytes);
+    u8* data = (u8*)Alloc(nullptr, nBytes);
     if (!data) {
         return nullptr;
     }

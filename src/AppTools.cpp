@@ -22,7 +22,7 @@ static bool HasBeenInstalled() {
     TempStr regPathUninst =
         str::JoinTemp(StrL("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\"), StrL(kAppName));
     TempStr installedPath = LoggedReadRegStr2Temp(regPathUninst, StrL("InstallLocation"));
-    if (!installedPath) {
+    if (len(installedPath) == 0) {
         return false;
     }
 
@@ -151,9 +151,9 @@ TempStr GetAppDataDirTemp() {
             dir = {};
         }
     }
-    if (!dir) {
+    if (len(dir) == 0) {
         dir = GetSpecialFolderTemp(CSIDL_LOCAL_APPDATA, true);
-        if (!dir) {
+        if (len(dir) == 0) {
             LogLastError();
             ReportIf(true);
             dir = GetTempDirTemp(); // shouldn't happen, last chance thing
@@ -167,7 +167,7 @@ TempStr GetAppDataDirTemp() {
 
 // Generate full path for a file or directory for storing data
 TempStr GetPathInAppDataDirTemp(Str name) {
-    if (!name) {
+    if (len(name) == 0) {
         return {};
     }
     TempStr dir = GetAppDataDirTemp();
@@ -185,9 +185,6 @@ static TextEditor editorRules[] = {
         StrL(R"(--goto "%f:%l")"),
         RegType::BinaryPath,
         StrL(kRegCurrentVer "\\Uninstall\\{771FD6B0-FA20-440A-A002-3B3BAC16DC50}_is1"),
-        // TODO: change back to Code.exe
-        // the way vscode saves a file seems to break
-        // our reloading of settings
         StrL("DisplayIcon"),
     },
     {
@@ -358,7 +355,7 @@ static void FindTextEditors() {
         Str regKey = rule.regKey;
         Str regValue = rule.regValue;
         TempStr path = LoggedReadRegStr2Temp(regKey, regValue);
-        if (!path) {
+        if (len(path) == 0) {
             continue;
         }
 
@@ -398,7 +395,7 @@ void DetectTextEditors(Vec<TextEditor*>& res) {
     int n = dimofi(editorRules);
     for (int i = 0; i < n; i++) {
         TextEditor* e = &editorRules[i];
-        if (!e->openFileCmd) {
+        if (len(e->openFileCmd) == 0) {
             continue;
         }
         VecAppend(res, e);
@@ -467,11 +464,10 @@ void SaveCallstackLogs() {
     str::Free(s);
 }
 
-// TODO: this can be used for extracting other data
 // cache because calculating sha1 of the whole executable
 // might be relatively expensive
 // sha1 is 20 bytes => 40 hex chars + null terminator
-static char gAppSha1[41];
+static char gAppSha1[41]{};
 
 // return hex version of sha1 of app's executable (pointer to cached value)
 // nullptr if there was an error
@@ -481,7 +477,7 @@ Str Sha1OfAppExe() {
     }
 
     TempStr appPath = GetSelfExePathTemp();
-    if (!appPath) {
+    if (len(appPath) == 0) {
         return {};
     }
     Str d = file::ReadFile(appPath);
@@ -501,7 +497,7 @@ Str Sha1OfAppExe() {
 
 TempStr GetWebViewDataDirTemp() {
     TempStr dir = GetSpecialFolderTemp(CSIDL_LOCAL_APPDATA, false);
-    if (!dir) {
+    if (len(dir) == 0) {
         return {};
     }
     dir = path::JoinTemp(dir, StrL("SumatraPDF-data"));
@@ -517,7 +513,7 @@ TempStr GetWebViewDataDirTemp() {
 // Format the file size in a short form that rounds to the largest size unit
 // e.g. "3.48 GB", "12.38 MB", "23 KB"
 TempStr FormatFileSizeShortTransTemp(i64 size) {
-    Str units[3] = {_TRA("GB"), _TRA("MB"), _TRA("KB")};
+    Str units[3] = {Tr("GB"), Tr("MB"), Tr("KB")};
     return str::FormatSizeShortTemp(size, units);
 }
 
@@ -529,12 +525,12 @@ TempStr FormatFileSizeTransTemp(i64 size) {
     }
     TempStr n1 = FormatFileSizeShortTransTemp(size);
     TempStr n2 = str::FormatNumWithThousandSepTemp(size);
-    return fmt("%s (%s %s)", n1, n2, _TRA("Bytes"));
+    return fmt("%s (%s %s)", n1, n2, Tr("Bytes"));
 }
 
 // returns true if file exists
 bool LaunchFileIfExists(Str path) {
-    if (!path) {
+    if (len(path) == 0) {
         return false;
     }
     if (!file::Exists(path)) {

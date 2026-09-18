@@ -30,7 +30,7 @@
 #include "SumatraPDF.h"
 #include "Theme.h"
 #include "Translations.h"
-#include "DarkMode_win.h"
+#include "DarkMode.h"
 #include "NavFilesInFolder.h"
 
 // A modeless directory browser listing sub-directories and files SumatraPDF
@@ -474,12 +474,15 @@ void NavFilesInFolderWnd::RefreshList() {
         return;
     }
     TempStr sel = SelectedPathTemp();
+    int selIdx = -1;
     // listing still in flight: keep the file we meant to select
     if (len(sel) == 0 && len(pendingSelectPath) > 0) {
         sel = str::DupTemp(pendingSelectPath);
+    } else if (len(sel) == 0 && scanInFlight) {
+        selIdx = pendingSelectIdx;
     }
     TempStr dir = str::DupTemp(currDir);
-    SetDir(dir, sel);
+    SetDir(dir, sel, selIdx);
 }
 
 void NavFilesInFolderWnd::GoUp() {
@@ -591,7 +594,7 @@ void NavFilesInFolderWnd::DeleteCurrentSelection() {
     DeleteFileFromDiskAndHistory(path);
 
     if (file::Exists(path)) {
-        MessageBoxWarning(hwnd, fmt(_TRA("Couldn't delete %s").s, path));
+        MessageBoxWarning(hwnd, fmt(Tr("Couldn't delete %s").s, path));
     }
     // re-list; keep the selection where the deleted entry was
     TempStr dir = str::DupTemp(currDir);
@@ -839,7 +842,7 @@ bool NavFilesInFolderWnd::Create(MainWindow* mainWin) {
         args.visible = false;
         // regular resizable window (not a popup that auto-dismisses)
         args.style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME;
-        args.title = _TRA("Navigate Files in Folder");
+        args.title = Tr("Navigate Files in Folder");
         args.font = GetFont();
         args.icon = LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(GetAppIconID()));
         args.isRtl = IsUIRtl();
@@ -884,10 +887,10 @@ bool NavFilesInFolderWnd::Create(MainWindow* mainWin) {
     {
         // {shortcut, description} pairs, two per table row; translators keep
         // the key names in English
-        Str strings[4][2] = {{_TRA("Enter"), _TRA("open file in current tab")},
-                             {_TRA("Ctrl + Enter"), _TRA("open file in a new tab")},
-                             {_TRA("Alt + Up"), _TRA("go to parent directory")},
-                             {_TRA("Del"), _TRA("delete file")}};
+        Str strings[4][2] = {{Tr("Enter"), Tr("open file in current tab")},
+                             {Tr("Ctrl + Enter"), Tr("open file in a new tab")},
+                             {Tr("Alt + Up"), Tr("go to parent directory")},
+                             {Tr("Del"), Tr("delete file")}};
         int n = dimofi(strings);
         // the hints are secondary information, so they get a smaller font
         PlatformFont* helpFont = GetDefaultGuiFontOfSize(std::max(GetAppFontSize() - 2, 8));
@@ -1022,4 +1025,32 @@ void ShowNavFilesInFolder(MainWindow* win, Str selectPath, bool skipHistory) {
             }
         }
     }
+}
+
+// State and actions used by the -dbg-control regression test.
+TempStr NavFilesInFolderStateTemp(Str action, int idx, int* exitCodeOut) {
+    if (exitCodeOut) {
+        *exitCodeOut = 2;
+    }
+    NavFilesInFolderWnd* wnd = gNavFilesWnd;
+    if (!wnd || !wnd->listBox || !wnd->listBox->model) {
+        return str::DupTemp(StrL("NOTREADY no-window"));
+    }
+    if (str::Eq(action, StrL("select"))) {
+        wnd->listBox->SetCurrentSelection(idx);
+    } else if (str::Eq(action, StrL("delete-refresh"))) {
+        wnd->DeleteCurrentSelection();
+        wnd->RefreshList();
+    }
+
+    auto* m = (ListBoxModelNav*)wnd->listBox->model;
+    int sel = wnd->listBox->GetCurrentSelection();
+    Str name;
+    if (sel >= 0 && sel < m->ItemsCount()) {
+        name = m->entries[sel].name;
+    }
+    if (exitCodeOut) {
+        *exitCodeOut = 0;
+    }
+    return fmt("OK scan=%d sel=%d items=%d name=%s", (int)wnd->scanInFlight, sel, m->ItemsCount(), name);
 }

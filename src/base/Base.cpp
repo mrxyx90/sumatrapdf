@@ -8,6 +8,37 @@ Kind kindNone = "none";
 // if > 1 we won't crash when memory allocation fails
 AtomicInt gAllowAllocFailure = 0;
 
+u64 (*gTryFreeCachedObjects)(u64 newAllocationSize) = nullptr;
+u64 (*gFreeCachedObjects)() = nullptr;
+
+static void* MallocMaybeTrim(size_t size) {
+    if (size >= kLargeAllocationSize && gTryFreeCachedObjects) {
+        gTryFreeCachedObjects((u64)size);
+    }
+    void* p = malloc(size);
+    if (p) {
+        return p;
+    }
+    if (size >= kLargeAllocationSize && gFreeCachedObjects && gFreeCachedObjects() > 0) {
+        p = malloc(size);
+    }
+    return p;
+}
+
+static void* ReallocMaybeTrim(void* mem, size_t newSize) {
+    if (newSize >= kLargeAllocationSize && gTryFreeCachedObjects) {
+        gTryFreeCachedObjects((u64)newSize);
+    }
+    void* p = realloc(mem, newSize);
+    if (p || newSize == 0) {
+        return p;
+    }
+    if (newSize >= kLargeAllocationSize && gFreeCachedObjects && gFreeCachedObjects() > 0) {
+        p = realloc(mem, newSize);
+    }
+    return p;
+}
+
 // This exits so that I can add temporary instrumentation
 // to catch allocations of a given size and it won't cause
 // re-compilation of everything caused by changing Base.h
@@ -271,7 +302,7 @@ bool QuadF::Contains(PointF p) const {
     for (int i = 0; i < 4; i++) {
         PointF a = pts[i];
         PointF b = pts[(i + 1) % 4];
-        float cross = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+        float cross = ((b.x - a.x) * (p.y - a.y)) - ((b.y - a.y) * (p.x - a.x));
         if (cross < 0) {
             neg = true;
         } else if (cross > 0) {
@@ -759,7 +790,7 @@ typedef struct tagTHREADNAME_INFO {
                                 // not intended to be handled
 #pragma warning(disable : 6322) // silence /analyze: Empty _except block
 void SetThreadName(Str threadName, ThreadId threadId) {
-    if (!threadName) {
+    if (len(threadName) == 0) {
         return;
     }
     if (DynSetThreadDescription && threadId == 0) {
@@ -1005,8 +1036,13 @@ static void* ArenaPushLocked(Arena* arena, u64 size, u64 align, bool zero) {
     }
 
     if (current->reserved < posPost && !(arena->flags & ArenaFlagNoChain)) {
-        u64 reserveChunkSize = current->reserveChunkSize;
-        u64 commitChunkSize = current->commitChunkSize;
+        // from the head, not from `current`: a block made to hold one
+        // oversized allocation carries that allocation's size as its chunk
+        // size, and it stays `current` afterwards. Taking the next block's
+        // size from it would reserve - and, since the two are equal there,
+        // commit - the whole of it for the next small push.
+        u64 reserveChunkSize = arena->reserveChunkSize;
+        u64 commitChunkSize = arena->commitChunkSize;
         if (size + kArenaHeaderSize > reserveChunkSize) {
             reserveChunkSize = ArenaAlignPow2(size + kArenaHeaderSize, ArenaMax(align, ArenaPageSize()));
             commitChunkSize = reserveChunkSize;
@@ -1352,7 +1388,7 @@ void* Alloc(Arena* arena, int size) {
         return nullptr;
     }
     if (!arena) {
-        return malloc(size);
+        return MallocMaybeTrim((size_t)size);
     }
     return arena->Alloc(size);
 }
@@ -1370,7 +1406,10 @@ void* Alloc(Arena* arena, size_t size) {
         return nullptr;
     }
     if (!arena) {
-        return malloc(size);
+        return MallocMaybeTrim(size);
+    }
+    if (size >= kLargeAllocationSize && gTryFreeCachedObjects) {
+        gTryFreeCachedObjects((u64)size);
     }
     return arena->Push((u64)size, 8, false);
 }
@@ -1380,18 +1419,21 @@ void* AllocZero(Arena* arena, size_t size) {
         return nullptr;
     }
     if (!arena) {
-        void* mem = malloc(size);
+        void* mem = MallocMaybeTrim(size);
         if (mem) {
             memset(mem, 0, size);
         }
         return mem;
+    }
+    if (size >= kLargeAllocationSize && gTryFreeCachedObjects) {
+        gTryFreeCachedObjects((u64)size);
     }
     return arena->Push((u64)size, 8, true);
 }
 
 void* Realloc(Arena* arena, void* mem, size_t newSize, size_t copySize) {
     if (!arena) {
-        return realloc(mem, newSize);
+        return ReallocMaybeTrim(mem, newSize);
     }
     // Arena has no realloc: allocate fresh and copy. Old memory is not freed
     // (arena lifetime handles it).
@@ -1468,11 +1510,16 @@ void* AllocTemp(int size, u64 align) {
 
 // allocate null-terminated string
 Str AllocStrTemp(int size) {
-    if (size == 0) {
+    // a negative size would ask the arena for close to 2^64 bytes and then
+    // terminate at a negative offset from whatever came back
+    if (size <= 0) {
         return {};
     }
     Arena* arena = GetTempArena();
     char* res = (char*)arena->Push((u64)size + 1, 1, false);
+    if (!res) {
+        return {};
+    }
     res[size] = 0;
     return Str(res, size);
 }
@@ -1566,9 +1613,9 @@ NO_INLINE void* VecInsertSpaceNT(VecNonTemplated* v, int elSize, int idx, int co
     if (!VecReserveNT(nullptr, v, elSize, newLen)) {
         return nullptr;
     }
-    char* res = (char*)v->els + (size_t)idx * (size_t)elSize;
+    char* res = (char*)v->els + ((size_t)idx * (size_t)elSize);
     if (len > idx) {
-        char* dst = res + (size_t)count * (size_t)elSize;
+        char* dst = res + ((size_t)count * (size_t)elSize);
         memmove(dst, res, (size_t)(len - idx) * (size_t)elSize);
     }
     v->len = newLen;
@@ -1588,7 +1635,7 @@ NO_INLINE bool VecResizeNT(VecNonTemplated* v, int elSize, int newSize) {
     }
     v->len = newSize;
     if (v->els && curCap > newSize) {
-        char* tail = (char*)v->els + (size_t)newSize * (size_t)elSize;
+        char* tail = (char*)v->els + ((size_t)newSize * (size_t)elSize);
         memset(tail, 0, (size_t)(curCap - newSize) * (size_t)elSize);
     }
     return true;
@@ -1598,12 +1645,12 @@ NO_INLINE void VecRemoveAtNT(VecNonTemplated* v, int elSize, int idx, int count)
     int len = v->len;
     char* els = (char*)v->els;
     if (len > idx + count) {
-        char* dst = els + (size_t)idx * (size_t)elSize;
-        char* src = els + (size_t)(idx + count) * (size_t)elSize;
+        char* dst = els + ((size_t)idx * (size_t)elSize);
+        char* src = els + ((size_t)(idx + count) * (size_t)elSize);
         memmove(dst, src, (size_t)(len - idx - count) * (size_t)elSize);
     }
     len -= count;
-    memset(els + (size_t)len * (size_t)elSize, 0, (size_t)count * (size_t)elSize);
+    memset(els + ((size_t)len * (size_t)elSize), 0, (size_t)count * (size_t)elSize);
     v->len = len;
 }
 
@@ -1616,8 +1663,8 @@ NO_INLINE void VecRemoveAtFastNT(VecNonTemplated* v, int elSize, int idx) {
         return;
     }
     char* els = (char*)v->els;
-    char* toRemove = els + (size_t)idx * (size_t)elSize;
-    char* last = els + (size_t)(len - 1) * (size_t)elSize;
+    char* toRemove = els + ((size_t)idx * (size_t)elSize);
+    char* last = els + ((size_t)(len - 1) * (size_t)elSize);
     if (toRemove != last) {
         memcpy(toRemove, last, (size_t)elSize);
     }
@@ -1684,7 +1731,7 @@ NO_INLINE void VecCopyFromNT(VecNonTemplated* v, int elSize, int srcLen, const v
     if (zeroTail && v->els) {
         int curCap = v->cap < 0 ? -v->cap : v->cap;
         if (curCap > srcLen) {
-            char* tail = (char*)v->els + (size_t)srcLen * (size_t)elSize;
+            char* tail = (char*)v->els + ((size_t)srcLen * (size_t)elSize);
             memset(tail, 0, (size_t)(curCap - srcLen) * (size_t)elSize);
         }
     }
@@ -1708,8 +1755,6 @@ void LogArenaStats(Str what, Arena* a) {
 #define _strdup strdup
 #define _stricmp strcasecmp
 #define _strnicmp strncasecmp
-// TODO: not sure if that's correct
-#define sscanf_s sscanf
 #endif
 
 // StrArena: u32 handle from ArenaPtrCompress. Arena layout is unsigned LEB128
@@ -1806,14 +1851,17 @@ Str StrArenaToStr(Arena* a, StrArena sa) {
     return Str((char*)p, (int)size);
 }
 
-// Locale-independent Unicode lowercase fold for one WCHAR.
-// On Windows, CharLowerBuffW matches FoldCaseWInPlace; on POSIX a small table
-// covers Latin/Cyrillic/Greek used by tests and falls back to towlower().
-static WCHAR FoldCaseWChar(WCHAR c) {
+// Unicode lowercase for one BMP code unit. ASCII is a fast path; Windows uses
+// CharLowerW, other platforms a Latin/Cyrillic/Greek table then towlower.
+wchar_t WCharToLower(wchar_t c) {
 #if OS_WIN
-    WCHAR ch = c;
-    CharLowerBuffW(&ch, 1);
-    return ch;
+    if (c < 0x80) {
+        if (c >= 'A' && c <= 'Z') {
+            return c + ('a' - 'A');
+        }
+        return c;
+    }
+    return (wchar_t)(uintptr_t)CharLowerW((LPWSTR)(uintptr_t)c);
 #else
     if (c >= L'A' && c <= L'Z') {
         return c + 32;
@@ -1830,8 +1878,64 @@ static WCHAR FoldCaseWChar(WCHAR c) {
     if ((c >= 0x0391 && c <= 0x03A1) || (c >= 0x03A3 && c <= 0x03AB)) {
         return c + 32;
     }
-    return (WCHAR)towlower(c);
+    return (wchar_t)towlower((wint_t)c);
 #endif
+}
+
+// locale-independent lowercase of a codepoint for case-insensitive matching
+int FoldCaseRune(int c) {
+    // CharLowerW maps İ (U+0130) to 'i' only under Turkish locale (issue #5597)
+    if (c == 0x0130) {
+        return 'i';
+    }
+    if (c > 0 && c <= 0xffff) {
+        return WCharToLower((wchar_t)c);
+    }
+    return c;
+}
+
+bool IsCombiningMark(int c) {
+    return c >= 0x300 && c <= 0x36f;
+}
+
+// strip diacritics from a codepoint: 'é' -> 'e', 'ł' -> 'l'. Case is preserved
+int FoldDiacriticsRune(int c) {
+    if (c < 0x80 || c > 0xffff) {
+        return c;
+    }
+
+    // letters that don't decompose into base + combining mark
+    switch (c) {
+        case 0x141: // Ł
+            return 'L';
+        case 0x142: // ł
+            return 'l';
+        case 0x110: // Đ
+            return 'D';
+        case 0x111: // đ
+            return 'd';
+        case 0xd8: // Ø
+            return 'O';
+        case 0xf8: // ø
+            return 'o';
+        case 0x126: // Ħ
+            return 'H';
+        case 0x127: // ħ
+            return 'h';
+        case 0x131: // ı
+            return 'i';
+    }
+
+#if OS_WIN
+    // 'é' -> 'e' + U+0301
+    WCHAR w = (WCHAR)c;
+    WCHAR decomposed[8];
+    int n = FoldStringW(MAP_COMPOSITE, &w, 1, decomposed, dimofi(decomposed));
+    if (n > 1 && IsCombiningMark(decomposed[1])) {
+        return decomposed[0];
+    }
+#endif
+    return c;
 }
 
 // Locale-independent Unicode lowercase folding for case-insensitive matching.
@@ -1840,7 +1944,7 @@ static void FoldCaseWInPlace(WStr s) {
     CharLowerBuffW(s.s, (DWORD)s.len);
 #else
     for (int i = 0; i < s.len; i++) {
-        s.s[i] = FoldCaseWChar(s.s[i]);
+        s.s[i] = WCharToLower(s.s[i]);
     }
 #endif
     for (int i = 0; i < s.len; i++) {
@@ -2067,7 +2171,7 @@ bool EqI(Str s1, Str s2) {
     if (s1.len != s2.len) {
         return false;
     }
-    if (s1.len == 0) {
+    if (len(s1) == 0) {
         return true;
     }
     if (str::IsNull(s1) || str::IsNull(s2)) {
@@ -2081,10 +2185,10 @@ int Cmp(Str a, Str b) {
     if (a.s == b.s) {
         return 0;
     }
-    if (str::IsNull(a) || a.len == 0) {
-        return (str::IsNull(b) || b.len == 0) ? 0 : -1;
+    if (len(a) == 0) {
+        return len(b) == 0 ? 0 : -1;
     }
-    if (str::IsNull(b) || b.len == 0) {
+    if (len(b) == 0) {
         return 1;
     }
     int n = std::min(a.len, b.len);
@@ -2100,10 +2204,10 @@ int CmpI(Str a, Str b) {
     if (a.s == b.s) {
         return 0;
     }
-    if (str::IsNull(a) || a.len == 0) {
-        return (str::IsNull(b) || b.len == 0) ? 0 : -1;
+    if (len(a) == 0) {
+        return len(b) == 0 ? 0 : -1;
     }
-    if (str::IsNull(b) || b.len == 0) {
+    if (len(b) == 0) {
         return 1;
     }
     int n = std::min(a.len, b.len);
@@ -2122,7 +2226,7 @@ bool EqIS(Str s1, Str s2) {
     if (s1.s == s2.s) {
         return true;
     }
-    if (!s1 || !s2) {
+    if (len(s1) == 0 || len(s2) == 0) {
         return false;
     }
 
@@ -2157,7 +2261,7 @@ bool EqN(Str s1, Str s2, int n) {
     if (s1.s == s2.s) {
         return true;
     }
-    if (!s1 || !s2 || n == 0) {
+    if (len(s1) == 0 || len(s2) == 0 || n == 0) {
         return n == 0;
     }
     if (s1.len < n || s2.len < n) {
@@ -2170,7 +2274,7 @@ bool EqNI(Str s1, Str s2, int n) {
     if (s1.s == s2.s) {
         return true;
     }
-    if (!s1 || !s2 || n == 0) {
+    if (len(s1) == 0 || len(s2) == 0 || n == 0) {
         return n == 0;
     }
     if (s1.len < n || s2.len < n) {
@@ -2189,18 +2293,53 @@ bool StartsWith(Str s, Str prefix) {
 }
 
 // Removes prefix from the string view, without modifying the underlying data.
-bool TrimPrefix(Str& s, Str prefix) {
-    if (!StartsWith(s, prefix)) {
-        return false;
+int TrimPrefix(Str& s, Str prefix) {
+    if (!s.s || len(s) == 0 || len(prefix) == 0 || !StartsWith(s, prefix)) {
+        return 0;
     }
     s.s += prefix.len;
     s.len -= prefix.len;
-    return true;
+    return prefix.len;
+}
+
+int TrimPrefixI(Str& s, Str prefix) {
+    if (!s.s || len(s) == 0 || len(prefix) == 0 || !StartsWithI(s, prefix)) {
+        return 0;
+    }
+    s.s += prefix.len;
+    s.len -= prefix.len;
+    return prefix.len;
 }
 
 /* return true if 'str' starts with 'txt', NOT case-sensitive */
 bool StartsWithI(Str s, Str prefix) {
     return EqNI(s, prefix, len(prefix));
+}
+
+bool StartsWithAny(Str s, const char* chars) {
+    if (len(s) <= 0 || !s.s || !chars) {
+        return false;
+    }
+    char c = s.s[0];
+    while (*chars) {
+        if (*chars == c) {
+            return true;
+        }
+        chars++;
+    }
+    return false;
+}
+
+int TrimAny(Str& s, const char* chars) {
+    if (len(s) <= 0 || !s.s || !chars) {
+        return 0;
+    }
+    int origLen = len(s);
+    while (len(s) > 0 && StartsWithAny(s, chars)) {
+        s.s++;
+        s.len--;
+    }
+    return origLen - len(s);
 }
 
 bool Contains(Str s, Str sub) {
@@ -2212,7 +2351,7 @@ bool ContainsI(Str s, Str sub) {
 }
 
 bool EndsWith(Str txt, Str end) {
-    if (!txt || !end) {
+    if (len(txt) == 0 || len(end) == 0) {
         return false;
     }
     int txtLen = len(txt);
@@ -2224,7 +2363,7 @@ bool EndsWith(Str txt, Str end) {
 }
 
 bool EndsWithI(Str txt, Str end) {
-    if (!txt || !end) {
+    if (len(txt) == 0 || len(end) == 0) {
         return false;
     }
     int txtLen = len(txt);
@@ -2242,7 +2381,7 @@ bool EqNIx(Str s, int n, Str s2) {
 // case-insensitive variant of IndexOf: returns the byte offset of the first
 // match of toFind in s, or -1 if not found
 int IndexOfI(Str s, Str toFind) {
-    if (!s || !toFind) {
+    if (len(s) == 0 || len(toFind) == 0) {
         return -1;
     }
 
@@ -2349,12 +2488,13 @@ Str Join(Str s1, Str s2, Str s3) {
     return Join(nullptr, s1, s2, s3);
 }
 
-// trim suffix (exact match) from s, returning the shortened view
-Str TrimSuffix(Str s, Str suffix) {
-    if (str::EndsWith(s, suffix)) {
-        return Str(s.s, s.len - suffix.len);
+// Trims an exact suffix from the string view and returns its length.
+int TrimSuffix(Str& s, Str suffix) {
+    if (!str::EndsWith(s, suffix)) {
+        return 0;
     }
-    return s;
+    s.len -= suffix.len;
+    return suffix.len;
 }
 
 // index of last occurrence of c in s, or -1
@@ -2367,8 +2507,9 @@ int LastIndexOfChar(Str s, char c) {
     return -1;
 }
 
-// trim trailing whitespace in place (writes a NUL at the new end), returns the shortened view
-Str TrimSuffixWhitespace(Str s) {
+// Trims trailing whitespace, writes a NUL at the new end and returns the count.
+int TrimSuffixWhitespace(Str& s) {
+    int origLen = len(s);
     while (s.len > 0) {
         char c = s.s[s.len - 1];
         if (c != ' ' && c != '\t' && c != '\n' && c != '\r') {
@@ -2377,7 +2518,7 @@ Str TrimSuffixWhitespace(Str s) {
         s.len--;
         s.s[s.len] = 0;
     }
-    return s;
+    return origLen - len(s);
 }
 
 } // namespace str
@@ -2473,7 +2614,7 @@ Str SliceFromCharLast(Str str, char c) {
 }
 
 int IndexOf(Str buf, Str toFind) {
-    if (!buf || !toFind) {
+    if (len(buf) == 0 || len(toFind) == 0) {
         return -1;
     }
     int toFindLen = toFind.len;
@@ -2622,7 +2763,7 @@ int TrimWSInPlace(Str& s, TrimOpt opt) {
 // consecutive spaces into one and strips heading/trailing ones
 // returns the number of removed characters
 int NormalizeWSInPlace(Str s) {
-    if (!s) {
+    if (len(s) == 0) {
         return 0;
     }
     int dst = 0;
@@ -2672,50 +2813,68 @@ TempStr NormalizeWSTemp(Str s) {
     return res;
 }
 
-static bool isNl(char c) {
-    return '\r' == c || '\n' == c;
-}
+constexpr char kCR = '\r';
+constexpr char kLF = '\n';
 
-// replaces '\r\n' and '\r' with just '\n' and removes empty lines
-int NormalizeNewlinesInPlace(Str s, Str endExclusive) {
-    int endOff = endExclusive.s ? (int)(endExclusive.s - s.s) : s.len;
-    int read = 0;
-    while (read < endOff && isNl(s.s[read])) {
-        read++;
+// kCR kLF and a lone kCR become kLF, in place: the result is never longer.
+// Empty lines are preserved.
+// s must own a writeable, nul-terminated buffer.
+int NormalizeNewlinesToLFInPlace(Str& s) {
+    if (len(s) == 0) {
+        return 0;
     }
 
     int dst = 0;
-    bool inNewline = false;
-    while (read < endOff) {
-        if (isNl(s.s[read])) {
-            if (!inNewline) {
-                s.s[dst++] = '\n';
+    for (int i = 0; i < s.len; i++) {
+        char c = s.s[i];
+        if (c == kCR) {
+            // kCR followed by kLF is a single newline
+            if (i + 1 < s.len && s.s[i + 1] == kLF) {
+                i++;
             }
-            inNewline = true;
-            read++;
-        } else {
-            s.s[dst++] = s.s[read++];
-            inNewline = false;
+            c = kLF;
         }
+        s.s[dst++] = c;
     }
-    if (dst < endOff) {
-        s.s[dst] = 0;
-    }
-    while (dst > 0 && s.s[dst - 1] == '\n') {
-        dst--;
-        s.s[dst] = 0;
-    }
+    s.s[dst] = 0;
+    s.len = dst;
+
     return dst;
 }
 
-int NormalizeNewlinesInPlace(Str s) {
-    return NormalizeNewlinesInPlace(s, Str(s.s + s.len, 0));
+// Every kLF not already preceded by a kCR becomes kCR kLF (what win32 edit
+// controls expect). Returns s unchanged (no allocation) if there's nothing to do.
+TempStr LFToCRLFTemp(Str s) {
+    int n = s.len;
+    int nLF = 0;
+    for (int i = 0; i < n; i++) {
+        if (s.s[i] == kLF && (i == 0 || s.s[i - 1] != kCR)) {
+            nLF++;
+        }
+    }
+    if (nLF == 0) {
+        return s;
+    }
+    char* res = AllocArrayTemp<char>(n + nLF + 1);
+    if (!res) {
+        return {};
+    }
+    int dst = 0;
+    for (int i = 0; i < n; i++) {
+        char c = s.s[i];
+        if (c == kLF && (i == 0 || s.s[i - 1] != kCR)) {
+            res[dst++] = kCR;
+        }
+        res[dst++] = c;
+    }
+    res[dst] = 0;
+    return Str(res, dst);
 }
 
 // Remove all characters in "toRemove" from "str", in place.
 // Returns number of removed characters.
 int RemoveCharsInPlace(Str str, Str toRemove) {
-    if (!str) {
+    if (len(str) == 0) {
         return 0;
     }
     int removed = 0;
@@ -2738,7 +2897,7 @@ int RemoveCharsInPlace(Str str, Str toRemove) {
 namespace wstr {
 
 int RemoveCharsInPlace(WStr str, WStr toRemove) {
-    if (!str) {
+    if (len(str) == 0) {
         return 0;
     }
     int removed = 0;
@@ -2853,7 +3012,7 @@ static int CmpNaturalLex(Str a, Str b) {
 }
 
 int CmpNatural(Str aIn, Str bIn) {
-    ReportIf(!aIn || !bIn);
+    ReportIf(len(aIn) == 0 || len(bIn) == 0);
     int ai = 0;
     int bi = 0;
     int diff = 0;
@@ -2931,19 +3090,19 @@ bool IsEmptyOrWhiteSpace(Str s) {
     return true;
 }
 
-// advances s past any leading toSkip chars (in place); returns whether it skipped any
-bool SkipChar(Str& s, char toSkip) {
+// advances s past any leading toSkip chars; returns how many were trimmed
+int TrimChar(Str& s, char toSkip) {
     int i = 0;
     while (i < s.len && s.s[i] == toSkip) {
         i++;
     }
     s.s += i;
     s.len -= i;
-    return i > 0;
+    return i;
 }
 
-// advances s past its leading whitespace; returns how many chars were skipped
-int SkipWs(Str& s) {
+// advances s past its leading whitespace; returns how many chars were trimmed
+int TrimWs(Str& s) {
     int i = 0;
     while (i < s.len && IsWs(s.s[i])) {
         i++;
@@ -2953,8 +3112,8 @@ int SkipWs(Str& s) {
     return i;
 }
 
-// advances s past its leading non-whitespace; returns how many chars were skipped
-int SkipNonWs(Str& s) {
+// advances s past its leading non-whitespace; returns how many chars were trimmed
+int TrimNonWs(Str& s) {
     int i = 0;
     while (i < s.len && !IsWs(s.s[i])) {
         i++;
@@ -2969,30 +3128,23 @@ int SkipNonWs(Str& s) {
 //   while (Str word = str::NextWord(s)) { ... }
 // walks the words of s.
 Str NextWord(Str& s) {
-    SkipWs(s);
+    TrimWs(s);
     Str word = s;
-    word.len = SkipNonWs(s);
-    if (word.len == 0) {
+    word.len = TrimNonWs(s);
+    if (len(word) == 0) {
         return {};
     }
     return word;
 }
 
-// the part of s without its leading / trailing whitespace. Unlike
-// TrimWSInPlace() this only narrows the view, so s can be read-only
-Str TrimWs(Str s, TrimOpt opt) {
-    if (IsNull(s)) {
-        return s;
+// Narrows the view past leading and trailing whitespace without modifying data.
+int TrimWsBoth(Str& s) {
+    int origLen = len(s);
+    TrimWs(s);
+    while (s.len > 0 && IsWs(s.s[s.len - 1])) {
+        s.len--;
     }
-    if (opt != TrimOpt::Right) {
-        SkipWs(s);
-    }
-    if (opt != TrimOpt::Left) {
-        while (s.len > 0 && IsWs(s.s[s.len - 1])) {
-            s.len--;
-        }
-    }
-    return s;
+    return origLen - len(s);
 }
 
 } // namespace str
@@ -3066,10 +3218,34 @@ TempStr EncodeTemp(Str s) {
         return str::DupTemp(StrL(""));
     }
     int n = len(s);
-    char* buf = AllocArrayTemp<char>(n * 3 + 1);
+    char* buf = AllocArrayTemp<char>((n * 3) + 1);
     int dst = 0;
     for (int i = 0; i < n; i++) {
         UrlAppendEncodedByte(buf, dst, (u8)s.s[i]);
+    }
+    buf[dst] = '\0';
+    return Str(buf, dst);
+}
+
+// Like EncodeTemp but '/' stays a path separator, so a relative path with
+// spaces or non-ASCII ("dir/Test Test.md") is a valid URI path.
+TempStr EncodePathTemp(Str path) {
+    if (str::IsNull(path)) {
+        return {};
+    }
+    if (len(path) == 0) {
+        return str::DupTemp(StrL(""));
+    }
+    int n = len(path);
+    char* buf = AllocArrayTemp<char>((n * 3) + 1);
+    int dst = 0;
+    for (int i = 0; i < n; i++) {
+        u8 c = (u8)path.s[i];
+        if (c == '/') {
+            buf[dst++] = '/';
+        } else {
+            UrlAppendEncodedByte(buf, dst, c);
+        }
     }
     buf[dst] = '\0';
     return Str(buf, dst);
@@ -3122,37 +3298,26 @@ TempStr EncodeMayTruncateTemp(Str s, int maxEncodedLen, bool* didTruncateOut) {
 }
 } // namespace url
 
-// SeqStrings (SeqStr* helpers) is for size-efficient implementation of:
+// SeqStrings is for size-efficient implementation of:
 // string -> int and int->string.
 // it's even more efficient than using char *[] array
 // it comes at the cost of speed, so it's not good for places
 // that are critial for performance. On the other hand, it's
 // not that bad: linear scanning of memory is fast due to the magic
 // of L1 cache
-TempStr SeqStrAt(SeqStrings strs, int off) {
-    if (!strs || off < 0 || !strs[off]) {
+Str SeqStrFirst(SeqStrings strs) {
+    if (!strs || !strs[0]) {
         return {};
     }
-    return Str(strs + off);
+    return Str(strs);
 }
 
-bool SeqStrAdvance(SeqStrings strs, int& off, int* idxInOut) {
-    if (!strs || off < 0 || !strs[off]) {
-        off = -1;
-        if (idxInOut) {
-            *idxInOut = -1;
-        }
-        return false;
+Str SeqStrNext(Str s) {
+    if (len(s) == 0) {
+        return {};
     }
-    off += len(strs + off) + 1;
-    if (!strs[off]) {
-        off = -1;
-        return false;
-    }
-    if (idxInOut) {
-        (*idxInOut)++;
-    }
-    return true;
+    const char* next = s.s + len(s) + 1;
+    return next[0] ? Str(next) : Str{};
 }
 
 // conceptually strings is an array of 0-terminated strings where, laid
@@ -3160,7 +3325,7 @@ bool SeqStrAdvance(SeqStrings strs, int& off, int* idxInOut) {
 // Returns index of toFind string in strings
 // Returns -1 if string doesn't exist
 int SeqStrIndex(SeqStrings strs, Str toFind) {
-    if (!strs || !toFind) {
+    if (!strs || len(toFind) == 0) {
         return -1;
     }
 
@@ -3188,7 +3353,7 @@ int SeqStrIndex(SeqStrings strs, Str toFind) {
 
 // like SeqStrIndex but ignores case and whitespace
 int SeqStrIndexIS(SeqStrings strs, Str toFind) {
-    if (!strs || !toFind) {
+    if (!strs || len(toFind) == 0) {
         return -1;
     }
 
@@ -3238,28 +3403,12 @@ int SeqStrIndexIS(SeqStrings strs, Str toFind) {
 // returns a strings at that index.
 TempStr SeqStrByIndex(SeqStrings strs, int idx) {
     ReportIf(idx < 0);
-    int off = 0;
-    while (idx > 0) {
-        if (!SeqStrAdvance(strs, off)) {
-            return {};
-        }
+    Str s = SeqStrFirst(strs);
+    while (idx > 0 && len(s) > 0) {
+        s = SeqStrNext(s);
         idx--;
     }
-    return SeqStrAt(strs, off);
-}
-
-// How many strings the run holds. A table that parallels a SeqStrings has
-// to be as long as the run, and this is how something says so.
-int SeqStrCount(SeqStrings strs) {
-    if (!strs || !strs[0]) {
-        return 0;
-    }
-    int off = 0;
-    int n = 1;
-    while (SeqStrAdvance(strs, off)) {
-        n++;
-    }
-    return n;
+    return s;
 }
 
 // flat sequence of (extension, mime type) pairs
@@ -3346,7 +3495,7 @@ static int SeqStrNumEntryEndOff(SeqStrNum strs, int off) {
 
 static void SeqStrNumEntryParts(SeqStrNum strs, int off, Str* strOut, i64* numOut) {
     if (strOut) {
-        *strOut = SeqStrAt(strs, off);
+        *strOut = SeqStrNumAt(strs, off);
     }
     const u8* p = (const u8*)(strs + off + len(strs + off) + 1);
     if (numOut) {
@@ -3367,7 +3516,10 @@ void SeqStrNumFinish(str::Builder* b) {
 }
 
 TempStr SeqStrNumAt(SeqStrNum strs, int off) {
-    return SeqStrAt(strs, off);
+    if (!strs || off < 0 || !strs[off]) {
+        return {};
+    }
+    return Str(strs + off);
 }
 
 bool SeqStrNumAdvance(SeqStrNum strs, int& off, int* idxInOut) {
@@ -3390,7 +3542,7 @@ bool SeqStrNumAdvance(SeqStrNum strs, int& off, int* idxInOut) {
 }
 
 int SeqStrNumIndex(SeqStrNum strs, Str toFind, i64* numOut) {
-    if (!toFind) {
+    if (len(toFind) == 0) {
         return -1;
     }
     int off = 0;
@@ -3411,7 +3563,7 @@ int SeqStrNumIndex(SeqStrNum strs, Str toFind, i64* numOut) {
 }
 
 int SeqStrNumIndexIS(SeqStrNum strs, Str toFind, i64* numOut) {
-    if (!toFind) {
+    if (len(toFind) == 0) {
         return -1;
     }
     int off = 0;
@@ -3493,12 +3645,12 @@ static void Terminate(str::Builder& b) {
 // VecReserve() marks arena storage with a positive cap, which would have ~Vec()
 // free() arena memory. Flip the sign, so it reads as "not ours", like a lent
 // buffer does.
-static char* BuilderEnsureCap(Arena* a, str::Builder& b, int needed) {
-    char* els = VecReserve(a, b, needed);
+static char* BuilderEnsureCap(str::Builder& b, int needed) {
+    char* els = VecReserve(b.a, b, needed);
     if (!els) {
         return nullptr;
     }
-    if (a && b.cap > 0) {
+    if (b.a && b.cap > 0) {
         b.cap = -b.cap;
     }
     return els;
@@ -3521,16 +3673,16 @@ void str::BuilderUseExternalBuffer(Builder& b, Str buf) {
     }
 }
 
-bool str::BuilderReserve(Arena* a, Builder& b, int cap) {
-    if (!BuilderEnsureCap(a, b, cap)) {
+bool str::BuilderReserve(Builder& b, int cap) {
+    if (!BuilderEnsureCap(b, cap)) {
         return false;
     }
     Terminate(b);
     return true;
 }
 
-bool str::BuilderAppendChar(Arena* a, Builder& b, char c) {
-    if (!BuilderEnsureCap(a, b, b.len + 1)) {
+bool str::BuilderAppendChar(Builder& b, char c) {
+    if (!BuilderEnsureCap(b, b.len + 1)) {
         return false;
     }
     b.els[b.len++] = c;
@@ -3538,11 +3690,11 @@ bool str::BuilderAppendChar(Arena* a, Builder& b, char c) {
     return true;
 }
 
-bool str::BuilderAppend(Arena* a, Builder& b, Str src) {
+bool str::BuilderAppend(Builder& b, Str src) {
     if (str::IsNull(src) || 0 == src.len) {
         return true;
     }
-    if (!BuilderEnsureCap(a, b, b.len + src.len)) {
+    if (!BuilderEnsureCap(b, b.len + src.len)) {
         return false;
     }
     memcpy(b.els + b.len, src.s, (size_t)src.len);
@@ -3551,12 +3703,23 @@ bool str::BuilderAppend(Arena* a, Builder& b, Str src) {
     return true;
 }
 
+bool str::Builder::Reserve(int cap) {
+    return str::BuilderReserve(*this, cap);
+}
+
 bool str::Builder::AppendChar(char c) {
-    return str::BuilderAppendChar(nullptr, *this, c);
+    return str::BuilderAppendChar(*this, c);
 }
 
 bool str::Builder::Append(Str src) {
-    return str::BuilderAppend(nullptr, *this, src);
+    return str::BuilderAppend(*this, src);
+}
+
+bool str::Builder::AppendNonEmpty(Str src) {
+    if (::len(src) == 0) {
+        return true;
+    }
+    return Append(src);
 }
 
 char str::Builder::RemoveAt(int idx, int count) {
@@ -3577,7 +3740,7 @@ char str::Builder::RemoveLast() {
 // without duplicate allocation. Note: since Vec over-allocates, this
 // is likely to use more memory than strictly necessary, but in most cases
 // it doesn't matter
-Str str::BuilderTakeStr(Arena* a, Builder& b) {
+Str str::BuilderTakeStr(Builder& b) {
     int n = b.len;
     char* res = b.els;
     if (!b.els || n == 0) {
@@ -3587,7 +3750,7 @@ Str str::BuilderTakeStr(Arena* a, Builder& b) {
     if (IsNotOurHeapBlock(&b)) {
         // storage we can't hand over: a lent buffer, or an arena block the arena
         // owns. The chars are copied out and the Builder keeps using it.
-        res = (char*)MemDup(a, b.els, (size_t)n + kPadding);
+        res = (char*)MemDup(b.a, b.els, (size_t)n + kPadding);
     } else {
         // hand the block (heap or arena) to the caller and start over
         b.els = nullptr;
@@ -3599,7 +3762,7 @@ Str str::BuilderTakeStr(Arena* a, Builder& b) {
 }
 
 Str str::Builder::TakeStr() {
-    return str::BuilderTakeStr(nullptr, *this);
+    return str::BuilderTakeStr(*this);
 }
 
 bool str::Contains(const str::Builder& b, Str sub) {
@@ -3644,7 +3807,7 @@ bool wstr::BuilderReserve(Builder& b, int cap) {
 }
 
 bool wstr::Builder::AppendChar(WCHAR c) {
-    if (!VecReserve(*this, len + 1)) {
+    if (!VecGrow(*this, 1)) {
         return false;
     }
     els[len++] = c;
@@ -3656,7 +3819,7 @@ bool wstr::Builder::Append(WStr src) {
     if (wstr::IsNull(src) || 0 == src.len) {
         return true;
     }
-    if (!VecReserve(*this, len + src.len)) {
+    if (!VecGrow(*this, src.len)) {
         return false;
     }
     memcpy(els + len, src.s, (size_t)src.len * sizeof(WCHAR));
@@ -3719,7 +3882,7 @@ namespace str {
 // Reinterpret a UTF-16 byte buffer held in a Str as a WStr without a
 // char*→WCHAR* cast (CodeQL cpp/incorrect-string-type-conversion).
 WStr CastStrToWStr(Str s) {
-    if (!s) {
+    if (len(s) == 0) {
         return {};
     }
     WCHAR* w = nullptr;
@@ -3748,7 +3911,7 @@ bool EqNI(WStr s1, WStr s2, int n) {
     if (s1.s == s2.s) {
         return true;
     }
-    if (!s1 || !s2) {
+    if (len(s1) == 0 || len(s2) == 0) {
         return n == 0;
     }
     if (n == 0) {
@@ -3779,7 +3942,7 @@ bool EqI(WStr s1, WStr s2) {
     if (s1.len != s2.len) {
         return false;
     }
-    if (s1.len == 0) {
+    if (len(s1) == 0) {
         return true;
     }
     if (wstr::IsNull(s1) || wstr::IsNull(s2)) {
@@ -3793,10 +3956,10 @@ int Cmp(WStr a, WStr b) {
     if (a.s == b.s) {
         return 0;
     }
-    if (wstr::IsNull(a) || a.len == 0) {
-        return (wstr::IsNull(b) || b.len == 0) ? 0 : -1;
+    if (len(a) == 0) {
+        return len(b) == 0 ? 0 : -1;
     }
-    if (wstr::IsNull(b) || b.len == 0) {
+    if (len(b) == 0) {
         return 1;
     }
     int n = std::min(a.len, b.len);
@@ -3813,16 +3976,16 @@ int CmpI(WStr a, WStr b) {
     if (a.s == b.s) {
         return 0;
     }
-    if (wstr::IsNull(a) || a.len == 0) {
-        return (wstr::IsNull(b) || b.len == 0) ? 0 : -1;
+    if (len(a) == 0) {
+        return len(b) == 0 ? 0 : -1;
     }
-    if (wstr::IsNull(b) || b.len == 0) {
+    if (len(b) == 0) {
         return 1;
     }
     int n = std::min(a.len, b.len);
     for (int i = 0; i < n; i++) {
-        WCHAR c1 = FoldCaseWChar(a.s[i]);
-        WCHAR c2 = FoldCaseWChar(b.s[i]);
+        int c1 = WCharToLower(a.s[i]);
+        int c2 = WCharToLower(b.s[i]);
         if (c1 != c2) {
             return c1 < c2 ? -1 : 1;
         }
@@ -3834,17 +3997,17 @@ bool EqN(WStr s1, WStr s2, int n) {
     if (s1.s == s2.s) {
         return true;
     }
-    if (!s1 || !s2) {
+    if (len(s1) == 0 || len(s2) == 0) {
         return false;
     }
     return 0 == wcsncmp(s1.s, s2.s, (size_t)n);
 }
 
 bool StartsWith(WStr str, WStr prefix) {
-    if (!prefix) {
+    if (len(prefix) == 0) {
         return true;
     }
-    if (!str || prefix.len > str.len) {
+    if (len(str) == 0 || prefix.len > str.len) {
         return false;
     }
     return EqN(str, prefix, prefix.len);
@@ -3855,17 +4018,17 @@ bool StartsWithI(WStr str, WStr prefix) {
     if (str.s == prefix.s) {
         return true;
     }
-    if (!prefix) {
+    if (len(prefix) == 0) {
         return true;
     }
-    if (!str || prefix.len > str.len) {
+    if (len(str) == 0 || prefix.len > str.len) {
         return false;
     }
     return EqNI(str, prefix, prefix.len);
 }
 
 bool EndsWith(WStr txt, WStr end) {
-    if (!txt || !end) {
+    if (len(txt) == 0 || len(end) == 0) {
         return false;
     }
     if (end.len > txt.len) {
@@ -3875,7 +4038,7 @@ bool EndsWith(WStr txt, WStr end) {
 }
 
 bool EndsWithI(WStr txt, WStr end) {
-    if (!txt || !end) {
+    if (len(txt) == 0 || len(end) == 0) {
         return false;
     }
     if (end.len > txt.len) {
@@ -3906,7 +4069,7 @@ WStr SliceFromChar(WStr str, WCHAR c) {
 }
 
 WStr FindFrom(WStr str, WStr find) {
-    if (!str || !find || find.len > str.len) {
+    if (len(str) == 0 || len(find) == 0 || find.len > str.len) {
         return {};
     }
     for (int i = 0; i <= str.len - find.len; i++) {
@@ -3960,7 +4123,7 @@ void TransCharsInPlace(WStr& str, WStr oldChars, WStr newChars) {
 
 // free() the result via str::Free(s) or str::FreePtr(&s)
 WStr Replace(WStr s, WStr toReplace, WStr replaceWith) {
-    if (!s || len(toReplace) == 0 || !replaceWith) {
+    if (len(s) == 0 || len(toReplace) == 0 || len(replaceWith) == 0) {
         return {};
     }
 
@@ -3971,7 +4134,7 @@ WStr Replace(WStr s, WStr toReplace, WStr replaceWith) {
     while (start < s.len) {
         WStr rest(s.s + start, s.len - start);
         WStr match = wstr::FindFrom(rest, toReplace);
-        if (!match) {
+        if (len(match) == 0) {
             result.Append(WStr(s.s + start, s.len - start));
             break;
         }
@@ -3987,7 +4150,7 @@ WStr Replace(WStr s, WStr toReplace, WStr replaceWith) {
 // consecutive spaces into one and strips heading/trailing ones
 // returns the number of removed characters
 int NormalizeWSInPlace(WStr s) {
-    if (!s) {
+    if (len(s) == 0) {
         return 0;
     }
     int src = 0;
@@ -4026,7 +4189,7 @@ int BufSet(Str dst, Str src) {
         ReportIf(true);
         return 0;
     }
-    if (!src) {
+    if (len(src) == 0) {
         *dst.s = 0;
         return 0;
     }
@@ -4049,7 +4212,7 @@ int BufSet(WStr dst, WStr src) {
         ReportIf(true);
         return 0;
     }
-    if (!src) {
+    if (len(src) == 0) {
         *dst.s = 0;
         return 0;
     }
@@ -4128,7 +4291,7 @@ TempStr GetFileNameTemp(Str url) {
 } // namespace url
 
 int ParseInt(Str s) {
-    if (!s) {
+    if (len(s) == 0) {
         return 0;
     }
     int off = 0;
@@ -4149,7 +4312,7 @@ int ParseInt(Str s) {
 }
 
 i64 ParseInt64(Str s) {
-    if (!s) {
+    if (len(s) == 0) {
         return 0;
     }
     int off = 0;
@@ -4168,7 +4331,7 @@ i64 ParseInt64(Str s) {
 // a valid version has to match the regex /^\d+(\.\d+)*(\r?\n)?$/
 // Return false if it contains anything else.
 bool IsValidProgramVersion(Str ver) {
-    if (!ver || !str::IsDigit(ver.s[0])) {
+    if (len(ver) == 0 || !str::IsDigit(ver.s[0])) {
         return false;
     }
 
@@ -4232,7 +4395,7 @@ int CompareProgramVersion(Str ver1, Str ver2) {
 // IsTextRtl is optimized version of checking if a string is rtl
 // we look at max first 40 chars and
 bool IsTextRtl(WStr s) {
-    if (!s) {
+    if (len(s) == 0) {
         return false;
     }
     int n = s.len > 40 ? 40 : s.len;
@@ -4316,7 +4479,7 @@ TempStr ReplaceTemp(Str s, Str toReplace, Str replaceWith) {
     }
     // heuristic: allow 6 replacements without reallocating
     str::Builder result;
-    str::BuilderReserve(nullptr, result, s.len + 1 + (lenDiff * 6));
+    str::BuilderReserve(result, s.len + 1 + (lenDiff * 6));
     bool ok;
     while (idx >= 0) {
         ok = result.Append(Str(curr.s, idx));
@@ -4389,11 +4552,6 @@ WStr ToWStr(const wstr::Builder& b) {
 }
 
 // --- begin: merged from former src/common/str_util.cpp ---
-wchar_t ToLowerW(wchar_t c) {
-    if (c >= L'A' && c <= L'Z') return c + (L'a' - L'A');
-    return c;
-}
-
 int WStrFindSubstr(WStr str, WStr substr) {
     if (len(substr) == 0) return -1; // Empty search - no highlight
     if (substr.len > str.len) return -1;
@@ -4401,7 +4559,7 @@ int WStrFindSubstr(WStr str, WStr substr) {
     for (int i = 0; i <= str.len - substr.len; i++) {
         bool match = true;
         for (int j = 0; j < substr.len; j++) {
-            if (ToLowerW(str.s[i + j]) != ToLowerW(substr.s[j])) {
+            if (WCharToLower(str.s[i + j]) != WCharToLower(substr.s[j])) {
                 match = false;
                 break;
             }
@@ -4414,8 +4572,8 @@ int WStrFindSubstr(WStr str, WStr substr) {
 int WStrCmpNoCase(WStr a, WStr b) {
     int minLen = a.len < b.len ? a.len : b.len;
     for (int i = 0; i < minLen; i++) {
-        wchar_t ca = ToLowerW(a.s[i]);
-        wchar_t cb = ToLowerW(b.s[i]);
+        wchar_t ca = WCharToLower(a.s[i]);
+        wchar_t cb = WCharToLower(b.s[i]);
         if (ca != cb) return ca - cb;
     }
     return a.len - b.len;
@@ -4512,6 +4670,20 @@ int str::VsnprintfUtf8(Str buf, const char* fmt, va_list args) {
     }
 #endif
     return vsnprintf(buf.s, (size_t)buf.len, fmt, args);
+}
+
+// How long the formatted output will be. vsnprintf reports it on the platforms
+// whose vsnprintf does; MSVC keeps it in a call of its own.
+static int VscprintfUtf8(const char* fmt, va_list args) {
+#ifdef _MSC_VER
+    _locale_t loc = GetUtf8FormatLocale();
+    if (loc) {
+        return _vscprintf_l(fmt, loc, args);
+    }
+    return _vscprintf(fmt, args);
+#else
+    return vsnprintf(nullptr, 0, fmt, args);
+#endif
 }
 
 // --- copyright for utf8 code below
@@ -4702,7 +4874,7 @@ int Utf8CodepointStartByte(Str s, int byteIdx) {
 
 // the codepoint the byte at byteIdx is part of, 0 if there is none
 int Utf8CodepointContaining(Str s, int byteIdx) {
-    if (!s || byteIdx < 0 || byteIdx >= len(s)) {
+    if (len(s) == 0 || byteIdx < 0 || byteIdx >= len(s)) {
         return 0;
     }
     return Utf8CodepointAtByte(s, Utf8CodepointStartByte(s, byteIdx));
@@ -4712,7 +4884,7 @@ int Utf8CodepointAtByte(Str s, int byteIdx, int* bytesOut) {
     if (bytesOut) {
         *bytesOut = 0;
     }
-    if (!s || byteIdx < 0 || byteIdx >= s.len) {
+    if (len(s) == 0 || byteIdx < 0 || byteIdx >= s.len) {
         return 0;
     }
 
@@ -4746,7 +4918,7 @@ int Utf8CodepointCount(Str s) {
 }
 
 int Utf8CodepointNext(Str s, int& byteIdx) {
-    if (!s || byteIdx < 0 || byteIdx >= s.len) {
+    if (len(s) == 0 || byteIdx < 0 || byteIdx >= s.len) {
         return 0;
     }
     int n = 0;
@@ -4756,7 +4928,7 @@ int Utf8CodepointNext(Str s, int& byteIdx) {
 }
 
 int Utf8CodepointPrev(Str s, int& byteIdx) {
-    if (!s || byteIdx <= 0) {
+    if (len(s) == 0 || byteIdx <= 0) {
         return 0;
     }
     byteIdx = std::min(byteIdx, s.len);
@@ -4769,7 +4941,7 @@ int Utf8CodepointPrev(Str s, int& byteIdx) {
 }
 
 int Utf8CodepointToByteIndex(Str s, int codepointIdx) {
-    if (!s || codepointIdx <= 0) {
+    if (len(s) == 0 || codepointIdx <= 0) {
         return 0;
     }
     int byteIdx = 0;
@@ -4782,7 +4954,7 @@ int Utf8CodepointToByteIndex(Str s, int codepointIdx) {
 }
 
 int Utf8AdvanceCodepoints(Str s, int byteIdx, int nCodepoints) {
-    if (!s || byteIdx < 0) {
+    if (len(s) == 0 || byteIdx < 0) {
         return 0;
     }
     if (byteIdx > s.len) {
@@ -4795,7 +4967,7 @@ int Utf8AdvanceCodepoints(Str s, int byteIdx, int nCodepoints) {
 }
 
 Str Utf8SliceByCodepoints(Str s, int startCodepoint, int nCodepoints) {
-    if (!s || nCodepoints <= 0) {
+    if (len(s) == 0 || nCodepoints <= 0) {
         return {};
     }
     startCodepoint = std::max(startCodepoint, 0);
@@ -5094,10 +5266,6 @@ struct Fmt {
     Fmt() = default;
     ~Fmt() = default;
 
-    // where res grows from; null is the heap. Builder has no allocator of its
-    // own, so it is passed to every BuilderAppend() below
-    Arena* a = nullptr;
-
     bool Eval(const FmtArg** args, int nArgs);
 
     bool isOk = true; // true if mismatch between formatting instruction and args
@@ -5110,6 +5278,8 @@ struct Fmt {
     int currPercArgNo = 0;
     str::Builder res;
 
+    // Scratch for one conversion. A field too wide for it is written straight
+    // into `res` instead, so this is a fast path and not a limit.
     char buf[256] = {};
 };
 
@@ -5117,7 +5287,10 @@ static void addRawStr(Fmt& fmt, int off, size_t n) {
     if (n == 0) {
         return;
     }
-    ReportIf(fmt.nInst >= dimof(fmt.instructions));
+    if (fmt.nInst >= dimofi(fmt.instructions)) {
+        fmt.isOk = false;
+        return;
+    }
     auto& i = fmt.instructions[fmt.nInst++];
     i.t = FmtArg::Kind::RawStr;
     i.rawOff = off;
@@ -5133,7 +5306,7 @@ static int parseArgDefBrace(Fmt& fmt, int off) {
     int n = 0;
     bool positional = false;
     // a '{' with no closing '}' must not walk past the end of the format string.
-    // Reachable via a translated format string (fmt(_TRA("...").s, ...)).
+    // Reachable via a translated format string (fmt(Tr("...").s, ...)).
     while (off < fmt.format.len && fmt.format.s[off] != '}') {
         if (!str::IsDigit(fmt.format.s[off])) {
             fmt.isOk = false;
@@ -5259,6 +5432,10 @@ static int parseArgDefPerc(Fmt& fmt, int off) {
     char conv = (off < f.len) ? f.s[off] : 0;
     off++;
 
+    if (fmt.nInst >= dimofi(fmt.instructions)) {
+        fmt.isOk = false;
+        return off;
+    }
     auto& i = fmt.instructions[fmt.nInst++];
     i.t = typeFromConv(conv);
     i.argNo = fmt.currPercArgNo++;
@@ -5360,53 +5537,68 @@ static bool ParseFormat(Fmt& o, Str fmtStr) {
     return true;
 }
 
-// format a single value into a caller-provided buffer via snprintf, NUL-terminating
-// even on truncation. Returns a Str view of the written bytes (not including the NUL).
-// Avoids allocating (assuming vsnprintf doesn't allocate).
-static Str bufFmt(Str buf, const char* fmt, ...) {
+// Format one conversion onto the answer via snprintf. The 256-byte scratch
+// buffer takes all but the widest fields in one pass; a field that does not fit
+// is written straight into the answer instead, so a width says what it says
+// rather than being cut to the size of the buffer.
+static bool appendConv(Fmt& fmt, const char* spec, ...) {
     va_list args;
-    va_start(args, fmt);
-    int n = str::VsnprintfUtf8(buf, fmt, args);
+    va_start(args, spec);
+    va_list retry;
+    va_copy(retry, args);
+    Str bufS(fmt.buf, dimofi(fmt.buf));
+    int n = str::VsnprintfUtf8(bufS, spec, args);
     va_end(args);
-    if (n < 0 || n >= buf.len) {
-        n = buf.len - 1;
+    fmt.buf[dimof(fmt.buf) - 1] = 0;
+    if (n >= 0 && n < bufS.len) {
+        va_end(retry);
+        return fmt.res.Append(Str(fmt.buf, n));
     }
-    buf.s[n] = 0;
-    buf.len = n;
-    return buf;
+
+    // Wider than the scratch buffer. MSVC's vsnprintf answers -1 rather than the
+    // length it wanted, so the length is asked for separately.
+    va_list write;
+    va_copy(write, retry);
+    int need = VscprintfUtf8(spec, retry);
+    va_end(retry);
+    bool ok = false;
+    str::Builder& res = fmt.res;
+    int at = res.len;
+    if (need >= 0 && need < INT_MAX - at - 1 && res.Reserve(at + need + 1)) {
+        Str dst(res.els + at, need + 1);
+        if (str::VsnprintfUtf8(dst, spec, write) == need) {
+            res.len = at + need;
+            Terminate(res);
+            ok = true;
+        }
+    }
+    va_end(write);
+    return ok;
 }
 
 // default formatting for {n} positional and %v: format by the arg's runtime type
-static void evalDefault(Fmt& fmt, const FmtArg& arg) {
+static bool evalDefault(Fmt& fmt, const FmtArg& arg) {
     TempStr s;
-    Str buf(fmt.buf, dimofi(fmt.buf));
     switch (arg.t) {
         case FmtArg::Kind::Char:
-            str::BuilderAppendChar(fmt.a, fmt.res, arg.c);
-            break;
+            return fmt.res.AppendChar(arg.c);
         case FmtArg::Kind::Int:
-            str::BuilderAppend(fmt.a, fmt.res, bufFmt(buf, "%lld", (long long)arg.i));
-            break;
+            return appendConv(fmt, "%lld", (long long)arg.i);
         case FmtArg::Kind::Ptr:
-            str::BuilderAppend(fmt.a, fmt.res, bufFmt(buf, "%p", arg.ptr));
-            break;
+            return appendConv(fmt, "%p", arg.ptr);
         case FmtArg::Kind::Float:
             // Note: %G, unlike %f, avoids trailing '0'
-            str::BuilderAppend(fmt.a, fmt.res, bufFmt(buf, "%G", (double)arg.f));
-            break;
+            return appendConv(fmt, "%G", (double)arg.f);
         case FmtArg::Kind::Double:
-            str::BuilderAppend(fmt.a, fmt.res, bufFmt(buf, "%G", arg.d));
-            break;
+            return appendConv(fmt, "%G", arg.d);
         case FmtArg::Kind::Str:
-            str::BuilderAppend(fmt.a, fmt.res, arg.str);
-            break;
+            return fmt.res.Append(arg.str);
         case FmtArg::Kind::WStr:
             s = ToUtf8Temp(arg.wstr);
-            str::BuilderAppend(fmt.a, fmt.res, s);
-            break;
+            return fmt.res.Append(s);
         default:
             ReportIf(true);
-            break;
+            return true;
     }
 }
 
@@ -5427,9 +5619,7 @@ static i64 argToI64(const FmtArg& arg) {
 // delegating to snprintf (bufFmt), normalizing the length modifier so the
 // 32/64-bit value width matches printf. %s padding/truncation is done by hand to
 // avoid relying on the Str being NUL-terminated.
-static void evalPercInst(Fmt& fmt, const Inst& inst, const FmtArg& arg) {
-    Str buf(fmt.buf, dimofi(fmt.buf));
-
+static bool evalPercInst(Fmt& fmt, const Inst& inst, const FmtArg& arg) {
     if (inst.conv == 's' || inst.conv == 'S') {
         Str sv = (arg.t == FmtArg::Kind::WStr) ? ToUtf8Temp(arg.wstr) : arg.str;
         int slen = sv.len;
@@ -5440,16 +5630,22 @@ static void evalPercInst(Fmt& fmt, const Inst& inst, const FmtArg& arg) {
         pad = std::max(pad, 0);
         if (!inst.leftJust) {
             for (int j = 0; j < pad; j++) {
-                str::BuilderAppendChar(fmt.a, fmt.res, ' ');
+                if (!fmt.res.AppendChar(' ')) {
+                    return false;
+                }
             }
         }
-        str::BuilderAppend(fmt.a, fmt.res, Str(sv.s, slen));
+        if (!fmt.res.Append(Str(sv.s, slen))) {
+            return false;
+        }
         if (inst.leftJust) {
             for (int j = 0; j < pad; j++) {
-                str::BuilderAppendChar(fmt.a, fmt.res, ' ');
+                if (!fmt.res.AppendChar(' ')) {
+                    return false;
+                }
             }
         }
-        return;
+        return true;
     }
 
     // build "%" + flags+width+precision into fbuf
@@ -5461,6 +5657,7 @@ static void evalPercInst(Fmt& fmt, const Inst& inst, const FmtArg& arg) {
     }
     char conv = inst.conv;
     i64 ival = argToI64(arg);
+    bool ok = true;
     switch (conv) {
         case 'd':
         case 'i':
@@ -5469,11 +5666,11 @@ static void evalPercInst(Fmt& fmt, const Inst& inst, const FmtArg& arg) {
                 fbuf[k++] = 'l';
                 fbuf[k++] = 'd';
                 fbuf[k] = 0;
-                str::BuilderAppend(fmt.a, fmt.res, bufFmt(buf, fbuf, (long long)ival));
+                ok = appendConv(fmt, fbuf, (long long)ival);
             } else {
                 fbuf[k++] = 'd';
                 fbuf[k] = 0;
-                str::BuilderAppend(fmt.a, fmt.res, bufFmt(buf, fbuf, (int)ival));
+                ok = appendConv(fmt, fbuf, (int)ival);
             }
             break;
         case 'u':
@@ -5485,17 +5682,17 @@ static void evalPercInst(Fmt& fmt, const Inst& inst, const FmtArg& arg) {
                 fbuf[k++] = 'l';
                 fbuf[k++] = conv;
                 fbuf[k] = 0;
-                str::BuilderAppend(fmt.a, fmt.res, bufFmt(buf, fbuf, (unsigned long long)ival));
+                ok = appendConv(fmt, fbuf, (unsigned long long)ival);
             } else {
                 fbuf[k++] = conv;
                 fbuf[k] = 0;
-                str::BuilderAppend(fmt.a, fmt.res, bufFmt(buf, fbuf, (unsigned int)(unsigned long long)ival));
+                ok = appendConv(fmt, fbuf, (unsigned int)(unsigned long long)ival);
             }
             break;
         case 'c':
             fbuf[k++] = 'c';
             fbuf[k] = 0;
-            str::BuilderAppend(fmt.a, fmt.res, bufFmt(buf, fbuf, (int)ival));
+            ok = appendConv(fmt, fbuf, (int)ival);
             break;
         case 'f':
         case 'F':
@@ -5508,17 +5705,18 @@ static void evalPercInst(Fmt& fmt, const Inst& inst, const FmtArg& arg) {
             fbuf[k++] = conv;
             fbuf[k] = 0;
             double dv = (arg.t == FmtArg::Kind::Double) ? arg.d : (double)arg.f;
-            str::BuilderAppend(fmt.a, fmt.res, bufFmt(buf, fbuf, dv));
+            ok = appendConv(fmt, fbuf, dv);
         } break;
         case 'p': {
             // flags/width are uncommon (and platform-specific) for %p; emit plain
             const void* pv = (arg.t == FmtArg::Kind::Ptr) ? arg.ptr : (const void*)(intptr_t)ival;
-            str::BuilderAppend(fmt.a, fmt.res, bufFmt(buf, "%p", pv));
+            ok = appendConv(fmt, "%p", pv);
         } break;
         default:
             ReportIf(true);
             break;
     }
+    return ok;
 }
 
 bool Fmt::Eval(const FmtArg** args, int nArgs) {
@@ -5533,7 +5731,10 @@ bool Fmt::Eval(const FmtArg** args, int nArgs) {
         auto& inst = instructions[n];
 
         if (inst.t == FmtArg::Kind::RawStr) {
-            str::BuilderAppend(a, res, Str(format.s + inst.rawOff, inst.sLen));
+            if (!res.Append(Str(format.s + inst.rawOff, inst.sLen))) {
+                isOk = false;
+                return false;
+            }
             continue;
         }
 
@@ -5551,10 +5752,13 @@ bool Fmt::Eval(const FmtArg** args, int nArgs) {
             return false;
         }
 
-        if (inst.t == FmtArg::Kind::Any) {
-            evalDefault(*this, arg);
-        } else {
-            evalPercInst(*this, inst, arg);
+        // an append that could not allocate has to be told apart from one
+        // that worked, or Eval answers true over a string missing the middle
+        // of it
+        bool appended = (inst.t == FmtArg::Kind::Any) ? evalDefault(*this, arg) : evalPercInst(*this, inst, arg);
+        if (!appended) {
+            isOk = false;
+            return false;
         }
     }
     return true;
@@ -5590,7 +5794,7 @@ Str FormatArgs(Arena* a, const char* fmt, const FmtArg** args, int nArgs) {
     // format directly into the caller's arena so there are no temp-allocator /
     // heap allocations at all (matters for the crash handler's pre-allocated
     // arena). TakeStr() then returns that arena buffer without a second copy.
-    f.a = a;
+    f.res.a = a;
     bool ok = ParseFormat(f, Str(fmt));
     if (!ok) {
         return {};
@@ -5599,7 +5803,7 @@ Str FormatArgs(Arena* a, const char* fmt, const FmtArg** args, int nArgs) {
     if (!ok) {
         return {};
     }
-    return str::BuilderTakeStr(f.a, f.res);
+    return f.res.TakeStr();
 }
 
 TempStr FormatTempArgs(const char* fmt, const FmtArg** args, int nArgs) {
@@ -5630,7 +5834,7 @@ static bool ParseULongAt(Str& s, int base, unsigned long* val) {
         return false;
     }
     unsigned long v = 0;
-    str::SkipWs(s);
+    str::TrimWs(s);
     int i = 0;
     if (base == 16 && i + 1 < s.len && s.s[i] == '0' && (s.s[i + 1] == 'x' || s.s[i + 1] == 'X')) {
         i += 2;
@@ -5664,7 +5868,7 @@ static bool ParseLongAt(Str& s, int base, long* val) {
         return false;
     }
     Str rest = s;
-    str::SkipWs(rest);
+    str::TrimWs(rest);
     if (rest.len <= 0) {
         return false;
     }
@@ -5949,7 +6153,7 @@ TempStr FormatSizeShortTemp(i64 size, Str const* sizeUnits) {
     }
 
     TempStr sizestr = str::FormatFloatWithThousandSepTemp(s, LOCALE_USER_DEFAULT, false);
-    if (!unit) {
+    if (len(unit) == 0) {
         return sizestr;
     }
     return str::FormatTemp("%s %s", sizestr, unit);
@@ -6454,6 +6658,13 @@ Str StrVec::Append(Str s) {
     return res.s;
 }
 
+Str StrVec::AppendNonEmpty(Str s) {
+    if (len(s) == 0) {
+        return {};
+    }
+    return Append(s);
+}
+
 // returns index of inserted string, -1 if not inserted
 int AppendIfNotExists(StrVec* v, Str s) {
     if (v->Contains(s)) {
@@ -6855,9 +7066,8 @@ static int CalcCapForJoin(const StrVec* v, Str joint) {
     return cap + 32; // +32 arbitrary buffer
 }
 
-static void JoinInner(Arena* a, const StrVec* v, Str joint, str::Builder& res) {
+static void JoinInner(const StrVec* v, Str joint, str::Builder& res) {
     int jointLen = joint.len;
-    // TODO: possibly not handling null values in the middle. need to add more tests and fix
     int firstForJoint = 0;
     int i = 0;
     for (auto s : *v) {
@@ -6867,25 +7077,24 @@ static void JoinInner(Arena* a, const StrVec* v, Str joint, str::Builder& res) {
             continue;
         }
         if (i > firstForJoint && jointLen > 0) {
-            str::BuilderAppend(a, res, joint);
+            res.Append(joint);
         }
-        str::BuilderAppend(a, res, s);
+        res.Append(s);
         i++;
     }
 }
 
 Str Join(StrVec* v, Str sep) {
     str::Builder tmp;
-    str::BuilderReserve(nullptr, tmp, CalcCapForJoin(v, sep));
-    JoinInner(nullptr, v, sep, tmp);
+    tmp.Reserve(CalcCapForJoin(v, sep));
+    JoinInner(v, sep, tmp);
     return tmp.TakeStr();
 }
 
 TempStr JoinTemp(StrVec* v, Str sep) {
-    Arena* a = GetTempArena();
-    str::Builder tmp;
-    str::BuilderReserve(a, tmp, CalcCapForJoin(v, sep));
-    JoinInner(a, v, sep, tmp);
+    str::Builder tmp(GetTempArena());
+    tmp.Reserve(CalcCapForJoin(v, sep));
+    JoinInner(v, sep, tmp);
     return ToStrTemp(tmp);
 }
 
@@ -6921,7 +7130,7 @@ WStr Utf8ToWStr(Str s, Arena* a) {
         return {};
     }
 #if OS_WIN
-    if (s.len == 0) {
+    if (len(s) == 0) {
         WCHAR* res = AllocArray<WCHAR>(a, 1);
         return WrapAllocatedWStr(res, 0);
     }
@@ -6933,9 +7142,6 @@ WStr Utf8ToWStr(Str s, Arena* a) {
     }
     int cchConverted = MultiByteToWideChar(CP_UTF8, 0, s.s, s.len, res, cchNeeded);
     ReportIf(cchConverted != cchNeeded);
-    // TODO: not sure if invalid test or it's more subtle
-    // triggers in Dune.epub
-    // ReportIf(cchConverted != s.len);
     return WrapAllocatedWStr(res, cchConverted);
 #else
     TempWStr res = ToWStrTemp(s);
@@ -6949,7 +7155,7 @@ Str WStrToCodePage(uint codePage, WStr s, Arena* a) {
         return {};
     }
 #if OS_WIN
-    if (s.len == 0) {
+    if (len(s) == 0) {
         char* res = AllocArray<char>(a, 1);
         return WrapAllocatedStr(res, 0);
     }
@@ -7048,7 +7254,7 @@ TempStr ToMultiByteTemp(Str src, uint codePageSrc, uint codePageDest) {
     }
 
     TempWStr tmp = StrCPToWStrTemp(src, codePageSrc);
-    if (!tmp) {
+    if (len(tmp) == 0) {
         return {};
     }
     Arena* a = GetTempArena();
@@ -7167,6 +7373,7 @@ void UnpackColor(Color c, u8& r, u8& g, u8& b) {
 }
 
 #if OS_WIN
+// TODO: use AdjustLightness instead to compensate for the alpha?
 Gdiplus::Color Unblend(Color c, u8 alpha) {
     u8 r, g, b, a;
     UnpackColor(c, r, g, b, a);
@@ -7190,8 +7397,6 @@ Gdiplus::Color GdiRgbaFromColor(Color c) {
 }
 #endif
 
-// TODO: use AdjustLightness instead to compensate for the alpha?
-// TODO: not sure if that's the exact translation of the original (above)
 TempStr SerializeColorTemp(Color c) {
     u8 r, g, b, a;
     UnpackColor(c, r, g, b, a);
@@ -7207,7 +7412,7 @@ void ParseColor(ParsedColor& parsed, Str txt) {
     }
     parsed.wasParsed = true;
     parsed.parsedOk = false;
-    if (!txt) {
+    if (len(txt) == 0) {
         return;
     }
     TempStr s = str::DupTemp(txt);
@@ -7451,3 +7656,74 @@ u8 GetAlpha(Color rgb) {
     rgb = (rgb >> 24) & 0xff;
     return (u8)rgb;
 }
+
+#if OS_WIN
+
+int AtomicRefCountAdd(AtomicRefCount* v) {
+    return (int)InterlockedIncrement(v);
+}
+
+int AtomicRefCountDec(AtomicRefCount* v) {
+    return (int)InterlockedDecrement(v);
+}
+
+bool AtomicBoolGet(AtomicBool* p) {
+    return InterlockedOr(p, 0) != 0;
+}
+
+void AtomicBoolSet(AtomicBool* p, bool v) {
+    InterlockedExchange(p, v ? 1 : 0);
+}
+
+bool AtomicBoolSwap(AtomicBool* p, bool v) {
+    return InterlockedExchange(p, v ? 1 : 0) != 0;
+}
+
+int AtomicIntGet(AtomicInt* p) {
+    return (int)InterlockedOr(p, 0);
+}
+
+void AtomicIntSet(AtomicInt* p, int v) {
+    InterlockedExchange(p, (LONG)v);
+}
+
+int AtomicIntAdd(AtomicInt* p, int v) {
+    return (int)InterlockedAdd(p, (LONG)v);
+}
+
+int AtomicIntInc(AtomicInt* p) {
+    return (int)InterlockedIncrement(p);
+}
+
+int AtomicIntDec(AtomicInt* p) {
+    return (int)InterlockedDecrement(p);
+}
+
+void* AtomicPtrGet(AtomicPtr* p) {
+    // comparing nullptr against nullptr never stores, so this is just an
+    // atomic read - there is no InterlockedGetPointer
+    return InterlockedCompareExchangePointer(p, nullptr, nullptr);
+}
+
+void AtomicPtrSet(AtomicPtr* p, void* v) {
+    InterlockedExchangePointer(p, v);
+}
+
+// stores v and returns what was there before
+void* AtomicPtrExchange(AtomicPtr* p, void* v) {
+    return InterlockedExchangePointer(p, v);
+}
+
+// milliseconds since the unix epoch (1970-01-01), for timestamps we persist.
+// FILETIME counts 100 ns ticks since 1601-01-01, hence the constant.
+i64 UnixTimeMsNow() {
+    constexpr i64 kTicksFrom1601To1970 = 116444736000000000LL;
+    FILETIME ft;
+    GetSystemTimeAsFileTime(&ft);
+    ULARGE_INTEGER value;
+    value.LowPart = ft.dwLowDateTime;
+    value.HighPart = ft.dwHighDateTime;
+    return ((i64)value.QuadPart - kTicksFrom1601To1970) / 10000;
+}
+
+#endif
