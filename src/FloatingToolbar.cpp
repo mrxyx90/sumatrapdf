@@ -188,10 +188,11 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
         }
     }
 
-    // Keep the toolbar inside the application window. The saved position is
-    // a screen position, so clamp it against the current frame bounds when
-    // the window is resized or moved.
-    if (gSettings && (gSettings->floatingToolbarPosition.x != 0 || gSettings->floatingToolbarPosition.y != 0)) {
+    // Restore the saved screen position on initial layout. After a resize,
+    // the left/right anchoring calculation above is authoritative so the
+    // toolbar follows the corresponding side of the frame.
+    if (!frameWasResized && gSettings &&
+        (gSettings->floatingToolbarPosition.x != 0 || gSettings->floatingToolbarPosition.y != 0)) {
         x = gSettings->floatingToolbarPosition.x;
         y = gSettings->floatingToolbarPosition.y;
     }
@@ -215,6 +216,18 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
     x = std::clamp(x, minX, maxX);
     y = std::clamp(y, minY, maxY);
     MoveFloatingToolbar(tb, {x, y, w, h});
+
+    // A resize creates a new anchored position. Persist it immediately so
+    // closing and reopening the application restores the post-resize
+    // position, not the position from before the resize.
+    if (frameWasResized && gSettings) {
+        int sidebarOffset = FloatingToolbarSidebarOffset(tb);
+        gSettings->floatingToolbarPosition.x = x - sidebarOffset;
+        gSettings->floatingToolbarPosition.y = y;
+        ScheduleSaveSettings();
+        FlushScheduledSaveSettings();
+    }
+
     tb->lastFrameRect = fr;
 }
 
