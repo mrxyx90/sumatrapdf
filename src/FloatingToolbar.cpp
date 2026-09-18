@@ -17,10 +17,6 @@
 #include "Commands.h"
 #include "Settings.h"
 #include "AppSettings.h"
-#include "Selection.h"
-#include "TextSelection.h"
-#include "DisplayModel.h"
-#include "WindowTab.h"
 #include "MainWindow.h"
 #include "FloatingToolbar.h"
 #include "Theme.h"
@@ -112,46 +108,6 @@ struct FloatingIconButton : VirtIconButton {
     }
 };
 
-static void SnapshotFloatingSelection(FloatingToolbar* tb) {
-    if (!tb || !tb->win) {
-        return;
-    }
-    tb->hasSelectionSnapshot = false;
-    tb->selectionStartPage = tb->selectionStartGlyph = -1;
-    tb->selectionEndPage = tb->selectionEndGlyph = -1;
-
-    WindowTab* tab = tb->win->CurrentTab();
-    DisplayModel* dm = tb->win->AsFixed();
-    if (!tab || !dm || !dm->textSelection || !tab->selectionOnPage || !tb->win->showSelection ||
-        dm->textSelection->result.len <= 0) {
-        return;
-    }
-
-    tb->selectionStartPage = dm->textSelection->startPage;
-    tb->selectionStartGlyph = dm->textSelection->startGlyph;
-    tb->selectionEndPage = dm->textSelection->endPage;
-    tb->selectionEndGlyph = dm->textSelection->endGlyph;
-    tb->hasSelectionSnapshot = tb->selectionStartPage > 0 && tb->selectionEndPage > 0 &&
-                               tb->selectionStartGlyph >= 0 && tb->selectionEndGlyph >= 0;
-}
-
-static void RestoreFloatingSelection(FloatingToolbar* tb) {
-    if (!tb || !tb->win || !tb->hasSelectionSnapshot) {
-        return;
-    }
-    WindowTab* tab = tb->win->CurrentTab();
-    DisplayModel* dm = tb->win->AsFixed();
-    if (!tab || !dm || !dm->textSelection) {
-        return;
-    }
-
-    dm->textSelection->StartAt(tb->selectionStartPage, tb->selectionStartGlyph);
-    dm->textSelection->SelectUpTo(tb->selectionEndPage, tb->selectionEndGlyph);
-    delete tab->selectionOnPage;
-    tab->selectionOnPage = SelectionOnPage::FromTextSelect(&dm->textSelection->result);
-    tb->win->showSelection = tab->selectionOnPage != nullptr;
-}
-
 static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
     if (!tb || !ev || !ev->target) {
         return;
@@ -178,11 +134,6 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
     // selection before the command handler consumes it.
     if (cmd == CmdCreateAnnotHighlight || cmd == CmdCreateAnnotUnderline || cmd == CmdCreateAnnotSquiggly ||
         cmd == CmdCreateAnnotStrikeOut) {
-        // A click on a no-activate popup can still cause Sumatra's normal mouse
-        // selection state to be cleared before the virtual button callback runs.
-        // Restore the selection captured on WM_LBUTTONDOWN before the command
-        // consumes it.
-        RestoreFloatingSelection(tb);
         HwndSendCommand(tb->win->hwndFrame, cmd, 0);
         return;
     }
@@ -260,9 +211,6 @@ static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
         ILayout* hit = ElementFromPoint(tb->host->vroot, p);
         VirtCtrl* hitCtrl = hit ? hit->AsVirtCtrl() : nullptr;
         bool onButton = hitCtrl && hitCtrl->id != 0;
-        if (onButton) {
-            SnapshotFloatingSelection(tb);
-        }
         if (!onButton) {
             GetCursorPos(&tb->dragStart);
             tb->dragging = true;
