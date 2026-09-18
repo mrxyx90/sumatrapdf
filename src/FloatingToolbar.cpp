@@ -170,6 +170,24 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
     int x = fr.x + DpiScale(4);
     int y = fr.y + DpiScale(14);
 
+    // When the application is resized, keep the toolbar anchored to the same
+    // horizontal side of the frame. A toolbar in the left half keeps its
+    // distance from the left edge; one in the right half keeps its distance
+    // from the right edge.
+    bool frameWasResized = tb->lastFrameRect.dx > 0 && tb->lastFrameRect.dy > 0 &&
+                           (tb->lastFrameRect.dx != fr.dx || tb->lastFrameRect.dy != fr.dy);
+    if (frameWasResized && tb->lastToolbarRect.dx > 0) {
+        int oldFrameCenter = tb->lastFrameRect.x + tb->lastFrameRect.dx / 2;
+        int oldToolbarCenter = tb->lastToolbarRect.x + tb->lastToolbarRect.dx / 2;
+        if (oldToolbarCenter <= oldFrameCenter) {
+            x = fr.x + (tb->lastToolbarRect.x - tb->lastFrameRect.x);
+        } else {
+            int oldRightMargin = tb->lastFrameRect.x + tb->lastFrameRect.dx -
+                                 (tb->lastToolbarRect.x + tb->lastToolbarRect.dx);
+            x = fr.x + fr.dx - w - oldRightMargin;
+        }
+    }
+
     // Keep the toolbar inside the application window. The saved position is
     // a screen position, so clamp it against the current frame bounds when
     // the window is resized or moved.
