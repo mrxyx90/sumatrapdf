@@ -15,6 +15,7 @@
 #include "gui/VirtHost.h"
 #include "SvgIcons.h"
 #include "Commands.h"
+#include "Settings.h"
 #include "MainWindow.h"
 #include "FloatingToolbar.h"
 #include "Theme.h"
