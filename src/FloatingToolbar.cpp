@@ -78,13 +78,14 @@ struct FloatingIconButton : VirtIconButton {
     int sideLen = 0;
     Color hoverBg = kColorUnset;
     Color selectedBg = kColorUnset;
-    bool selected = false;
+    FloatingToolbar* toolbar = nullptr;
 
     Size GetIdealSize() override {
         return {sideLen, sideLen};
     }
 
     void Paint(VirtPaintCtx& ctx) override {
+        bool selected = toolbar && toolbar->activeCmdId == id;
         if (selected && selectedBg != kColorUnset) {
             ctx.gfx->FillRoundedRect(ctx.bounds, DpiScale(6), selectedBg);
         } else if (IsEnabled() && HasFlag(vwfHovered) && hoverBg != kColorUnset) {
@@ -314,7 +315,7 @@ static void BuildFloatingToolbar(FloatingToolbar* tb) {
         button->sideLen = buttonSize;
         button->hoverBg = FloatingHover();
         button->selectedBg = SysHighlightBgColor();
-        button->selected = tb->activeCmdId == b.cmdId;
+        button->toolbar = tb;
         button->pixmap = GetCachedPixmapForSvg(Str(b.icon), iconSize, iconSize,
                                                 ThemeWindowTextColor(), FloatingBg());
         button->SetTooltip(Str(b.tip));
