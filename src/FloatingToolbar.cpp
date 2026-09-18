@@ -188,13 +188,20 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
         }
     }
 
-    // Restore the saved screen position on initial layout. After a resize,
-    // the left/right anchoring calculation above is authoritative so the
-    // toolbar follows the corresponding side of the frame.
+    // Restore the saved position relative to the frame. The saved X value
+    // is a left offset for a toolbar in the left half and a right offset for
+    // a toolbar in the right half. Y is always an offset from the top edge.
     if (!frameWasResized && gSettings &&
         (gSettings->floatingToolbarPosition.x != 0 || gSettings->floatingToolbarPosition.y != 0)) {
-        x = gSettings->floatingToolbarPosition.x;
-        y = gSettings->floatingToolbarPosition.y;
+        int savedX = gSettings->floatingToolbarPosition.x;
+        int savedY = gSettings->floatingToolbarPosition.y;
+        if (savedX >= 0) {
+            x = fr.x + savedX;
+        } else {
+            int rightOffset = -savedX;
+            x = fr.x + fr.dx - w - rightOffset;
+        }
+        y = fr.y + savedY;
     }
     if (tb->win->hwndTocBox && IsWindowVisible(tb->win->hwndTocBox)) {
         // Only move the toolbar if its saved position is in the bookmark
@@ -217,15 +224,25 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
     y = std::clamp(y, minY, maxY);
     MoveFloatingToolbar(tb, {x, y, w, h});
 
-    // A resize creates a new anchored position. Persist it immediately so
-    // closing and reopening the application restores the post-resize
-    // position, not the position from before the resize.
-    if (frameWasResized && gSettings) {
+    // Persist the position relative to the current frame. Positive X stores
+    // the left offset; negative X stores the right offset. Y always stores
+    // the offset from the top edge. Do this after every layout/resize so the
+    // latest anchored position is restored on the next launch.
+    if (gSettings) {
+        int frameCenter = fr.x + fr.dx / 2;
+        int toolbarCenter = x + w / 2;
         int sidebarOffset = FloatingToolbarSidebarOffset(tb);
-        gSettings->floatingToolbarPosition.x = x - sidebarOffset;
-        gSettings->floatingToolbarPosition.y = y;
-        ScheduleSaveSettings();
-        FlushScheduledSaveSettings();
+        if (toolbarCenter <= frameCenter) {
+            gSettings->floatingToolbarPosition.x = x - fr.x - sidebarOffset;
+        } else {
+            int rightOffset = fr.x + fr.dx - (x + w);
+            gSettings->floatingToolbarPosition.x = -(rightOffset + sidebarOffset);
+        }
+        gSettings->floatingToolbarPosition.y = y - fr.y;
+        if (frameWasResized || tb->lastToolbarRect.x != x || tb->lastToolbarRect.y != y) {
+            ScheduleSaveSettings();
+            FlushScheduledSaveSettings();
+        }
     }
 
     tb->lastFrameRect = fr;
