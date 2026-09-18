@@ -2458,6 +2458,7 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
     ScrollState ss(1, -1, -1);
     int rotation = 0;
     Str path = args->FilePath();
+    bool showToc = false;
     // Keep the bookmarks/ToC sidebar closed when opening a document.\n    bool showToc = false;
     bool showAsFullScreen = WIN_STATE_FULLSCREEN == gSettings->windowState;
     int showType = SW_NORMAL;
