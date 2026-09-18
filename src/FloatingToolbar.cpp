@@ -119,6 +119,17 @@ static void PaintFloatingToolbar(FloatingToolbar*, VirtHostPaintEvent* ev) {
     ev->gfx->FillRoundedRect(ev->clientRect, DpiScale(kFloatingToolbarRadius), FloatingBg(), FloatingBorder());
 }
 
+static int FloatingToolbarSidebarOffset(FloatingToolbar* tb) {
+    if (!tb || !tb->win || !tb->win->hwndTocBox || !IsWindowVisible(tb->win->hwndTocBox)) {
+        return 0;
+    }
+    return tb->win->sidebarDx + DpiScale(8);
+}
+
+static bool FloatingToolbarIsForPdf(FloatingToolbar* tb) {
+    return tb && tb->win && tb->win->IsDocLoaded() && tb->win->AsFixed() != nullptr;
+}
+
 static void MoveFloatingToolbar(FloatingToolbar* tb, Rect r) {
     if (!tb || !tb->host) {
         return;
@@ -146,6 +157,12 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
                      (int)dimof(gButtons) * kFloatingToolbarButtonSize +
                      ((int)dimof(gButtons) - 1) * kFloatingToolbarGap);
 
+    if (!FloatingToolbarIsForPdf(tb)) {
+        ShowWindow(tb->host->native, SW_HIDE);
+        return;
+    }
+    ShowWindow(tb->host->native, SW_SHOWNOACTIVATE);
+
     int x = fr.x + DpiScale(8);
     int y = fr.y + std::max(DpiScale(70), (fr.dy - h) / 2);
 
@@ -165,6 +182,7 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
             y = std::clamp(y, vy, vy + vh - h);
         }
     }
+    x += FloatingToolbarSidebarOffset(tb);
     MoveFloatingToolbar(tb, {x, y, w, h});
     tb->lastFrameRect = fr;
 }
@@ -206,7 +224,8 @@ static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
             ReleaseCapture();
             if (gSettings) {
                 Rect r = tb->host->ScreenRect();
-                gSettings->floatingToolbarPosition.x = r.x;
+                int sidebarOffset = FloatingToolbarSidebarOffset(tb);
+                gSettings->floatingToolbarPosition.x = r.x - sidebarOffset;
                 gSettings->floatingToolbarPosition.y = r.y;
                 ScheduleSaveSettings();
                 FlushScheduledSaveSettings();
