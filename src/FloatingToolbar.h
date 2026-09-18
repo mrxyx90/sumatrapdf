@@ -6,3 +6,4 @@ struct MainWindow;
 void FloatingToolbarCreate(MainWindow*);
 void FloatingToolbarDestroy(MainWindow*);
 void FloatingToolbarOnWindowMoved(MainWindow*);
+void FloatingToolbarUpdateTheme();
