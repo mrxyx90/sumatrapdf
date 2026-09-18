@@ -19,6 +19,7 @@
 #include "AppSettings.h"
 #include "MainWindow.h"
 #include "FloatingToolbar.h"
+#include "AnnotPlacement.h"
 #include "Theme.h"
 
 constexpr const WCHAR* kFloatingToolbarClassName = L"SumatraFloatingToolbar";
@@ -38,7 +39,7 @@ static const FloatingToolbarButton gButtons[] = {
     {gIconCommandPalette, CmdCommandPalette, "Command palette"},
     // Use the brush/highlighter glyph, not the selection-toolbar text-marking
     // glyph, so this button is visually the highlighter tool.
-    {gIconAnnotHighlightBrush, CmdCreateAnnotHighlight, "Highlight"},
+    {gIconAnnotHighlightBrush, CmdAnnotationHighlightBrush, "Highlight"},
     {gIconAnnotInk, CmdCreateAnnotInk, "Ink"},
     {gIconAnnotFreeText, CmdCreateAnnotFreeText, "Free text"},
     {gIconEditAnnotations, CmdToggleEditPDF, "Edit PDF"},
@@ -98,17 +99,20 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
         return;
     }
 
-    // Tool buttons toggle their blue selection border. Clicking an already
-    // selected tool deselects it; clicking another tool selects that one.
+    // Tool buttons toggle their blue selection border and placement mode.
+    // Clicking the selected placement tool again cancels the active mode.
     if (tb->activeCmdId == cmd) {
+        CancelAnnotationPlacement(tb->win);
         tb->activeCmdId = 0;
-    } else {
-        tb->activeCmdId = cmd;
+        tb->host->Invalidate(false);
+        return;
     }
+
+    tb->activeCmdId = cmd;
     tb->host->Invalidate(false);
 
-    if (cmd == CmdCreateAnnotHighlight || cmd == CmdCreateAnnotUnderline || cmd == CmdCreateAnnotSquiggly ||
-        cmd == CmdCreateAnnotStrikeOut) {
+    if (cmd == CmdAnnotationHighlightBrush || cmd == CmdCreateAnnotInk || cmd == CmdCreateAnnotFreeText ||
+        cmd == CmdCreateAnnotUnderline || cmd == CmdCreateAnnotSquiggly || cmd == CmdCreateAnnotStrikeOut) {
         HwndSendCommand(tb->win->hwndFrame, cmd, 0);
         return;
     }
@@ -173,8 +177,6 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
         x = gSettings->floatingToolbarPosition.x;
         y = gSettings->floatingToolbarPosition.y;
     }
-    x = std::clamp(x, fr.x, std::max(fr.x, fr.x + fr.dx - w));
-    y = std::clamp(y, fr.y, std::max(fr.y, fr.y + fr.dy - h));
     if (tb->win->hwndTocBox && IsWindowVisible(tb->win->hwndTocBox)) {
         // Only move the toolbar if its saved position is in the bookmark
         // sidebar area. A toolbar placed elsewhere must not be affected by
@@ -185,6 +187,11 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
             x = fr.x + tb->win->sidebarDx + DpiScale(8);
         }
     }
+
+    // Clamp after applying the sidebar position too. A wide sidebar or a
+    // restored position must never allow the popup outside the frame.
+    x = std::clamp(x, fr.x, std::max(fr.x, fr.x + fr.dx - w));
+    y = std::clamp(y, fr.y, std::max(fr.y, fr.y + fr.dy - h));
     MoveFloatingToolbar(tb, {x, y, w, h});
     tb->lastFrameRect = fr;
 }
@@ -215,8 +222,15 @@ static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
             GetCursorPos(&screen);
             int dx = screen.x - tb->dragStart.x;
             int dy = screen.y - tb->dragStart.y;
-            MoveFloatingToolbar(tb, {tb->dragOrig.x + dx, tb->dragOrig.y + dy,
-                                     tb->dragOrig.dx, tb->dragOrig.dy});
+            RECT frame{};
+            GetWindowRect(tb->win->hwndFrame, &frame);
+            int minX = frame.left;
+            int minY = frame.top;
+            int maxX = std::max(minX, frame.right - tb->dragOrig.dx);
+            int maxY = std::max(minY, frame.bottom - tb->dragOrig.dy);
+            int x = std::clamp(tb->dragOrig.x + dx, minX, maxX);
+            int y = std::clamp(tb->dragOrig.y + dy, minY, maxY);
+            MoveFloatingToolbar(tb, {x, y, tb->dragOrig.dx, tb->dragOrig.dy});
             ev->didHandle = true;
         }
         break;
