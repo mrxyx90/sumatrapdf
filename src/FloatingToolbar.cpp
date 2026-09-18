@@ -82,8 +82,11 @@ struct FloatingIconButton : VirtIconButton {
         }
         VirtIconButton::Paint(ctx);
 
-        if (toolbar && toolbar->activeCmdId == id) {
-            // Keep the active-tool indication as a blue border only.
+        if (toolbar && toolbar->activeCmdId == id &&
+            id != CmdCreateAnnotHighlight && id != CmdCreateAnnotInk && id != CmdCreateAnnotFreeText) {
+            // Keep the active-tool indication for toolbar actions, but do not
+            // draw a selection border for annotation tools that already show
+            // their active state in the document UI.
             ctx.gfx->DrawRect(ctx.bounds, 0xff0078d4, DpiScale(2));
         }
     }
