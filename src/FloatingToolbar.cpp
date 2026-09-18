@@ -182,7 +182,12 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
             y = std::clamp(y, vy, vy + vh - h);
         }
     }
-    x += FloatingToolbarSidebarOffset(tb);
+    if (tb->win->hwndTocBox && IsWindowVisible(tb->win->hwndTocBox)) {
+        // When the bookmark sidebar is open, anchor the toolbar directly to
+        // its right border. Keep the user's saved position untouched so it
+        // can be restored when the sidebar closes.
+        x = fr.x + tb->win->sidebarDx + DpiScale(8);
+    }
     MoveFloatingToolbar(tb, {x, y, w, h});
     tb->lastFrameRect = fr;
 }
