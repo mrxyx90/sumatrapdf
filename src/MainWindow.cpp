@@ -96,6 +96,7 @@ MainWindow::MainWindow(HWND hwnd) {
     linkHandler = new LinkHandler(this);
     cbHandler = CreateControllerCallbackHandler(this);
     overlayScrollOnMoved = MkFunc1Void(OverlayScrollbarsOnWindowMoved);
+    FloatingToolbarCreate(this);
     RegisterOnWindowMoved(&overlayScrollOnMoved);
 }
 
@@ -131,6 +132,7 @@ void CreateMovePatternLazy(MainWindow* win) {
 }
 
 MainWindow::~MainWindow() {
+    FloatingToolbarDestroy(this);
     CancelAnnotationResizeRerender(this);
     KillTimer(hwndCanvas, kSmoothScrollTimerID);
     KillTimer(hwndCanvas, kReadingAutoScrollTimerID);
