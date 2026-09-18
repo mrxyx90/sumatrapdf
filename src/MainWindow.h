@@ -37,6 +37,7 @@ struct TocItem;
 struct FindBarWnd;
 struct FindWindowWnd;
 struct ToolbarVirt;
+struct FloatingToolbar;
 
 constexpr int kMaxKeyboardLinkHintLength = 9;
 
@@ -246,6 +247,9 @@ struct MainWindow { // NOLINT(clang-analyzer-optin.performance.Padding)
 
     HWND hwndToolbar = nullptr;
     ToolbarVirt* toolbarVirt = nullptr;
+    // Optional floating quick-action toolbar; owned by MainWindow.
+    FloatingToolbar* floatingToolbar = nullptr;
+    Func1List<MainWindow*> floatingToolbarOnWindowMoved;
     HWND hwndMenuReBar = nullptr;
     HWND hwndMenuToolbar = nullptr;
     // the search input of the active find UI (compact bar or floating window)
