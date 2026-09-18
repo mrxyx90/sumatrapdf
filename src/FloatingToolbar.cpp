@@ -119,11 +119,12 @@ static void PaintFloatingToolbar(FloatingToolbar*, VirtHostPaintEvent* ev) {
 }
 
 static void MoveFloatingToolbar(FloatingToolbar* tb, Rect r) {
-    if (!tb || !tb->host || r == tb->lastToolbarRect) {
+    if (!tb || !tb->host) {
         return;
     }
     tb->lastToolbarRect = r;
-    // Keep this popup above the document/canvas child windows.
+    // Keep this popup above the document and sidebar child windows. The
+    // bookmark sidebar can be created/reordered after the toolbar at startup.
     SetWindowPos(tb->host->native, HWND_TOP, r.x, r.y, r.dx, r.dy, SWP_NOACTIVATE);
 }
 
@@ -305,6 +306,13 @@ void FloatingToolbarDestroy(MainWindow* win) {
     tb->host = nullptr;
     delete tb;
     win->floatingToolbar = nullptr;
+}
+
+void FloatingToolbarRelayout(MainWindow* win) {
+    if (!win || !win->floatingToolbar) {
+        return;
+    }
+    PositionFloatingToolbar(win->floatingToolbar);
 }
 
 void FloatingToolbarOnWindowMoved(MainWindow* win) {
