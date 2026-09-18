@@ -53,6 +53,7 @@
 #include "Canvas.h"
 #include "HomePage.h"
 #include "MainWindow.h"
+#include "FloatingToolbar.h"
 
 static void SafeDeleteTabsCtrl(TabsCtrl* tabsCtrl) {
     logf("SafeDeleteTabsCtrl: 0x%p\n", tabsCtrl);
