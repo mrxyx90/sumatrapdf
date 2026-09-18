@@ -17,6 +17,8 @@
 #include "Commands.h"
 #include "Settings.h"
 #include "AppSettings.h"
+#include "Selection.h"
+#include "TextSelection.h"
 #include "MainWindow.h"
 #include "FloatingToolbar.h"
 #include "Theme.h"
@@ -52,6 +54,12 @@ struct FloatingToolbar {
     bool dragging = false;
     POINT dragStart{};
     Rect dragOrig;
+    int activeCmdId = 0;
+    bool hasSelectionSnapshot = false;
+    int selectionStartPage = -1;
+    int selectionStartGlyph = -1;
+    int selectionEndPage = -1;
+    int selectionEndGlyph = -1;
 };
 
 static Color FloatingBg() {
@@ -69,18 +77,77 @@ static Color FloatingHover() {
 struct FloatingIconButton : VirtIconButton {
     int sideLen = 0;
     Color hoverBg = kColorUnset;
+    Color selectedBg = kColorUnset;
+    bool selected = false;
 
     Size GetIdealSize() override {
         return {sideLen, sideLen};
     }
 
     void Paint(VirtPaintCtx& ctx) override {
-        if (IsEnabled() && HasFlag(vwfHovered) && hoverBg != kColorUnset) {
+        if (selected && selectedBg != kColorUnset) {
+            ctx.gfx->FillRoundedRect(ctx.bounds, DpiScale(6), selectedBg);
+        } else if (IsEnabled() && HasFlag(vwfHovered) && hoverBg != kColorUnset) {
             ctx.gfx->FillRoundedRect(ctx.bounds, DpiScale(6), hoverBg);
         }
         VirtIconButton::Paint(ctx);
+
+        // A small check badge makes the currently selected toolbar option
+        // obvious without changing the icon itself.
+        if (selected) {
+            int badgeSize = DpiScale(9);
+            int inset = DpiScale(2);
+            Rect badge(ctx.bounds.x + ctx.bounds.dx - badgeSize - inset,
+                       ctx.bounds.y + inset, badgeSize, badgeSize);
+            ctx.gfx->FillEllipse(badge, SysHighlightBgColor());
+            Point p1(badge.x + DpiScale(2), badge.y + DpiScale(4));
+            Point p2(badge.x + DpiScale(4), badge.y + DpiScale(6));
+            Point p3(badge.x + DpiScale(7), badge.y + DpiScale(2));
+            ctx.gfx->DrawLineAA(p1, p2, SysHighlightTextColor(), DpiScale(1));
+            ctx.gfx->DrawLineAA(p2, p3, SysHighlightTextColor(), DpiScale(1));
+        }
     }
 };
+
+static void SnapshotFloatingSelection(FloatingToolbar* tb) {
+    if (!tb || !tb->win) {
+        return;
+    }
+    tb->hasSelectionSnapshot = false;
+    tb->selectionStartPage = tb->selectionStartGlyph = -1;
+    tb->selectionEndPage = tb->selectionEndGlyph = -1;
+
+    WindowTab* tab = tb->win->CurrentTab();
+    DisplayModel* dm = tb->win->AsFixed();
+    if (!tab || !dm || !dm->textSelection || !tab->selectionOnPage || !tb->win->showSelection ||
+        dm->textSelection->result.len <= 0) {
+        return;
+    }
+
+    tb->selectionStartPage = dm->textSelection->startPage;
+    tb->selectionStartGlyph = dm->textSelection->startGlyph;
+    tb->selectionEndPage = dm->textSelection->endPage;
+    tb->selectionEndGlyph = dm->textSelection->endGlyph;
+    tb->hasSelectionSnapshot = tb->selectionStartPage > 0 && tb->selectionEndPage > 0 &&
+                               tb->selectionStartGlyph >= 0 && tb->selectionEndGlyph >= 0;
+}
+
+static void RestoreFloatingSelection(FloatingToolbar* tb) {
+    if (!tb || !tb->win || !tb->hasSelectionSnapshot) {
+        return;
+    }
+    WindowTab* tab = tb->win->CurrentTab();
+    DisplayModel* dm = tb->win->AsFixed();
+    if (!tab || !dm || !dm->textSelection) {
+        return;
+    }
+
+    dm->textSelection->StartAt(tb->selectionStartPage, tb->selectionStartGlyph);
+    dm->textSelection->SelectUpTo(tb->selectionEndPage, tb->selectionEndGlyph);
+    delete tab->selectionOnPage;
+    tab->selectionOnPage = SelectionOnPage::FromTextSelect(&dm->textSelection->result);
+    tb->win->showSelection = tab->selectionOnPage != nullptr;
+}
 
 static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
     if (!tb || !ev || !ev->target) {
@@ -91,11 +158,28 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
         return;
     }
 
+    tb->activeCmdId = cmd;
+    for (int i = 0; i < (int)dimof(gButtons); i++) {
+        if (gButtons[i].cmdId == cmd) {
+            // The button instances are recreated only when the toolbar is built,
+            // so update their selected state through the root layout below.
+            break;
+        }
+    }
+    if (tb->host) {
+        tb->host->Invalidate(false);
+    }
+
     // Annotation commands operate on the current text selection. Execute them
     // synchronously so clicking this no-activate popup cannot clear the
     // selection before the command handler consumes it.
     if (cmd == CmdCreateAnnotHighlight || cmd == CmdCreateAnnotUnderline || cmd == CmdCreateAnnotSquiggly ||
         cmd == CmdCreateAnnotStrikeOut) {
+        // A click on a no-activate popup can still cause Sumatra's normal mouse
+        // selection state to be cleared before the virtual button callback runs.
+        // Restore the selection captured on WM_LBUTTONDOWN before the command
+        // consumes it.
+        RestoreFloatingSelection(tb);
         HwndSendCommand(tb->win->hwndFrame, cmd, 0);
         return;
     }
@@ -173,6 +257,9 @@ static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
         ILayout* hit = ElementFromPoint(tb->host->vroot, p);
         VirtCtrl* hitCtrl = hit ? hit->AsVirtCtrl() : nullptr;
         bool onButton = hitCtrl && hitCtrl->id != 0;
+        if (onButton) {
+            SnapshotFloatingSelection(tb);
+        }
         if (!onButton) {
             GetCursorPos(&tb->dragStart);
             tb->dragging = true;
@@ -226,6 +313,8 @@ static void BuildFloatingToolbar(FloatingToolbar* tb) {
         auto* button = new FloatingIconButton();
         button->sideLen = buttonSize;
         button->hoverBg = FloatingHover();
+        button->selectedBg = SysHighlightBgColor();
+        button->selected = tb->activeCmdId == b.cmdId;
         button->pixmap = GetCachedPixmapForSvg(Str(b.icon), iconSize, iconSize,
                                                 ThemeWindowTextColor(), FloatingBg());
         button->SetTooltip(Str(b.tip));
