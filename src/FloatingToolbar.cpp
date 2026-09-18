@@ -97,9 +97,13 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
         return;
     }
 
-    // Remember the last selected tool for the blue selector border. Clicking
-    // the same button again keeps it selected; the command still executes.
-    tb->activeCmdId = cmd;
+    // Tool buttons toggle their blue selection border. Clicking an already
+    // selected tool deselects it; clicking another tool selects that one.
+    if (tb->activeCmdId == cmd) {
+        tb->activeCmdId = 0;
+    } else {
+        tb->activeCmdId = cmd;
+    }
     tb->host->Invalidate(false);
 
     if (cmd == CmdCreateAnnotHighlight || cmd == CmdCreateAnnotUnderline || cmd == CmdCreateAnnotSquiggly ||
