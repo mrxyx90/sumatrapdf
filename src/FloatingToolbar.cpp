@@ -111,6 +111,32 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
         return;
     }
 
+    // Edit PDF can temporarily reveal the normal top toolbar when the user
+    // has it hidden. Only hide it again if this click was what revealed it.
+    if (cmd == CmdToggleEditPDF) {
+        if (tb->activeCmdId == cmd) {
+            if (tb->win->floatingEditPdfRevealedToolbar) {
+                tb->win->floatingEditPdfRevealedToolbar = false;
+                tb->win->isToolbarVisible = false;
+                if (tb->win->hwndToolbar) {
+                    ShowWindow(tb->win->hwndToolbar, SW_HIDE);
+                }
+                ScheduleUiUpdate(tb->win, kUiForceRelayout | kUiRelayout);
+            }
+            HwndPostCommand(tb->win->hwndFrame, cmd, 0);
+            tb->activeCmdId = 0;
+            tb->host->Invalidate(false);
+            return;
+        }
+
+        if (!tb->win->isToolbarVisible && !tb->win->isToolbarOverlay && tb->win->hwndToolbar) {
+            tb->win->floatingEditPdfRevealedToolbar = true;
+            tb->win->isToolbarVisible = true;
+            ShowWindow(tb->win->hwndToolbar, SW_SHOW);
+            ScheduleUiUpdate(tb->win, kUiForceRelayout | kUiRelayout);
+        }
+    }
+
     // Tool buttons toggle their blue selection border and placement mode.
     // Clicking the selected placement tool again cancels the active mode.
     if (tb->activeCmdId == cmd) {
