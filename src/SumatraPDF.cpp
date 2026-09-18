@@ -63,6 +63,7 @@
 #include "TextSearch.h"
 #include "Notifications.h"
 #include "MainWindow.h"
+#include "FloatingToolbar.h"
 #include "AnnotPlacement.h"
 #include "WindowTab.h"
 #include "UpdateCheck.h"
@@ -8077,6 +8078,10 @@ static void FrameUpdateUi(MainWindow* win) {
         FindBarReposition(win);
         RepositionSelectionToolbar(win);
         RepositionAnnotEditToolbar(win);
+        // The bookmark sidebar can be opened, closed, or resized without
+        // moving the frame. Keep the floating toolbar attached to its saved
+        // sidebar position after the frame layout has been applied.
+        FloatingToolbarRelayout(win);
         if (win->presentation || win->isFullScreen) {
             Rect fullscreen = HwndGetFullscreenRect(win->hwndFrame);
             Rect rect = HwndWindowRect(win->hwndFrame);
