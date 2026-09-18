@@ -1456,6 +1456,7 @@
     <ClInclude Include="..\src\FilterUtil.h" />
     <ClInclude Include="..\src\FindBar.h" />
     <ClInclude Include="..\src\FindWindow.h" />
+    <ClInclude Include="..\src\FloatingToolbar.h" />
     <ClInclude Include="..\src\Flags.h" />
     <ClInclude Include="..\src\FormFields.h" />
     <ClInclude Include="..\src\GlobalHotkeys.h" />
