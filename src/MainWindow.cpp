@@ -392,6 +392,11 @@ void MainWindow::UpdateCanvasSize() {
         CurrentTab()->canvasRc = canvasRc;
     }
 
+    // The bookmarks sidebar changes the canvas area without moving the frame.
+    // Re-raise the floating toolbar after that relayout so the sidebar cannot
+    // cover it.
+    FloatingToolbarRelayout(this);
+
     RelayoutNotifications(hwndCanvas);
     ReadAloudPlaybackBarRelayout(hwndCanvas);
     ReadingAutoScrollRelayout(hwndCanvas);
