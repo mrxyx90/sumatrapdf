@@ -315,6 +315,23 @@ void FloatingToolbarCreate(MainWindow* win) {
     PositionFloatingToolbar(tb);
 }
 
+void FloatingToolbarUpdateTheme() {
+    for (int i = 0; i < len(gWindows); i++) {
+        MainWindow* win = gWindows[i];
+        FloatingToolbar* tb = win ? win->floatingToolbar : nullptr;
+        if (!tb || !tb->host) {
+            continue;
+        }
+
+        // Theme colors are captured by the icon pixmaps and button hover/selected
+        // colors when the layout is built, so rebuild the small toolbar on a theme
+        // change instead of leaving stale light-theme colors behind.
+        BuildFloatingToolbar(tb);
+        PositionFloatingToolbar(tb);
+        tb->host->Invalidate(false);
+    }
+}
+
 void FloatingToolbarDestroy(MainWindow* win) {
     if (!win || !win->floatingToolbar) {
         return;
