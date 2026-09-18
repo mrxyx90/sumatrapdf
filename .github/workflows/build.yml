@@ -24,9 +24,9 @@ jobs:
       - name: Build release
         run: bun .\cmd\build.ts -release
 
-      - name: Upload SumatraPDF.exe
+      - name: Upload SumatraPDF installer
         uses: actions/upload-artifact@v4
         with:
-          name: SumatraPDF-x64
-          path: out/rel64/SumatraPDF.exe
+          name: SumatraPDF-x64-installer
+          path: out/rel64/SumatraPDF-*-64-install.exe
           if-no-files-found: error
