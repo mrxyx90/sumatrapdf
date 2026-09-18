@@ -102,7 +102,7 @@ struct FloatingIconButton : VirtIconButton {
             Point p1(badge.x + DpiScale(2), badge.y + DpiScale(4));
             Point p2(badge.x + DpiScale(4), badge.y + DpiScale(6));
             Point p3(badge.x + DpiScale(7), badge.y + DpiScale(2));
-            ctx.gfx->DrawLineAA(p1, p2, SysHighlightTextColor(), DpiScale(1));
+            ctx.gfx->DrawLineAA(p1, p2, SysHighlightTextColor(), 1.0f);
             ctx.gfx->DrawLineAA(p2, p3, SysHighlightTextColor(), DpiScale(1));
         }
     }
