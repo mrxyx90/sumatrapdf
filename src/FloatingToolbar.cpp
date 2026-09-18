@@ -203,43 +203,31 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
         }
         y = fr.y + savedY;
     }
-    if (tb->win->hwndTocBox && IsWindowVisible(tb->win->hwndTocBox)) {
-        // Only move the toolbar if its saved position is in the bookmark
-        // sidebar area. A toolbar placed elsewhere must not be affected by
-        // opening the sidebar.
-        int savedX = gSettings ? gSettings->floatingToolbarPosition.x : 0;
-        bool toolbarInSidebar = savedX != 0 && savedX < fr.x + tb->win->sidebarDx;
-        if (toolbarInSidebar) {
-            x = fr.x + tb->win->sidebarDx + DpiScale(8);
-        }
-    }
-
     // Clamp after applying the sidebar position too. A wide sidebar or a
     // restored position must never allow the popup outside the frame.
     int minX = fr.x + DpiScale(4);
     int maxX = std::max(minX, fr.x + fr.dx - w - DpiScale(4));
     int minY = fr.y + DpiScale(14);
-    int maxY = std::max(minY, fr.y + fr.dy - h);
+    int maxY = std::max(minY, fr.y + fr.dy - h - DpiScale(4));
     x = std::clamp(x, minX, maxX);
     y = std::clamp(y, minY, maxY);
     MoveFloatingToolbar(tb, {x, y, w, h});
 
-    // Persist the position relative to the current frame. Positive X stores
-    // the left offset; negative X stores the right offset. Y always stores
-    // the offset from the top edge. Do this after every layout/resize so the
-    // latest anchored position is restored on the next launch.
+    // Persist the position relative to the frame. Positive X stores the
+    // left offset; negative X stores the right offset. Y always stores the
+    // offset from the top edge. This is the canonical saved position used
+    // after the next launch.
     if (gSettings) {
         int frameCenter = fr.x + fr.dx / 2;
         int toolbarCenter = x + w / 2;
-        int sidebarOffset = FloatingToolbarSidebarOffset(tb);
         if (toolbarCenter <= frameCenter) {
-            gSettings->floatingToolbarPosition.x = x - fr.x - sidebarOffset;
+            gSettings->floatingToolbarPosition.x = x - fr.x;
         } else {
             int rightOffset = fr.x + fr.dx - (x + w);
-            gSettings->floatingToolbarPosition.x = -(rightOffset + sidebarOffset);
+            gSettings->floatingToolbarPosition.x = -rightOffset;
         }
         gSettings->floatingToolbarPosition.y = y - fr.y;
-        if (frameWasResized || tb->lastToolbarRect.x != x || tb->lastToolbarRect.y != y) {
+        if (frameWasResized) {
             ScheduleSaveSettings();
             FlushScheduledSaveSettings();
         }
@@ -276,10 +264,10 @@ static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
             int dy = screen.y - tb->dragStart.y;
             RECT frame{};
             GetWindowRect(tb->win->hwndFrame, &frame);
-            int minX = frame.left;
-            int minY = frame.top;
-            int maxX = std::max<int>(minX, frame.right - tb->dragOrig.dx);
-            int maxY = std::max<int>(minY, frame.bottom - tb->dragOrig.dy);
+            int minX = frame.left + DpiScale(4);
+            int minY = frame.top + DpiScale(14);
+            int maxX = std::max<int>(minX, frame.right - tb->dragOrig.dx - DpiScale(4));
+            int maxY = std::max<int>(minY, frame.bottom - tb->dragOrig.dy - DpiScale(4));
             int x = std::clamp(tb->dragOrig.x + dx, minX, maxX);
             int y = std::clamp(tb->dragOrig.y + dy, minY, maxY);
             MoveFloatingToolbar(tb, {x, y, tb->dragOrig.dx, tb->dragOrig.dy});
@@ -291,10 +279,18 @@ static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
             tb->dragging = false;
             ReleaseCapture();
             if (gSettings) {
+                RECT frame{};
+                GetWindowRect(tb->win->hwndFrame, &frame);
                 Rect r = tb->host->ScreenRect();
-                int sidebarOffset = FloatingToolbarSidebarOffset(tb);
-                gSettings->floatingToolbarPosition.x = r.x - sidebarOffset;
-                gSettings->floatingToolbarPosition.y = r.y;
+                int frameCenter = frame.left + (frame.right - frame.left) / 2;
+                int toolbarCenter = r.x + r.dx / 2;
+                if (toolbarCenter <= frameCenter) {
+                    gSettings->floatingToolbarPosition.x = r.x - frame.left;
+                } else {
+                    gSettings->floatingToolbarPosition.x =
+                        -(frame.right - (r.x + r.dx));
+                }
+                gSettings->floatingToolbarPosition.y = r.y - frame.top;
                 ScheduleSaveSettings();
                 FlushScheduledSaveSettings();
             }
