@@ -18,6 +18,7 @@
 #include "Settings.h"
 #include "AppSettings.h"
 #include "MainWindow.h"
+#include "SumatraPDF.h"
 #include "FloatingToolbar.h"
 #include "AnnotPlacement.h"
 #include "Theme.h"
@@ -336,10 +337,13 @@ static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
     }
 }
 
-static void PaintFloatingToolbarSeparator(VirtPaintCtx& ctx) {
-    Rect r = ctx.bounds;
+static void PaintFloatingToolbarSeparator(VirtPaintCtx* ctx) {
+    if (!ctx) {
+        return;
+    }
+    Rect r = ctx->bounds;
     int y = r.y + r.dy / 2;
-    ctx.gfx->DrawLine({r.x, y, r.dx, 1}, FloatingBorder(), DpiScale(1));
+    ctx->gfx->DrawLine({r.x, y, r.dx, 1}, FloatingBorder(), DpiScale(1));
 }
 
 static VirtCtrl* MakeFloatingToolbarSeparator(int width) {
