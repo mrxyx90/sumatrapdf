@@ -36,8 +36,6 @@ struct FloatingToolbarButton {
 
 static const FloatingToolbarButton gButtons[] = {
     {gIconCommandPalette, CmdCommandPalette, "Command palette"},
-    {gIconZoomIn, CmdZoomIn, "Zoom in"},
-    {gIconZoomOut, CmdZoomOut, "Zoom out"},
     // Use the brush/highlighter glyph, not the selection-toolbar text-marking
     // glyph, so this button is visually the highlighter tool.
     {gIconAnnotHighlightBrush, CmdCreateAnnotHighlight, "Highlight"},
