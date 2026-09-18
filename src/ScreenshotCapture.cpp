@@ -11,6 +11,7 @@
 #include "base/WinDynCalls.h" // DWM corner prefs shim for mingw-w64 < 12
 #include <dwmapi.h>
 #include "base/Win.h"
+#include "base/GdiPlusUtil.h"
 #include "gui/Dpi.h"
 #include "base/Timer.h"
 
@@ -541,29 +542,37 @@ void TakeScreenshotOfWindow(HWND hwnd) {
         return;
     }
 
-    TempStr screenshotDir = gScreenshotHost.GetSaveDirTemp ? gScreenshotHost.GetSaveDirTemp() : TempStr();
-    if (len(screenshotDir) == 0) {
+    // Floating-toolbar screenshots are saved directly to the user's Pictures
+    // folder. The existing global CmdScreenshot flow remains unchanged.
+    PWSTR picturesPath = nullptr;
+    HRESULT hr = SHGetKnownFolderPath(FOLDERID_Pictures, KF_FLAG_DEFAULT, nullptr, &picturesPath);
+    if (FAILED(hr) || !picturesPath || len(picturesPath) == 0) {
+        CoTaskMemFree(picturesPath);
         DeleteObject(hbmp);
         return;
     }
-    dir::CreateAll(screenshotDir);
 
-    TempStr filePath = MakeUniquePathTemp(screenshotDir, StrL("page"));
+    TempStr screenshotDir = path::JoinTemp(Str((const char*)picturesPath), StrL("Sumatrapdf"));
+    CoTaskMemFree(picturesPath);
+    if (len(screenshotDir) == 0 || !dir::CreateAll(screenshotDir)) {
+        DeleteObject(hbmp);
+        return;
+    }
+
+    TempStr basePath = path::JoinTemp(screenshotDir, StrL("screenshot.png"));
+    TempStr filePath = MakeUniqueFilePathTemp(basePath);
     if (len(filePath) == 0) {
         DeleteObject(hbmp);
         return;
     }
 
-    HWND owner = GetAncestor(hwnd, GA_ROOT);
-    HBITMAP hbmpCopy = (HBITMAP)CopyImage(hbmp, IMAGE_BITMAP, w, h, 0);
-    DeleteObject(hbmp);
-    if (!hbmpCopy) {
+    Gdiplus::Bitmap bitmap(hbmp, nullptr);
+    CLSID pngClsid = GetGdiPlusEncoderClsid(WStrL(L"image/png"));
+    if (bitmap.Save(ToWStrTemp(filePath), &pngClsid, nullptr) != Gdiplus::Ok) {
+        DeleteObject(hbmp);
         return;
     }
-
-    RenderedBitmap* rbmp = new RenderedBitmap(hbmpCopy, Size(w, h));
-    ShowImageEditWindow(owner, ImageEditMode::Crop, filePath, rbmp, false, {}, true);
-    delete rbmp;
+    DeleteObject(hbmp);
 }
 
 static void CaptureOneItem(CaptureCtx* ctx, CaptureItem* item) {
