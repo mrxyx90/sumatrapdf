@@ -1672,6 +1672,7 @@
     <ClCompile Include="..\src\FilterUtil.cpp" />
     <ClCompile Include="..\src\FindBar.cpp" />
     <ClCompile Include="..\src\FindWindow.cpp" />
+    <ClCompile Include="..\src\FloatingToolbar.cpp" />
     <ClCompile Include="..\src\Flags.cpp" />
     <ClCompile Include="..\src\FormFields.cpp" />
     <ClCompile Include="..\src\GetPasswordDialog.cpp" />
