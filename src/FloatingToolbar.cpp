@@ -339,13 +339,13 @@ static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
 static void PaintFloatingToolbarSeparator(VirtPaintCtx& ctx) {
     Rect r = ctx.bounds;
     int y = r.y + r.dy / 2;
-    ctx.gfx->DrawLine({r.x, y}, {r.x + r.dx, y}, DpiScale(1), FloatingBorder());
+    ctx.gfx->DrawLine({r.x, y, r.dx, 1}, FloatingBorder(), DpiScale(1));
 }
 
 static VirtCtrl* MakeFloatingToolbarSeparator(int width) {
     auto* sep = new VirtCustom();
     sep->idealSize = {width, DpiScale(1)};
-    sep->onPaint = MkFunc1(PaintFloatingToolbarSeparator, sep);
+    sep->onPaint = MkFunc1(PaintFloatingToolbarSeparator);
     sep->SetFlag(vwfNoHitTest, true);
     return sep;
 }
