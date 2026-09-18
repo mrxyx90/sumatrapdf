@@ -166,22 +166,15 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
     int x = fr.x + DpiScale(8);
     int y = fr.y + std::max(DpiScale(70), (fr.dy - h) / 2);
 
-    // A non-zero saved position is an explicit user placement.
+    // Keep the toolbar inside the application window. The saved position is
+    // a screen position, so clamp it against the current frame bounds when
+    // the window is resized or moved.
     if (gSettings && (gSettings->floatingToolbarPosition.x != 0 || gSettings->floatingToolbarPosition.y != 0)) {
         x = gSettings->floatingToolbarPosition.x;
         y = gSettings->floatingToolbarPosition.y;
-
-        int vx = GetSystemMetrics(SM_XVIRTUALSCREEN);
-        int vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
-        int vw = GetSystemMetrics(SM_CXVIRTUALSCREEN);
-        int vh = GetSystemMetrics(SM_CYVIRTUALSCREEN);
-        if (vw > w) {
-            x = std::clamp(x, vx, vx + vw - w);
-        }
-        if (vh > h) {
-            y = std::clamp(y, vy, vy + vh - h);
-        }
     }
+    x = std::clamp(x, fr.x, std::max(fr.x, fr.right() - w));
+    y = std::clamp(y, fr.y, std::max(fr.y, fr.bottom() - h));
     if (tb->win->hwndTocBox && IsWindowVisible(tb->win->hwndTocBox)) {
         // Only move the toolbar if its saved position is in the bookmark
         // sidebar area. A toolbar placed elsewhere must not be affected by
