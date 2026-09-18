@@ -52,6 +52,7 @@ struct FloatingToolbar {
     bool dragging = false;
     POINT dragStart{};
     Rect dragOrig;
+    int activeCmdId = 0;
 };
 
 static Color FloatingBg() {
