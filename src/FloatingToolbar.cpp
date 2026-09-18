@@ -38,7 +38,9 @@ static const FloatingToolbarButton gButtons[] = {
     {gIconCommandPalette, CmdCommandPalette, "Command palette"},
     {gIconZoomIn, CmdZoomIn, "Zoom in"},
     {gIconZoomOut, CmdZoomOut, "Zoom out"},
-    {gIconAnnotHighlight, CmdCreateAnnotHighlight, "Highlight"},
+    // Use the brush/highlighter glyph, not the selection-toolbar text-marking
+    // glyph, so this button is visually the highlighter tool.
+    {gIconAnnotHighlightBrush, CmdCreateAnnotHighlight, "Highlight"},
     {gIconAnnotInk, CmdCreateAnnotInk, "Ink"},
     {gIconAnnotFreeText, CmdCreateAnnotFreeText, "Free text"},
     {gIconEditAnnotations, CmdToggleEditPDF, "Edit PDF"},
@@ -52,7 +54,6 @@ struct FloatingToolbar {
     bool dragging = false;
     POINT dragStart{};
     Rect dragOrig;
-    int activeCmdId = 0;
 };
 
 static Color FloatingBg() {
@@ -70,36 +71,16 @@ static Color FloatingHover() {
 struct FloatingIconButton : VirtIconButton {
     int sideLen = 0;
     Color hoverBg = kColorUnset;
-    Color selectedBg = kColorUnset;
-    FloatingToolbar* toolbar = nullptr;
 
     Size GetIdealSize() override {
         return {sideLen, sideLen};
     }
 
     void Paint(VirtPaintCtx& ctx) override {
-        bool selected = toolbar && toolbar->activeCmdId == id;
-        if (selected && selectedBg != kColorUnset) {
-            ctx.gfx->FillRoundedRect(ctx.bounds, DpiScale(6), selectedBg);
-        } else if (IsEnabled() && HasFlag(vwfHovered) && hoverBg != kColorUnset) {
+        if (IsEnabled() && HasFlag(vwfHovered) && hoverBg != kColorUnset) {
             ctx.gfx->FillRoundedRect(ctx.bounds, DpiScale(6), hoverBg);
         }
         VirtIconButton::Paint(ctx);
-
-        // A small check badge makes the currently selected toolbar option
-        // obvious without changing the icon itself.
-        if (selected) {
-            int badgeSize = DpiScale(9);
-            int inset = DpiScale(2);
-            Rect badge(ctx.bounds.x + ctx.bounds.dx - badgeSize - inset,
-                       ctx.bounds.y + inset, badgeSize, badgeSize);
-            ctx.gfx->FillEllipse(badge, SysHighlightBgColor());
-            Point p1(badge.x + DpiScale(2), badge.y + DpiScale(4));
-            Point p2(badge.x + DpiScale(4), badge.y + DpiScale(6));
-            Point p3(badge.x + DpiScale(7), badge.y + DpiScale(2));
-            ctx.gfx->DrawLineAA(p1, p2, SysHighlightTextColor(), 1.0f);
-            ctx.gfx->DrawLineAA(p2, p3, SysHighlightTextColor(), 1.0f);
-        }
     }
 };
 
@@ -112,14 +93,9 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
         return;
     }
 
-    tb->activeCmdId = cmd;
-    if (tb->host) {
-        tb->host->Invalidate(false);
-    }
-
-    // Annotation commands operate on the current text selection. Execute them
-    // synchronously so clicking this no-activate popup cannot clear the
-    // selection before the command handler consumes it.
+    // The floating toolbar is a command launcher, not a toggle-state toolbar.
+    // Clicking the same button again must execute the command normally instead
+    // of changing a persistent visual state.
     if (cmd == CmdCreateAnnotHighlight || cmd == CmdCreateAnnotUnderline || cmd == CmdCreateAnnotSquiggly ||
         cmd == CmdCreateAnnotStrikeOut) {
         HwndSendCommand(tb->win->hwndFrame, cmd, 0);
@@ -137,9 +113,7 @@ static void MoveFloatingToolbar(FloatingToolbar* tb, Rect r) {
         return;
     }
     tb->lastToolbarRect = r;
-    // Keep this popup above the document/canvas child windows. Without an
-    // explicit z-order update, another child/popup can cover it after focus
-    // changes, making the toolbar appear to auto-hide.
+    // Keep this popup above the document/canvas child windows.
     SetWindowPos(tb->host->native, HWND_TOP, r.x, r.y, r.dx, r.dy, SWP_NOACTIVATE);
 }
 
@@ -163,15 +137,11 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
     int x = fr.x + DpiScale(8);
     int y = fr.y + std::max(DpiScale(70), (fr.dy - h) / 2);
 
-    // A non-zero saved position is an explicit user placement. Keep it in
-    // screen coordinates so it survives restarting the application and moving
-    // the main window to a different location.
+    // A non-zero saved position is an explicit user placement.
     if (gSettings && (gSettings->floatingToolbarPosition.x != 0 || gSettings->floatingToolbarPosition.y != 0)) {
         x = gSettings->floatingToolbarPosition.x;
         y = gSettings->floatingToolbarPosition.y;
 
-        // If the monitor layout changed, keep the toolbar on the virtual desktop
-        // instead of restoring it completely off-screen.
         int vx = GetSystemMetrics(SM_XVIRTUALSCREEN);
         int vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
         int vw = GetSystemMetrics(SM_CXVIRTUALSCREEN);
@@ -251,8 +221,6 @@ static void BuildFloatingToolbar(FloatingToolbar* tb) {
         auto* button = new FloatingIconButton();
         button->sideLen = buttonSize;
         button->hoverBg = FloatingHover();
-        button->selectedBg = SysHighlightBgColor();
-        button->toolbar = tb;
         button->pixmap = GetCachedPixmapForSvg(Str(b.icon), iconSize, iconSize,
                                                 ThemeWindowTextColor(), FloatingBg());
         button->SetTooltip(Str(b.tip));
@@ -310,9 +278,6 @@ void FloatingToolbarUpdateTheme() {
             continue;
         }
 
-        // Theme colors are captured by the icon pixmaps and button hover/selected
-        // colors when the layout is built, so rebuild the small toolbar on a theme
-        // change instead of leaving stale light-theme colors behind.
         BuildFloatingToolbar(tb);
         PositionFloatingToolbar(tb);
         tb->host->Invalidate(false);
