@@ -583,16 +583,7 @@ void StartAnnotationPlacement(MainWindow* win, int cmdId) {
     HideToolbarHoverDropdown(win);
     ToolbarUpdateStateForWindow(win, false);
 
-    NotificationCreateArgs args;
-    args.hwndParent = win->hwndCanvas;
-    args.msg = PlacementNotification(kind, p.circle, cmdId);
-    args.timeoutMs = kNotifNoTimeout;
-    args.groupId = NotifGroupForKind(kind);
-    args.corner = NotifCorner::BottomBar;
-    args.warning = true;
-    args.tab = tab;
-    args.onClosed = MkFunc1(OnPlacementNotifClosed, win);
-    ShowNotification(args);
+    // Keep annotation placement modes free of the bottom notification bar.
 
     HwndSetFocus(win->hwndFrame);
     Point pt = HwndGetCursorPos(win->hwndCanvas);
