@@ -654,6 +654,10 @@ void SetThemeByIndex(int themeIdx) {
     // different colors (the System theme, high contrast, a settings edit)
     UpdateGuiColorsFromTheme();
     if (themeChanged) {
+        // Rebuild the floating toolbar immediately after the new theme colors
+        // are installed, so its background and SVG icons change in the same
+        // theme-switch operation rather than waiting for another repaint.
+        FloatingToolbarUpdateTheme();
         UpdateAfterThemeChange();
     }
     DarkModeRememberTreeViewStyle();
