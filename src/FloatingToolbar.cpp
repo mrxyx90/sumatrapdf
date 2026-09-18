@@ -226,8 +226,8 @@ static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
             GetWindowRect(tb->win->hwndFrame, &frame);
             int minX = frame.left;
             int minY = frame.top;
-            int maxX = std::max(minX, frame.right - tb->dragOrig.dx);
-            int maxY = std::max(minY, frame.bottom - tb->dragOrig.dy);
+            int maxX = std::max<int>(minX, frame.right - tb->dragOrig.dx);
+            int maxY = std::max<int>(minY, frame.bottom - tb->dragOrig.dy);
             int x = std::clamp(tb->dragOrig.x + dx, minX, maxX);
             int y = std::clamp(tb->dragOrig.y + dy, minY, maxY);
             MoveFloatingToolbar(tb, {x, y, tb->dragOrig.dx, tb->dragOrig.dy});
