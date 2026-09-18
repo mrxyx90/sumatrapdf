@@ -134,8 +134,9 @@ static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
     switch (ev->msg) {
     case WM_LBUTTONDOWN: {
         Point p(GET_X_LPARAM(ev->lp), GET_Y_LPARAM(ev->lp));
-        VirtCtrl* hit = ElementFromPoint(tb->host->vroot, p);
-        bool onButton = hit != nullptr;
+        ILayout* hit = ElementFromPoint(tb->host->vroot, p);
+        VirtCtrl* hitCtrl = hit ? hit->AsVirtCtrl() : nullptr;
+        bool onButton = hitCtrl && hitCtrl->id != 0;
         if (!onButton) {
             GetCursorPos(&tb->dragStart);
             tb->dragging = true;
