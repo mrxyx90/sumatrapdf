@@ -23,6 +23,7 @@ License: GPLv3 */
 #endif
 
 #include "Theme.h"
+#include "FloatingToolbar.h"
 
 // The installer and uninstaller never load settings, so CreateThemeCommands()
 // doesn't run and there is no current theme - every Theme*Color() accessor
@@ -874,6 +875,7 @@ static void UpdateGuiColorsFromTheme() {
 // into gui/'s defaults, then rebuild and repaint everything that shows them.
 void SumatraUpdateTheme() {
     UpdateGuiColorsFromTheme();
+    FloatingToolbarUpdateTheme();
     UpdateAfterThemeChange();
 }
 
