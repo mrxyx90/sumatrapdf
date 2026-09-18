@@ -2295,15 +2295,6 @@ static void UpdateUiForCurrentTab(MainWindow* win) {
     }
 }
 
-static bool showTocByDefault(Str path) {
-    if (!gSettings->showToc) {
-        return false;
-    }
-    // we don't want to show toc by default for comic book files
-    FileType kind = GuessFileTypeFromName(path);
-    bool showByDefault = !IsEngineCbxSupportedFileType(kind);
-    return showByDefault;
-}
 
 static bool IsEbookFileType(FileType ft) {
     return ft == FileType::Epub || ft == FileType::Mobi || ft == FileType::Fb2 || ft == FileType::Fb2z ||
