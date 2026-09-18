@@ -890,6 +890,8 @@ struct Settings {
     // default) is the standard set. SelectionHandlers with
     // SelectToolbarNameOrSvg still come last
     Str selectionToolbarLayout;
+    // last screen position of the main floating toolbar; x/y of 0 means use the default position
+    Point floatingToolbarPosition;
     // remembered destination language for selection translation; empty
     // uses OS UI language
     Str translateToLang;
@@ -2142,6 +2144,7 @@ static const FieldInfo gSettingsFields[] = {
     {offsetof(Settings, useTabs), SettingType::Bool, true},
     {offsetof(Settings, selectionToolbar), SettingType::Bool, true},
     {offsetof(Settings, selectionToolbarLayout), SettingType::String, (intptr_t)""},
+    {offsetof(Settings, floatingToolbarPosition), SettingType::Compact, (intptr_t)&gPointInfo, true},
     {offsetof(Settings, tabsMru), SettingType::Bool, false},
     {offsetof(Settings, ctrlTabSimple), SettingType::Bool, false},
     {offsetof(Settings, zoomLevels), SettingType::FloatArray, (intptr_t)""},
@@ -2215,7 +2218,7 @@ static const FieldInfo gSettingsFields[] = {
 };
 static const StructInfo gSettingsInfo = {
     sizeof(Settings),
-    156,
+    157,
     gSettingsFields,
     "\0\0DefaultDisplayMode\0DefaultZoom\0DisableJavaScript\0AllowExternalImages\0EnableTeXEnhancements\0EscToExit\0Ful"
     "lPathInTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0Ho"
@@ -2230,7 +2233,7 @@ static const StructInfo gSettingsInfo = {
     "AutoScrollSpeed\0ReadingBar\0FastScrollOverScrollbar\0PreventSleepInFullscreen\0TabWidth\0Theme\0LastLightTheme\0L"
     "astDarkTheme\0DocumentColorsFollowTheme\0TocDy\0ToolbarCustomLayout\0ToolbarShowReadAloud\0ToolbarSize\0TreeFontNa"
     "me\0TreeFontSize\0UIFontSize\0DisableAntiAlias\0EngineeringDrawingEnhance\0DisableAutoLinks\0UseSysColors\0UseTabs"
-    "\0SelectionToolbar\0SelectionToolbarLayout\0TabsMru\0CtrlTabSimple\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EB"
+    "\0SelectionToolbar\0SelectionToolbarLayout\0FloatingToolbarPosition\0TabsMru\0CtrlTabSimple\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EB"
     "ookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0MarkdownUI\0\0HtmlUI\0\0ClaudeCode\0\0GrokBuild\0\0CodexBuild\0\0AntiG"
     "ravity\0\0AIChatSidebarDx\0\0TranslateToLang\0TranslateFromLang\0TranslateEngine\0\0Annotations\0\0ExternalViewers"
     "\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0Cus"
@@ -2337,7 +2340,7 @@ static const StructInfo gSettingsInfo = {
     "up after selecting text. Set to false to disable it\0which built-in buttons the selection toolbar has and in what "
     "order, e.g. CmdCopySelection | CmdCreateAnnotHighlight. | or Separator inserts a separator. Leave a button out to "
     "hide it. Empty (the default) is the standard set. SelectionHandlers with SelectToolbarNameOrSvg still come "
-    "last\0if true, Ctrl+Tab and Ctrl+Shift+Tab show the tab switcher in most recently used order instead of tab-strip "
+    "last\0last screen position of the main floating toolbar; x/y of 0 means use the default position\0if true, Ctrl+Tab and Ctrl+Shift+Tab show the tab switcher in most recently used order instead of tab-strip "
     "order\0if true, Ctrl+Tab and Ctrl+Shift+Tab immediately switch to the next / previous tab in tab-strip order (the "
     "behavior before version 3.6) instead of showing the tab switcher\0sequence of zoom levels when zooming in/out; "
     "values must lie between 8.33 and 1000000 (the largest one becomes the maximum zoom, which is 6400 by "
