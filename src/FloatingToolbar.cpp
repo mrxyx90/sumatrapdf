@@ -123,13 +123,6 @@ static void PaintFloatingToolbar(FloatingToolbar*, VirtHostPaintEvent* ev) {
     ev->gfx->FillRoundedRect(ev->clientRect, DpiScale(kFloatingToolbarRadius), FloatingBg(), FloatingBorder());
 }
 
-static int FloatingToolbarSidebarOffset(FloatingToolbar* tb) {
-    if (!tb || !tb->win || !tb->win->hwndTocBox || !IsWindowVisible(tb->win->hwndTocBox)) {
-        return 0;
-    }
-    return tb->win->sidebarDx + DpiScale(8);
-}
-
 static bool FloatingToolbarIsForPdf(FloatingToolbar* tb) {
     return tb && tb->win && tb->win->IsDocLoaded() && tb->win->AsFixed() != nullptr;
 }
