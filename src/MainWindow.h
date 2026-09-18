@@ -516,6 +516,8 @@ struct MainWindow { // NOLINT(clang-analyzer-optin.performance.Padding)
 
     bool isToolbarVisible = false;
     bool pdfAnnotationsToolbarEnabled = false;
+    // Floating Edit PDF temporarily reveals the top toolbar only when it was hidden.
+    bool floatingEditPdfRevealedToolbar = false;
     AnnotPlacement annotPlacement;
     // overlay toolbar mode: the toolbar floats over the page (doesn't reserve
     // space) and is only revealed when the mouse is near the top
