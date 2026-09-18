@@ -167,8 +167,8 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
     }
     ShowWindow(tb->host->native, SW_SHOWNOACTIVATE);
 
-    int x = fr.x + DpiScale(4);
-    int y = fr.y + DpiScale(14);
+    int x = fr.x + DpiScale(7);
+    int y = fr.y + DpiScale(18);
 
     // When the application is resized, keep the toolbar anchored to the same
     // horizontal side of the frame. A toolbar in the left half keeps its
@@ -205,10 +205,10 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
     }
     // Clamp after applying the sidebar position too. A wide sidebar or a
     // restored position must never allow the popup outside the frame.
-    int minX = fr.x + DpiScale(4);
-    int maxX = std::max(minX, fr.x + fr.dx - w - DpiScale(4));
-    int minY = fr.y + DpiScale(14);
-    int maxY = std::max(minY, fr.y + fr.dy - h - DpiScale(4));
+    int minX = fr.x + DpiScale(7);
+    int maxX = std::max(minX, fr.x + fr.dx - w - DpiScale(7));
+    int minY = fr.y + DpiScale(18);
+    int maxY = std::max(minY, fr.y + fr.dy - h - DpiScale(7));
     x = std::clamp(x, minX, maxX);
     y = std::clamp(y, minY, maxY);
     MoveFloatingToolbar(tb, {x, y, w, h});
@@ -264,10 +264,10 @@ static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
             int dy = screen.y - tb->dragStart.y;
             RECT frame{};
             GetWindowRect(tb->win->hwndFrame, &frame);
-            int minX = frame.left + DpiScale(4);
-            int minY = frame.top + DpiScale(14);
-            int maxX = std::max<int>(minX, frame.right - tb->dragOrig.dx - DpiScale(4));
-            int maxY = std::max<int>(minY, frame.bottom - tb->dragOrig.dy - DpiScale(4));
+            int minX = frame.left + DpiScale(7);
+            int minY = frame.top + DpiScale(18);
+            int maxX = std::max<int>(minX, frame.right - tb->dragOrig.dx - DpiScale(7));
+            int maxY = std::max<int>(minY, frame.bottom - tb->dragOrig.dy - DpiScale(7));
             int x = std::clamp(tb->dragOrig.x + dx, minX, maxX);
             int y = std::clamp(tb->dragOrig.y + dy, minY, maxY);
             MoveFloatingToolbar(tb, {x, y, tb->dragOrig.dx, tb->dragOrig.dy});
