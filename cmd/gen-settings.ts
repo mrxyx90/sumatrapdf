@@ -441,12 +441,9 @@ const pageGrid: Field[] = [
 ];
 
 const fixedPageUI: Field[] = [
-  field(
-    "Grayscale",
-    Bool,
-    false,
-    "if true, render document pages in grayscale. Toggle with CmdToggleGrayscale",
-  ).ver("3.7"),
+  field("Grayscale", Bool, false, "if true, render document pages in grayscale. Toggle with CmdToggleGrayscale").ver(
+    "3.7",
+  ),
   field("TextColor", Color, rgb(0x00, 0x00, 0x00), "color used instead of black for the document's text"),
   field(
     "BackgroundColor",
@@ -652,7 +649,7 @@ const claudeCode: Field[] = [
 ];
 
 const antiGravity: Field[] = [
-  field("Model", Str, "gemini-3.6-flash", "Antigravity model ID for --model (e.g. gemini-3.6-flash)"),
+  field("Model", Str, "gemini-3.8-flash-medium", "Antigravity model ID for --model (e.g. gemini-3.8-flash-medium)"),
   field("Models", Str, "", "extra Antigravity model IDs for the dropdown, comma-separated"),
   field("Effort", Int, 1, "Antigravity effort level: 0=Low, 1=Medium, 2=High, 3=Max"),
   field(
