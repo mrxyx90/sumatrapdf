@@ -349,7 +349,7 @@ static void PaintFloatingToolbarSeparator(VirtPaintCtx* ctx) {
 static VirtCtrl* MakeFloatingToolbarSeparator(int width) {
     auto* sep = new VirtCustom();
     sep->idealSize = {width, DpiScale(1)};
-    sep->onPaint = MkFunc1(PaintFloatingToolbarSeparator);
+    sep->onPaint = MkFunc1Void(PaintFloatingToolbarSeparator);
     sep->SetFlag(vwfNoHitTest, true);
     return sep;
 }
