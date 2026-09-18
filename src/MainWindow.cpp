@@ -370,8 +370,13 @@ MarkdownModel* MainWindow::AsMarkdown() const {
 // about a potential change of available canvas size
 void MainWindow::UpdateCanvasSize() {
     if (suppressCanvasSizeUpdate) {
+        FloatingToolbarRelayout(this);
         return;
     }
+    // The bookmark sidebar and frame resize can change the available canvas
+    // without changing the frame position. Keep the floating toolbar aligned.
+    FloatingToolbarRelayout(this);
+
     Rect rc = HwndClientRect(hwndCanvas);
     if (buffer && canvasRc == rc) {
         return;
