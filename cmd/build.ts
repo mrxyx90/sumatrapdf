@@ -25,7 +25,7 @@ interface BuildOptions {
 const usage = `Usage: bun cmd/build.ts <mode> [options]
 
 Windows builds:
-  -dbg | -rel             Build SumatraPDF.exe for x64
+  -dbg | -rel | -release  Build SumatraPDF.exe for x64
   -profile                Build a function-timing profile variant (out/prf64)
   -rel -32                Build the 32-bit release
   -asan [-dbg|-rel]       Build SumatraPDF-static.exe with MSVC ASan
@@ -101,7 +101,7 @@ function parseArgs(args: string[]): BuildOptions | undefined {
       break;
     }
     if (arg === "-dbg") setConfig(opts, "debug");
-    else if (arg === "-rel") setConfig(opts, "release");
+    else if (arg === "-rel" || arg === "-release") setConfig(opts, "release");
     else if (arg === "-profile") setConfig(opts, "profile");
     else if (arg === "-asan") {
       if (opts.asan) throw new CliError("-asan can only be specified once");
