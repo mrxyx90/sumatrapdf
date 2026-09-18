@@ -4,7 +4,7 @@ import { join, relative } from "node:path";
 import { $ } from "bun";
 import { clearDirPreserveSettings } from "./clean";
 import { ensureNinja, ninjaDir, ninjaToRoot } from "./ninja";
-import { detectVisualStudio2026, runLogged } from "./util";
+import { detectVisualStudio2026, extractSumatraVersion, runLogged } from "./util";
 
 type BuildMode = "windows" | "all" | "smoke" | "ci" | "daily" | "codeql" | "mingw" | "wine" | "build-no";
 type Config = "debug" | "release" | "profile";
@@ -227,6 +227,14 @@ async function buildWindows(config: Config, win32: boolean, clean: boolean, ninj
     await buildApp(msbuildPath, configName, platform, "SumatraPDF");
   }
   printBinaries(outDir, new Set(["SumatraPDF.exe"]));
+  if (config === "release") {
+    const version = extractSumatraVersion();
+    const arch = win32 ? "" : "-64";
+    const installerName = `SumatraPDF-${version}${arch}-install.exe`;
+    const installerPath = join(outDir, installerName);
+    copyFileSync(join(outDir, "SumatraPDF.exe"), installerPath);
+    console.log(`installer: ${installerPath}`);
+  }
 }
 
 async function buildNinja(targets: string[]): Promise<void> {
