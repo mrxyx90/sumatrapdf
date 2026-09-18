@@ -20,6 +20,7 @@
 #include "MainWindow.h"
 #include "SumatraPDF.h"
 #include "FloatingToolbar.h"
+#include "ScreenshotCapture.h"
 #include "AnnotPlacement.h"
 #include "Theme.h"
 
@@ -108,7 +109,7 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
     if (cmd == CmdScreenshot) {
         // Screenshot is independent from the annotation tools: keep the
         // current tool selection and just invoke the screenshot command.
-        HwndPostCommand(tb->win->hwndFrame, cmd, 0);
+        TakeScreenshotOfWindow(tb->win->hwndCanvas);
         return;
     }
 

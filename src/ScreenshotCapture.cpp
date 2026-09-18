@@ -528,6 +528,44 @@ struct CaptureCtx {
     AtomicInt thumbMs;   // aggregate thumbnail scaling time across items
 };
 
+
+void TakeScreenshotOfWindow(HWND hwnd) {
+    if (!hwnd || !IsWindow(hwnd)) {
+        return;
+    }
+
+    int w = 0, h = 0;
+    HBITMAP hbmp = CaptureWindowBmp(hwnd, &w, &h);
+    if (!hbmp || w <= 0 || h <= 0) {
+        DeleteObject(hbmp);
+        return;
+    }
+
+    TempStr screenshotDir = gScreenshotHost.GetSaveDirTemp ? gScreenshotHost.GetSaveDirTemp() : TempStr();
+    if (len(screenshotDir) == 0) {
+        DeleteObject(hbmp);
+        return;
+    }
+    dir::CreateAll(screenshotDir);
+
+    TempStr filePath = MakeUniquePathTemp(screenshotDir, StrL("page"));
+    if (len(filePath) == 0) {
+        DeleteObject(hbmp);
+        return;
+    }
+
+    HWND owner = GetAncestor(hwnd, GA_ROOT);
+    HBITMAP hbmpCopy = (HBITMAP)CopyImage(hbmp, IMAGE_BITMAP, w, h, 0);
+    DeleteObject(hbmp);
+    if (!hbmpCopy) {
+        return;
+    }
+
+    RenderedBitmap* rbmp = new RenderedBitmap(hbmpCopy, Size(w, h));
+    ShowImageEditWindow(owner, ImageEditMode::Crop, filePath, rbmp, false, {}, true);
+    delete rbmp;
+}
+
 static void CaptureOneItem(CaptureCtx* ctx, CaptureItem* item) {
     auto t = TimeGet();
     CapturedScreenshot& cs = item->cs;
