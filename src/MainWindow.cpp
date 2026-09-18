@@ -38,6 +38,7 @@
 #include "AIChatCommon.h"
 #include "AIChatPanel.h"
 #include "SelectionToolbar.h"
+#include "FloatingToolbar.h"
 #include "AnnotEditToolbar.h"
 #include "AnnotTextPopup.h"
 #include "AnnotFilterToolbar.h"
@@ -97,6 +98,7 @@ MainWindow::MainWindow(HWND hwnd) {
     cbHandler = CreateControllerCallbackHandler(this);
     overlayScrollOnMoved = MkFunc1Void(OverlayScrollbarsOnWindowMoved);
     RegisterOnWindowMoved(&overlayScrollOnMoved);
+    FloatingToolbarCreate(this);
 }
 
 void MainWindow::RegisterOnWindowMoved(Func1List<MainWindow*>* cb) {
@@ -153,6 +155,7 @@ MainWindow::~MainWindow() {
     HomePageDestroySearch(this);
     HomePageDestroyChrome(this);
 
+    FloatingToolbarDestroy(this);
     OverlayScrollbarDestroy(overlayScrollV);
     OverlayScrollbarDestroy(overlayScrollH);
 
