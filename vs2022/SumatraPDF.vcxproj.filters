@@ -785,6 +785,9 @@
     <ClCompile Include="..\src\FindWindow.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\FloatingToolbar.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\Flags.cpp">
       <Filter>src</Filter>
     </ClCompile>
