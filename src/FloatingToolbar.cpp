@@ -219,7 +219,8 @@ void FloatingToolbarCreate(MainWindow* win) {
     tb->host->onNativeMsg = MkFunc1(OnFloatingNativeMsg, tb);
     BuildFloatingToolbar(tb);
     win->floatingToolbar = tb;
-    win->RegisterOnWindowMoved(&tb->floatingToolbarOnWindowMoved);
+    win->floatingToolbarOnWindowMoved = MkFunc1Void(FloatingToolbarOnWindowMoved);
+    win->RegisterOnWindowMoved(&win->floatingToolbarOnWindowMoved);
 
     PositionFloatingToolbar(tb);
 }
@@ -229,7 +230,7 @@ void FloatingToolbarDestroy(MainWindow* win) {
         return;
     }
     auto* tb = win->floatingToolbar;
-    win->UnregisterOnWindowMoved(&tb->floatingToolbarOnWindowMoved);
+    win->UnregisterOnWindowMoved(&win->floatingToolbarOnWindowMoved);
     delete tb->host;
     tb->host = nullptr;
     delete tb;
