@@ -82,15 +82,16 @@ struct FloatingIconButton : VirtIconButton {
     }
 
     void Paint(VirtPaintCtx& ctx) override {
-        if (IsEnabled() && HasFlag(vwfHovered) && hoverBg != kColorUnset) {
+        bool active = toolbar && toolbar->activeCmdId == id;
+        if (active) {
+            // Use the same solid blue selection treatment as the reference
+            // toolbar. The selected button remains clearly active without
+            // changing which tool is selected.
+            ctx.gfx->FillRoundedRect(ctx.bounds, DpiScale(6), 0xff0078d4);
+        } else if (IsEnabled() && HasFlag(vwfHovered) && hoverBg != kColorUnset) {
             ctx.gfx->FillRoundedRect(ctx.bounds, DpiScale(6), hoverBg);
         }
         VirtIconButton::Paint(ctx);
-
-        if (toolbar && toolbar->activeCmdId == id) {
-            // Keep the active-tool indication as a blue border only.
-            ctx.gfx->DrawRect(ctx.bounds, 0xff0078d4, DpiScale(2));
-        }
     }
 };
 
