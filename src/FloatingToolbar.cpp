@@ -173,8 +173,8 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
         x = gSettings->floatingToolbarPosition.x;
         y = gSettings->floatingToolbarPosition.y;
     }
-    x = std::clamp(x, fr.x, std::max(fr.x, fr.right() - w));
-    y = std::clamp(y, fr.y, std::max(fr.y, fr.bottom() - h));
+    x = std::clamp(x, fr.x, std::max(fr.x, fr.x + fr.dx - w));
+    y = std::clamp(y, fr.y, std::max(fr.y, fr.y + fr.dy - h));
     if (tb->win->hwndTocBox && IsWindowVisible(tb->win->hwndTocBox)) {
         // Only move the toolbar if its saved position is in the bookmark
         // sidebar area. A toolbar placed elsewhere must not be affected by
