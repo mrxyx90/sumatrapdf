@@ -40,7 +40,7 @@ static const FloatingToolbarButton gButtons[] = {
     {gIconZoomOut, CmdZoomOut, "Zoom out"},
     {gIconAnnotHighlight, CmdCreateAnnotHighlight, "Highlight"},
     {gIconAnnotInk, CmdCreateAnnotInk, "Ink"},
-    {gIconAnnotText, CmdCreateAnnotText, "Text annotation"},
+    {gIconAnnotFreeText, CmdCreateAnnotFreeText, "Free text"},
     {gIconEditAnnotations, CmdToggleEditPDF, "Edit PDF"},
 };
 
@@ -111,7 +111,11 @@ static void MoveFloatingToolbar(FloatingToolbar* tb, Rect r) {
         return;
     }
     tb->lastToolbarRect = r;
-    tb->host->SetBounds(r);
+    // Keep this popup above the document/canvas child windows. Without an
+    // explicit z-order update, another child/popup can cover it after focus
+    // changes, making the toolbar appear to auto-hide.
+    SetWindowPos(tb->host->native, HWND_TOP, r.x, r.y, r.dx, r.dy, SWP_NOACTIVATE);
+
 }
 
 static void PositionFloatingToolbar(FloatingToolbar* tb) {
@@ -198,6 +202,7 @@ static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
                 gSettings->floatingToolbarPosition.x = r.x;
                 gSettings->floatingToolbarPosition.y = r.y;
                 ScheduleSaveSettings();
+                FlushScheduledSaveSettings();
             }
             ev->didHandle = true;
         }
