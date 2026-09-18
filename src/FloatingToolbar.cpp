@@ -53,11 +53,6 @@ struct FloatingToolbar {
     POINT dragStart{};
     Rect dragOrig;
     int activeCmdId = 0;
-    bool hasSelectionSnapshot = false;
-    int selectionStartPage = -1;
-    int selectionStartGlyph = -1;
-    int selectionEndPage = -1;
-    int selectionEndGlyph = -1;
 };
 
 static Color FloatingBg() {
@@ -103,7 +98,7 @@ struct FloatingIconButton : VirtIconButton {
             Point p2(badge.x + DpiScale(4), badge.y + DpiScale(6));
             Point p3(badge.x + DpiScale(7), badge.y + DpiScale(2));
             ctx.gfx->DrawLineAA(p1, p2, SysHighlightTextColor(), 1.0f);
-            ctx.gfx->DrawLineAA(p2, p3, SysHighlightTextColor(), DpiScale(1));
+            ctx.gfx->DrawLineAA(p2, p3, SysHighlightTextColor(), 1.0f);
         }
     }
 };
@@ -118,13 +113,6 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
     }
 
     tb->activeCmdId = cmd;
-    for (int i = 0; i < (int)dimof(gButtons); i++) {
-        if (gButtons[i].cmdId == cmd) {
-            // The button instances are recreated only when the toolbar is built,
-            // so update their selected state through the root layout below.
-            break;
-        }
-    }
     if (tb->host) {
         tb->host->Invalidate(false);
     }
@@ -153,7 +141,6 @@ static void MoveFloatingToolbar(FloatingToolbar* tb, Rect r) {
     // explicit z-order update, another child/popup can cover it after focus
     // changes, making the toolbar appear to auto-hide.
     SetWindowPos(tb->host->native, HWND_TOP, r.x, r.y, r.dx, r.dy, SWP_NOACTIVATE);
-
 }
 
 static void PositionFloatingToolbar(FloatingToolbar* tb) {
