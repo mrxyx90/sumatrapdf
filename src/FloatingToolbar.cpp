@@ -4,10 +4,15 @@
 #include "base/Base.h"
 #include "base/Win.h"
 #include "gui/Dpi.h"
+#include "base/Pixmap.h"
+
+#include "gui/UIModels.h"
 #include "gui/Layout.h"
+#include "gui/PlatformFont.h"
+#include "gui/Gfx.h"
 #include "gui/GuiColors.h"
-#include "gui/VirtHost.h"
 #include "gui/VirtCtrl.h"
+#include "gui/VirtHost.h"
 #include "SvgIcons.h"
 #include "Commands.h"
 #include "MainWindow.h"
@@ -128,8 +133,8 @@ static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
     switch (ev->msg) {
     case WM_LBUTTONDOWN: {
         Point p(GET_X_LPARAM(ev->lp), GET_Y_LPARAM(ev->lp));
-        ILayout* hit = ElementFromPoint(tb->host->vroot, p);
-        bool onButton = hit && hit != tb->host->vroot;
+        VirtCtrl* hit = ElementFromPoint(tb->host->vroot, p);
+        bool onButton = hit != nullptr;
         if (!onButton) {
             GetCursorPos(&tb->dragStart);
             tb->dragging = true;
