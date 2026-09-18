@@ -16,6 +16,7 @@
 #include "SvgIcons.h"
 #include "Commands.h"
 #include "Settings.h"
+#include "AppSettings.h"
 #include "MainWindow.h"
 #include "FloatingToolbar.h"
 #include "Theme.h"
@@ -86,9 +87,19 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
         return;
     }
     int cmd = ev->target->id;
-    if (cmd) {
-        HwndPostCommand(tb->win->hwndFrame, cmd, 0);
+    if (!cmd) {
+        return;
     }
+
+    // Annotation commands operate on the current text selection. Execute them
+    // synchronously so clicking this no-activate popup cannot clear the
+    // selection before the command handler consumes it.
+    if (cmd == CmdCreateAnnotHighlight || cmd == CmdCreateAnnotUnderline || cmd == CmdCreateAnnotSquiggly ||
+        cmd == CmdCreateAnnotStrikeOut) {
+        HwndSendCommand(tb->win->hwndFrame, cmd, 0);
+        return;
+    }
+    HwndPostCommand(tb->win->hwndFrame, cmd, 0);
 }
 
 static void PaintFloatingToolbar(FloatingToolbar*, VirtHostPaintEvent* ev) {
@@ -122,6 +133,27 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
 
     int x = fr.x + DpiScale(8);
     int y = fr.y + std::max(DpiScale(70), (fr.dy - h) / 2);
+
+    // A non-zero saved position is an explicit user placement. Keep it in
+    // screen coordinates so it survives restarting the application and moving
+    // the main window to a different location.
+    if (gSettings && (gSettings->floatingToolbarPosition.x != 0 || gSettings->floatingToolbarPosition.y != 0)) {
+        x = gSettings->floatingToolbarPosition.x;
+        y = gSettings->floatingToolbarPosition.y;
+
+        // If the monitor layout changed, keep the toolbar on the virtual desktop
+        // instead of restoring it completely off-screen.
+        int vx = GetSystemMetrics(SM_XVIRTUALSCREEN);
+        int vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
+        int vw = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+        int vh = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+        if (vw > w) {
+            x = std::clamp(x, vx, vx + vw - w);
+        }
+        if (vh > h) {
+            y = std::clamp(y, vy, vy + vh - h);
+        }
+    }
     MoveFloatingToolbar(tb, {x, y, w, h});
     tb->lastFrameRect = fr;
 }
@@ -161,6 +193,12 @@ static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
         if (tb->dragging) {
             tb->dragging = false;
             ReleaseCapture();
+            if (gSettings) {
+                Rect r = tb->host->ScreenRect();
+                gSettings->floatingToolbarPosition.x = r.x;
+                gSettings->floatingToolbarPosition.y = r.y;
+                ScheduleSaveSettings();
+            }
             ev->didHandle = true;
         }
         break;
