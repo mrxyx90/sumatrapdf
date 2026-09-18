@@ -2477,7 +2477,6 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
         } else if (fs->windowState == WIN_STATE_MINIMIZED) {
             showType = SW_MINIMIZE;
         }
-        showToc = fs->showToc;
         if (win->ctrl && win->presentation) {
             showToc = tab->showTocPresentation;
         }
