@@ -28,12 +28,16 @@ constexpr int kFloatingToolbarButtonSize = 38;
 constexpr int kFloatingToolbarMargin = 5;
 constexpr int kFloatingToolbarGap = 2;
 constexpr int kFloatingToolbarRadius = 9;
+constexpr int kFloatingToolbarSeparatorGap = 5;
 
 struct FloatingToolbarButton {
     const char* icon = nullptr;
     int cmdId = 0;
     const char* tip = nullptr;
 };
+
+static constexpr const char* kScreenshotIcon =
+    "<svg viewBox=\"0 0 24 24\"><path fill=\"currentColor\" d=\"M9 3l-1.5 2H5c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2h-2.5L15 3H9zm3 5a5 5 0 1 1 0 10 5 5 0 0 1 0-10zm0 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6z\"/></svg>";
 
 static const FloatingToolbarButton gButtons[] = {
     {gIconCommandPalette, CmdCommandPalette, "Command palette"},
@@ -99,6 +103,13 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
         return;
     }
 
+    if (cmd == CmdScreenshot) {
+        // Screenshot is independent from the annotation tools: keep the
+        // current tool selection and just invoke the screenshot command.
+        HwndPostCommand(tb->win->hwndFrame, cmd, 0);
+        return;
+    }
+
     // Tool buttons toggle their blue selection border and placement mode.
     // Clicking the selected placement tool again cancels the active mode.
     if (tb->activeCmdId == cmd) {
@@ -152,7 +163,9 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
     int w = DpiScale(2 * kFloatingToolbarMargin + kFloatingToolbarButtonSize);
     int h = DpiScale(2 * kFloatingToolbarMargin +
                      (int)dimof(gButtons) * kFloatingToolbarButtonSize +
-                     ((int)dimof(gButtons) - 1) * kFloatingToolbarGap);
+                     ((int)dimof(gButtons) - 1) * kFloatingToolbarGap +
+                     2 * kFloatingToolbarSeparatorGap +
+                     kFloatingToolbarButtonSize);
 
     if (!FloatingToolbarIsForPdf(tb)) {
         ShowWindow(tb->host->native, SW_HIDE);
@@ -296,6 +309,20 @@ static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
     }
 }
 
+static void PaintFloatingToolbarSeparator(VirtPaintCtx& ctx) {
+    Rect r = ctx.bounds;
+    int y = r.y + r.dy / 2;
+    ctx.gfx->DrawLine({r.x, y}, {r.x + r.dx, y}, DpiScale(1), FloatingBorder());
+}
+
+static VirtCtrl* MakeFloatingToolbarSeparator(int width) {
+    auto* sep = new VirtCustom();
+    sep->idealSize = {width, DpiScale(1)};
+    sep->onPaint = MkFunc1(PaintFloatingToolbarSeparator, sep);
+    sep->SetFlag(vwfNoHitTest, true);
+    return sep;
+}
+
 static void BuildFloatingToolbar(FloatingToolbar* tb) {
     auto* box = new VBox();
     box->alignCross = CrossAxisAlign::Stretch;
@@ -320,6 +347,21 @@ static void BuildFloatingToolbar(FloatingToolbar* tb) {
             box->AddChild(new Spacer(gap, gap));
         }
     }
+
+    box->AddChild(new Spacer(DpiScale(kFloatingToolbarSeparatorGap), DpiScale(kFloatingToolbarSeparatorGap)));
+    box->AddChild(MakeFloatingToolbarSeparator(buttonSize));
+    box->AddChild(new Spacer(DpiScale(kFloatingToolbarSeparatorGap), DpiScale(kFloatingToolbarSeparatorGap)));
+
+    auto* screenshot = new FloatingIconButton();
+    screenshot->sideLen = buttonSize;
+    screenshot->hoverBg = FloatingHover();
+    screenshot->toolbar = tb;
+    screenshot->pixmap = GetCachedPixmapForSvg(Str(kScreenshotIcon), iconSize, iconSize,
+                                                ThemeWindowTextColor(), FloatingBg());
+    screenshot->SetTooltip(StrL("Screenshot"));
+    screenshot->id = CmdScreenshot;
+    screenshot->onClick = MkFunc1(OnFloatingButton, tb);
+    box->AddChild(screenshot);
 
     auto* content = new Padding(box, Insets{kFloatingToolbarMargin, kFloatingToolbarMargin,
                                              kFloatingToolbarMargin, kFloatingToolbarMargin});
