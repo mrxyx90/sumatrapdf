@@ -167,8 +167,8 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
     }
     ShowWindow(tb->host->native, SW_SHOWNOACTIVATE);
 
-    int x = fr.x + DpiScale(8);
-    int y = fr.y + std::max(DpiScale(70), (fr.dy - h) / 2);
+    int x = fr.x + DpiScale(4);
+    int y = fr.y + DpiScale(14);
 
     // Keep the toolbar inside the application window. The saved position is
     // a screen position, so clamp it against the current frame bounds when
@@ -190,8 +190,12 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
 
     // Clamp after applying the sidebar position too. A wide sidebar or a
     // restored position must never allow the popup outside the frame.
-    x = std::clamp(x, fr.x, std::max(fr.x, fr.x + fr.dx - w));
-    y = std::clamp(y, fr.y, std::max(fr.y, fr.y + fr.dy - h));
+    int minX = fr.x + DpiScale(4);
+    int maxX = std::max(minX, fr.x + fr.dx - w - DpiScale(4));
+    int minY = fr.y + DpiScale(14);
+    int maxY = std::max(minY, fr.y + fr.dy - h);
+    x = std::clamp(x, minX, maxX);
+    y = std::clamp(y, minY, maxY);
     MoveFloatingToolbar(tb, {x, y, w, h});
     tb->lastFrameRect = fr;
 }
