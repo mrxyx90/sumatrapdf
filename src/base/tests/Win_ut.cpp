@@ -4,7 +4,7 @@
 #include "base/Base.h"
 #include "base/CmdLineArgs.h"
 #include "base/Pixmap.h"
-#include "base/ScopedWin.h"
+#include "base/AutoWin.h"
 #include "base/Win.h"
 
 // must be last due to assert() over-write
@@ -176,7 +176,7 @@ static void PixmapFromHICONAlphaTest() {
 }
 
 void WinUtilTest() {
-    ScopedCom comScope;
+    AutoCoUninitialize comScope;
 
     QuoteCmdLineArgTest();
     RecolorLinkAaTest();
@@ -185,7 +185,7 @@ void WinUtilTest() {
     {
         Str string = StrL("abcde");
         auto strm = CreateStreamFromData(string);
-        ScopedComPtr<IStream> stream(strm);
+        AutoReleaseComPtr<IStream> stream(strm);
         utassert(stream);
         Str data = ReadIStream(stream);
         utassert((u8*)data.s);
@@ -201,7 +201,7 @@ void WinUtilTest() {
         WStr string = L"abcde";
         size_t stringSize = string.len * sizeof(WCHAR);
         auto strm = CreateStreamFromData(Str((char*)string.s, (int)stringSize));
-        ScopedComPtr<IStream> stream(strm);
+        AutoReleaseComPtr<IStream> stream(strm);
         utassert(stream);
         Str dataTmp = ReadIStream(stream);
         WStr data = WStr((WCHAR*)(u8*)dataTmp.s, (int)((size_t)dataTmp.len / sizeof(WCHAR)));

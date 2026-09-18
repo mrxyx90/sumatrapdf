@@ -16,7 +16,7 @@
 #include "base/Win.h"
 #include "base/Http.h"
 #include "base/Crypto.h"
-#include "base/ScopedWin.h"
+#include "base/AutoWin.h"
 #include "base/GdiPlusUtil.h"
 #include "base/Archive.h"
 #include "base/Timer.h"
@@ -6824,7 +6824,7 @@ static void OpenFileWithOSFilePicker(MainWindow* win, bool skipHistory = false) 
         return;
     }
 
-    ScopedComPtr<IFileOpenDialog> dlg;
+    AutoReleaseComPtr<IFileOpenDialog> dlg;
     HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg));
     if (FAILED(hr) || !dlg) {
         logf("OpenFileWithOSFilePicker: CoCreateInstance(CLSID_FileOpenDialog) failed: 0x%x\n", (uint)hr);
@@ -6850,7 +6850,7 @@ static void OpenFileWithOSFilePicker(MainWindow* win, bool skipHistory = false) 
         return;
     }
 
-    ScopedComPtr<IShellItemArray> results;
+    AutoReleaseComPtr<IShellItemArray> results;
     hr = dlg->GetResults(&results);
     if (FAILED(hr) || !results) {
         return;
@@ -6864,7 +6864,7 @@ static void OpenFileWithOSFilePicker(MainWindow* win, bool skipHistory = false) 
 
     StrVec paths;
     for (DWORD i = 0; i < count; i++) {
-        ScopedComPtr<IShellItem> item;
+        AutoReleaseComPtr<IShellItem> item;
         hr = results->GetItemAt(i, &item);
         if (FAILED(hr) || !item) {
             continue;
@@ -9392,6 +9392,10 @@ static WCHAR SingleCharLowerW(WCHAR c) {
 static void OnFrameKeyEsc(MainWindow* win) {
     if (win->isQuickLook) {
         CloseWindow(win, true, false);
+        return;
+    }
+    if (win->toolbarVirt && win->toolbarVirt->hoverHost) {
+        HideToolbarHoverDropdown(win);
         return;
     }
     if (StopKeyboardLinkFollowing(win)) {
@@ -15639,7 +15643,7 @@ static const GUID kIidVirtualDesktopManager = {0xA5CD92FF,
                                                {0x8D, 0x04, 0xD4, 0x28, 0x79, 0xC3, 0xB8, 0x37}};
 
 // returns nullptr on Windows without virtual desktops (e.g. Win7) or on failure.
-// COM is already initialized (ScopedOle in WinMain) by the time we call this.
+// COM is already initialized (AutoOleUninitialize in WinMain) by the time we call this.
 static ISumatraVirtualDesktopManager* CreateVirtualDesktopManager() {
     ISumatraVirtualDesktopManager* mgr = nullptr;
     CoCreateInstance(kClsidVirtualDesktopManager, nullptr, CLSCTX_ALL, kIidVirtualDesktopManager, (void**)&mgr);
@@ -17736,7 +17740,7 @@ int APIENTRY WinMain(_In_ HINSTANCE /*hInstance*/, _In_opt_ HINSTANCE /*hPrevIns
     InitializePolicies(flags.restrictedUse);
     InstallSumatraCrashHandler(flags.forTesting || flags.controlPipeName);
 
-    ScopedOle ole;
+    AutoOleUninitialize ole;
     if (FAILED(ole.hr)) {
         // the UI thread has to be an STA: PrintDlgEx, the shell file dialogs
         // and drag & drop all need one. Without it the Windows 11 unified print
@@ -17744,7 +17748,7 @@ int APIENTRY WinMain(_In_ HINSTANCE /*hInstance*/, _In_opt_ HINSTANCE /*hPrevIns
         logf("WinMain: OleInitialize() failed with 0x%08x\n", (uint)ole.hr);
     }
     InitAllCommonControls();
-    ScopedGdiPlus gdiPlus(true);
+    AutoGdiPlusShutdown gdiPlus(true);
 
     // when running a command-line tool (e.g. `info file.pdf`), keep logging off
     // the console so it doesn't contaminate the tool's stdout (issue #5677)
