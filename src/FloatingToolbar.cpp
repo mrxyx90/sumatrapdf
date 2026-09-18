@@ -19,6 +19,8 @@
 #include "AppSettings.h"
 #include "Selection.h"
 #include "TextSelection.h"
+#include "DisplayModel.h"
+#include "WindowTab.h"
 #include "MainWindow.h"
 #include "FloatingToolbar.h"
 #include "Theme.h"
