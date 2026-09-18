@@ -10,6 +10,7 @@
 #include "base/File.h"
 #include "base/WinDynCalls.h" // DWM corner prefs shim for mingw-w64 < 12
 #include <dwmapi.h>
+#include <shlobj.h>
 #include "base/Win.h"
 #include "base/GdiPlusUtil.h"
 #include "gui/Dpi.h"
@@ -552,23 +553,29 @@ void TakeScreenshotOfWindow(HWND hwnd) {
         return;
     }
 
-    TempStr screenshotDir = path::JoinTemp(Str((const char*)picturesPath), StrL("Sumatrapdf"));
+    WCHAR screenshotDir[MAX_PATH];
+    int n = _snwprintf_s(screenshotDir, dimof(screenshotDir), _TRUNCATE, L"%s\\Sumatrapdf", picturesPath);
     CoTaskMemFree(picturesPath);
-    if (len(screenshotDir) == 0 || !dir::CreateAll(screenshotDir)) {
+    if (n <= 0 || !CreateDirectoryW(screenshotDir, nullptr) && GetLastError() != ERROR_ALREADY_EXISTS) {
         DeleteObject(hbmp);
         return;
     }
 
-    TempStr basePath = path::JoinTemp(screenshotDir, StrL("screenshot.png"));
-    TempStr filePath = MakeUniqueFilePathTemp(basePath);
-    if (len(filePath) == 0) {
+    SYSTEMTIME st{};
+    GetLocalTime(&st);
+    WCHAR filePath[MAX_PATH];
+    n = _snwprintf_s(filePath, dimof(filePath), _TRUNCATE,
+                     L"%s\\screenshot_%04u%02u%02u_%02u%02u%02u_%03u.png",
+                     screenshotDir, st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond,
+                     st.wMilliseconds);
+    if (n <= 0) {
         DeleteObject(hbmp);
         return;
     }
 
     Gdiplus::Bitmap bitmap(hbmp, nullptr);
     CLSID pngClsid = GetGdiPlusEncoderClsid(WStrL(L"image/png"));
-    if (bitmap.Save(ToWStrTemp(filePath), &pngClsid, nullptr) != Gdiplus::Ok) {
+    if (bitmap.Save(filePath, &pngClsid, nullptr) != Gdiplus::Ok) {
         DeleteObject(hbmp);
         return;
     }
