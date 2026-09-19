@@ -620,10 +620,10 @@ void PaintSelection(MainWindow* win, Gfx* gfx) {
         alpha = kSelectionDefaultAlpha;
     }
     if (len(quadPts) > 0) {
-        PaintTransparentQuads(gfx, win->canvasRc, quadPts, parsedCol->col, alpha, /*drawBorder*/ true);
+        PaintTransparentQuads(gfx, win->canvasRc, quadPts, parsedCol->col, alpha, /*drawBorder*/ false);
     }
     if (len(rects) > 0) {
-        PaintTransparentRectangles(gfx, win->canvasRc, rects, parsedCol->col, alpha, 1, /*drawBorder*/ true);
+        PaintTransparentRectangles(gfx, win->canvasRc, rects, parsedCol->col, alpha, 1, /*drawBorder*/ false);
     }
     PaintTouchSelHandles(win, gfx);
 }
