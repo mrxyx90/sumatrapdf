@@ -3092,10 +3092,10 @@ static void CreateCaptionLayout(MainWindow* win) {
     win->captionRow1->AddChild(win->capDrag1, 1);
     win->captionRow1->AddChild(win->capGap);
     win->captionRow1->AddChild(win->capBtn[CB_MINIMIZE]);
-    win->captionRow1->AddChild(new Spacer(DpiScale(12), 0));
+    win->captionRow1->AddChild(new Spacer(DpiScale(14), 0));
     win->captionRow1->AddChild(win->capBtn[CB_MAXIMIZE]);
     win->captionRow1->AddChild(win->capBtn[CB_RESTORE]);
-    win->captionRow1->AddChild(new Spacer(DpiScale(12), 0));
+    win->captionRow1->AddChild(new Spacer(DpiScale(14), 0));
     win->captionRow1->AddChild(win->capBtn[CB_CLOSE]);
     win->captionRow1->AddChild(new Spacer(DpiScale(6), 0));
 
@@ -14068,9 +14068,9 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
                 bgCol = GdiRgbFromColor(hotBg);
             }
             SolidBrush bgBr(bgCol);
-            int x = rButton.x - DpiScale(6);
+            int x = rButton.x - DpiScale(7);
             int y = rButton.y;
-            int w = rButton.dx + DpiScale(12);
+            int w = rButton.dx + DpiScale(14);
             int h = rButton.dy;
             // leave the frame-border pixel visible at the outer top corner;
             // only the outer edge borders the frame, the bottom is interior
