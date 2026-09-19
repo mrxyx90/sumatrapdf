@@ -238,7 +238,7 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
     ShowWindow(tb->host->native, SW_SHOWNOACTIVATE);
 
     int x = fr.x + DpiScale(12);
-    int y = fr.y + DpiScale(60);
+    int y = fr.y + DpiScale(75);
 
     // When the application is resized, keep the toolbar anchored to the same
     // horizontal side of the frame. A toolbar in the left half keeps its
@@ -277,7 +277,7 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
     // restored position must never allow the popup outside the frame.
     int minX = fr.x + DpiScale(12);
     int maxX = std::max(minX, fr.x + fr.dx - w - DpiScale(12));
-    int minY = fr.y + DpiScale(60);
+    int minY = fr.y + DpiScale(75);
     int maxY = std::max(minY, fr.y + fr.dy - h - DpiScale(12));
     x = std::clamp(x, minX, maxX);
     y = std::clamp(y, minY, maxY);
@@ -343,7 +343,7 @@ static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
             RECT frame{};
             GetWindowRect(tb->win->hwndFrame, &frame);
             int minX = frame.left + DpiScale(12);
-            int minY = frame.top + DpiScale(60);
+            int minY = frame.top + DpiScale(75);
             int maxX = std::max<int>(minX, frame.right - tb->dragOrig.dx - DpiScale(12));
             int maxY = std::max<int>(minY, frame.bottom - tb->dragOrig.dy - DpiScale(12));
             int x = std::clamp(tb->dragOrig.x + dx, minX, maxX);
