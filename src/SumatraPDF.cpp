@@ -7553,7 +7553,7 @@ static void SyncCaptionLayout(MainWindow* win) {
     };
     setBtn(CB_SYSTEM_MENU, true, tabBtn);
     setBtn(CB_MENU, !twoRow, tabBtn);
-    setBtn(CB_HOME, true, tabBtn);
+    setBtn(CB_HOME, true, tabBtn + DpiScale(6));
     setBtn(CB_MINIMIZE, true, winBtn);
     setBtn(CB_MAXIMIZE, !maximized, winBtn);
     setBtn(CB_RESTORE, maximized, winBtn);
@@ -14134,7 +14134,7 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
     } else if (button == CB_HOME) {
         SolidBrush bgBrHome(GdiRgbFromColor(ThemeControlBackgroundColor()));
         gfx.FillRectangle(&bgBrHome, rButton.x, rButton.y, rButton.dx, rButton.dy);
-        int iconSize = DpiScale(16);
+        int iconSize = DpiScale(20);
         Color fg = ThemeWindowTextColor();
         Pixmap* px = GetCachedPixmapForSvg(Str(gIconHome), iconSize, iconSize, fg, ThemeControlBackgroundColor());
         if (px) {
