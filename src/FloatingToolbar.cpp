@@ -118,6 +118,33 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
         return;
     }
 
+    if (cmd == CmdCommandPalette) {
+        tb->commandPaletteAnimating = true;
+        SetTimer(tb->host->native, 1, 220, nullptr);
+        tb->host->Invalidate(false);
+        HwndPostCommand(tb->win->hwndFrame, cmd, 0);
+        return;
+    }
+
+    if (cmd == CmdScreenshot) {
+        TempStr savedPath = TakeScreenshotOfWindow(tb->win->hwndCanvas);
+        if (len(savedPath) > 0) {
+            str::Builder msg;
+            msg.Append(fmt("Saved screenshot to '%s'", savedPath));
+            NotificationCreateArgs args;
+            args.hwndParent = tb->win->hwndCanvas;
+            args.font = GetDefaultGuiFont();
+            args.timeoutMs = 5000;
+            args.msg = ToStr(msg);
+            args.plainText = true;
+            ShowNotification(args);
+        }
+        tb->screenshotAnimating = true;
+        SetTimer(tb->host->native, 1, 220, nullptr);
+        tb->host->Invalidate(false);
+        return;
+    }
+
     // If Edit PDF temporarily revealed the normal top toolbar, any other
     // floating-toolbar action should restore its previously hidden state.
     if (cmd != CmdToggleEditPDF && tb->win->floatingEditPdfRevealedToolbar) {
@@ -129,39 +156,27 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
         ScheduleUiUpdate(tb->win, kUiForceRelayout | kUiRelayout);
     }
 
-    if (cmd == CmdCommandPalette) {
-        tb->commandPaletteAnimating = true;
-        SetTimer(tb->host->native, 1, 220, nullptr);
-        tb->host->Invalidate(false);
-        HwndPostCommand(tb->win->hwndFrame, cmd, 0);
-        return;
-    }
-
-    if (cmd == CmdScreenshot) {
-        // Screenshot is independent from the annotation tools: keep the
-        // current tool selection and just invoke the screenshot command.
-        TempStr savedPath = TakeScreenshotOfWindow(tb->win->hwndCanvas);
-        if (len(savedPath) > 0) {
-            str::Builder msg;
-            msg.Append(fmt("Saved screenshot to '%s'", savedPath));
-            NotificationCreateArgs args;
-            args.hwndParent = tb->win->hwndCanvas;
-            args.font = GetDefaultGuiFont();
-            args.timeoutMs = 5000;
-            args.msg = ToStr(msg);
-            args.plainText = true; // the saved path is external text
-            ShowNotification(args);
+    // Fully deactivate any previously active tool before activating a new one
+    if (tb->activeCmdId != 0 && tb->activeCmdId != cmd) {
+        CancelAnnotationPlacement(tb->win);
+        if (tb->activeCmdId == CmdToggleEditPDF) {
+            if (tb->win->floatingEditPdfRevealedToolbar) {
+                tb->win->floatingEditPdfRevealedToolbar = false;
+                tb->win->isToolbarVisible = false;
+                if (tb->win->hwndToolbar) {
+                    ShowWindow(tb->win->hwndToolbar, SW_HIDE);
+                }
+                ScheduleUiUpdate(tb->win, kUiForceRelayout | kUiRelayout);
+            }
+            HwndPostCommand(tb->win->hwndFrame, CmdToggleEditPDF, 0);
         }
-        tb->screenshotAnimating = true;
-        SetTimer(tb->host->native, 1, 220, nullptr);
-        tb->host->Invalidate(false);
-        return;
+        tb->activeCmdId = 0;
     }
 
-    // Edit PDF can temporarily reveal the normal top toolbar when the user
-    // has it hidden. Only hide it again if this click was what revealed it.
-    if (cmd == CmdToggleEditPDF) {
-        if (tb->activeCmdId == cmd) {
+    // Clicking the already active tool again deactivates it
+    if (tb->activeCmdId == cmd) {
+        CancelAnnotationPlacement(tb->win);
+        if (cmd == CmdToggleEditPDF) {
             if (tb->win->floatingEditPdfRevealedToolbar) {
                 tb->win->floatingEditPdfRevealedToolbar = false;
                 tb->win->isToolbarVisible = false;
@@ -171,26 +186,20 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
                 ScheduleUiUpdate(tb->win, kUiForceRelayout | kUiRelayout);
             }
             HwndPostCommand(tb->win->hwndFrame, cmd, 0);
-            tb->activeCmdId = 0;
-            tb->host->Invalidate(false);
-            return;
         }
+        tb->activeCmdId = 0;
+        tb->host->Invalidate(false);
+        return;
+    }
 
+    // Edit PDF toggle handling
+    if (cmd == CmdToggleEditPDF) {
         if (!tb->win->isToolbarVisible && !tb->win->isToolbarOverlay && tb->win->hwndToolbar) {
             tb->win->floatingEditPdfRevealedToolbar = true;
             tb->win->isToolbarVisible = true;
             ShowWindow(tb->win->hwndToolbar, SW_SHOW);
             ScheduleUiUpdate(tb->win, kUiForceRelayout | kUiRelayout);
         }
-    }
-
-    // Tool buttons toggle their blue selection border and placement mode.
-    // Clicking the selected placement tool again cancels the active mode.
-    if (tb->activeCmdId == cmd) {
-        CancelAnnotationPlacement(tb->win);
-        tb->activeCmdId = 0;
-        tb->host->Invalidate(false);
-        return;
     }
 
     tb->activeCmdId = cmd;
