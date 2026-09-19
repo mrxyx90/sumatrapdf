@@ -3097,7 +3097,7 @@ static void CreateCaptionLayout(MainWindow* win) {
     win->captionRow1->AddChild(win->capBtn[CB_RESTORE]);
     win->captionRow1->AddChild(new Spacer(DpiScale(14), 0));
     win->captionRow1->AddChild(win->capBtn[CB_CLOSE]);
-    win->captionRow1->AddChild(new Spacer(DpiScale(6), 0));
+    win->captionRow1->AddChild(new Spacer(DpiScale(7), 0));
 
     // two-row tabs sit under the menu, stopping short of the window buttons
     win->captionRow2 = new HBox();
