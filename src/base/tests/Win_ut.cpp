@@ -110,7 +110,7 @@ static void RecolorLinkAaTest() {
     CheckLinkAaPixels(heap->data, 3);
     FreePixmap(heap);
 
-    // live page tiles are DIB-backed (UpdateBitmapColors)
+    // live page tiles are DIB-backed
     Pixmap* dib = AllocPixmapDIB(3, 1);
     utassert(dib && dib->data && dib->hbmp);
     FillLinkAaPixels(dib->data, 4);
@@ -220,7 +220,7 @@ static void BlitPixmapExactTest() {
         return dst;
     };
 
-    // DIB-backed: EngineMupdf print path (BlitPixmap -> BlitHBITMAP)
+    // DIB-backed: EngineMupdf print path
     Pixmap* dib = AllocPixmapDIB(w, h);
     utassert(dib && dib->data && dib->hbmp);
     FillBlitPattern(dib);

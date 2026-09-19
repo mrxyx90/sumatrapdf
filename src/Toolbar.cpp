@@ -3,7 +3,6 @@
 
 #include "base/Base.h"
 #include "gui/Dpi.h"
-#include "base/BitManip.h"
 #include "base/File.h"
 #include "base/Pixmap.h"
 #include "base/UITask.h"
@@ -3507,8 +3506,6 @@ void ReCreateToolbar(MainWindow* win) {
     CreateToolbar(win);
 }
 
-#if OS_WIN
-
 // What the toolbar still needs Win32 for, now that VirtHost owns its window:
 // the colors of the native page-number edit, dragging the frame by an empty
 // part of the toolbar, eating the click that dismissed a drop-down menu, and
@@ -3734,5 +3731,3 @@ static void OnToolbarNativeMsg(MainWindow* win, VirtHostNativeMsg* ev) {
 void ToolbarSetNativeHooks(MainWindow* win, VirtHost* host) {
     host->onNativeMsg = MkFunc1(OnToolbarNativeMsg, win);
 }
-
-#endif

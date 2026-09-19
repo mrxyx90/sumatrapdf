@@ -31,7 +31,6 @@
 #include "base/tests/UtAssert.h"
 
 // in src/base/tests/
-void AppendStoreTest();
 void BaseUtilTest();
 void ByteOrderTests();
 void ClipboardImageTest();
@@ -88,7 +87,6 @@ bool ShortcutParse_UnitTestShiftedPunct();
 bool AnnotSearch_UnitTests();
 void ReadAloudHighlight_UnitTests();
 
-#if OS_WIN
 static void ParseCommandLineTest() {
     {
         Flags i;
@@ -200,7 +198,6 @@ static void ParseCommandLineTest() {
         utassert(0 == len(i.fileNames));
     }
 }
-#endif
 
 static void BenchRangeTest() {
     utassert(IsBenchPagesInfo(StrL("1")));
@@ -394,9 +391,7 @@ static void SumatraPDF_UnitTests() {
     parseCommandsTest();
     colorTest();
     BenchRangeTest();
-#if OS_WIN
     ParseCommandLineTest();
-#endif
     versioncheck_test();
     hexstrTest();
 }
@@ -568,7 +563,6 @@ int RunAppUnitTests(bool forAi) {
     }
     printf("Running unit tests\n");
 
-    AppendStoreTest();
     BaseUtilTest();
     ByteOrderTests();
     ClipboardImageTest();
@@ -603,9 +597,7 @@ int RunAppUnitTests(bool forAi) {
 #if IS_DEBUG
     TextSelection_UnitTests();
     Layout_UnitTests();
-#if OS_WIN
     LayoutWin_UnitTests();
-#endif
     VirtCtrl_UnitTests();
     utassert(TableOfContents_UnitTestSnapshotNamedDest());
     utassert(MarkdownModel_UnitTestBrowserNavigationUrl());

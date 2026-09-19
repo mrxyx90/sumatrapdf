@@ -2,7 +2,6 @@
    License: Simplified BSD (see COPYING.BSD) */
 
 #include "base/Base.h"
-#if OS_WIN
 #include "base/File.h"
 #include "base/AutoWin.h"
 #include "base/Win.h"
@@ -57,7 +56,6 @@ BOOL WINAPI WinHttpCloseHandle(HINTERNET);
 #include <winhttp.h>
 #pragma comment(lib, "winhttp.lib")
 #endif
-#endif
 
 #include "base/Http.h"
 
@@ -77,19 +75,42 @@ bool IsHttpRspOk(const HttpRsp* rsp) {
     return true;
 }
 
-#if OS_WIN
-
 // per RFC 1945 10.15 and 3.7, a user agent product token shouldn't contain whitespace
 constexpr const WCHAR* kUserAgent = L"SumatraPdfHTTP";
 
 // returns false if failed to download or status code is not 200
 // for other scenarios, check HttpRsp
+// InternetOpen + InternetOpenUrl + status query. On failure both handles are
+// null and the caller reads GetLastError().
+static bool OpenHttpRequest(Str urlA, DWORD flags, HINTERNET* hInetOut, HINTERNET* hReqOut, DWORD* statusOut) {
+    *hInetOut = nullptr;
+    *hReqOut = nullptr;
+    HINTERNET hInet = InternetOpenW(kUserAgent, INTERNET_OPEN_TYPE_PRECONFIG, nullptr, nullptr, 0);
+    if (!hInet) {
+        logf("OpenHttpRequest: InternetOpen failed\n");
+        return false;
+    }
+    HINTERNET hReq = InternetOpenUrlW(hInet, CWStrTemp(urlA), nullptr, 0, flags, 0);
+    DWORD size = sizeof(DWORD);
+    if (!hReq || !HttpQueryInfoW(hReq, HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER, statusOut, &size, nullptr)) {
+        logf("OpenHttpRequest: %s failed\n", hReq ? StrL("HttpQueryInfoW") : StrL("InternetOpenUrl"));
+        DWORD err = GetLastError();
+        if (hReq) {
+            InternetCloseHandle(hReq);
+        }
+        InternetCloseHandle(hInet);
+        SetLastError(err);
+        return false;
+    }
+    *hInetOut = hInet;
+    *hReqOut = hReq;
+    return true;
+}
+
 bool HttpGet(Str urlA, HttpRsp* rspOut) {
     logf("HttpGet: url: '%s'\n", urlA);
     HINTERNET hReq = nullptr;
-    DWORD infoLevel;
-    DWORD headerBuffSize = sizeof(DWORD);
-    WCHAR* url = CWStrTemp(urlA);
+    HINTERNET hInet = nullptr;
     // NB: do NOT add INTERNET_FLAG_IGNORE_CERT_CN_INVALID here - it disables TLS
     // hostname validation, letting a network attacker with any trusted cert
     // impersonate our update-check / crash-symbol hosts (GHSA-mjwr-9w29-jp96).
@@ -100,23 +121,7 @@ bool HttpGet(Str urlA, HttpRsp* rspOut) {
     }
 
     rspOut->error = ERROR_SUCCESS;
-    HINTERNET hInet = InternetOpenW(kUserAgent, INTERNET_OPEN_TYPE_PRECONFIG, nullptr, nullptr, 0);
-    if (!hInet) {
-        logf("HttpGet: InternetOpen failed\n");
-        LogLastError();
-        goto Error;
-    }
-
-    hReq = InternetOpenUrlW(hInet, url, nullptr, 0, flags, 0);
-    if (!hReq) {
-        logf("HttpGet: InternetOpenUrl failed\n");
-        LogLastError();
-        goto Error;
-    }
-
-    infoLevel = HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER;
-    if (!HttpQueryInfoW(hReq, infoLevel, &rspOut->httpStatusCode, &headerBuffSize, nullptr)) {
-        logf("HttpGet: HttpQueryInfoW failed\n");
+    if (!OpenHttpRequest(urlA, flags, &hInet, &hReq, &rspOut->httpStatusCode)) {
         LogLastError();
         goto Error;
     }
@@ -166,9 +171,7 @@ bool HttpGetToFile(Str urlA, Str destFilePath, const Func1<HttpProgress*>& cbPro
     bool ok = false;
     HINTERNET hReq = nullptr, hInet = nullptr;
     DWORD dwRead = 0;
-    DWORD headerBuffSize = sizeof(DWORD);
     DWORD statusCode = 0;
-    WCHAR* url = CWStrTemp(urlA);
     char* buf = nullptr;
 
     HttpProgress progress{};
@@ -187,21 +190,7 @@ bool HttpGetToFile(Str urlA, Str destFilePath, const Func1<HttpProgress*>& cbPro
         goto Exit;
     }
 
-    hInet = InternetOpenW(kUserAgent, INTERNET_OPEN_TYPE_PRECONFIG, nullptr, nullptr, 0);
-    if (!hInet) {
-        goto Exit;
-    }
-
-    hReq = InternetOpenUrlW(hInet, url, nullptr, 0, 0, 0);
-    if (!hReq) {
-        goto Exit;
-    }
-
-    if (!HttpQueryInfoW(hReq, HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER, &statusCode, &headerBuffSize, nullptr)) {
-        goto Exit;
-    }
-
-    if (statusCode != 200) {
+    if (!OpenHttpRequest(urlA, 0, &hInet, &hReq, &statusCode) || statusCode != 200) {
         goto Exit;
     }
 
@@ -241,97 +230,6 @@ Exit:
         file::Delete(destFilePath);
     }
     free(buf);
-    return ok;
-}
-
-bool HttpPost(Str serverA, int port, Str urlA, str::Builder* headers, str::Builder* data) {
-    str::Builder resp;
-    str::BuilderReserve(resp, 2048);
-    bool ok = false;
-    char* hdr = nullptr;
-    DWORD hdrLen = 0;
-    HINTERNET hConn = nullptr, hReq = nullptr;
-    void* d = nullptr;
-    DWORD dLen = 0;
-    unsigned int timeoutMs = 15 * 1000;
-    DWORD respHttpCode = 0;
-    DWORD respHttpCodeSize = sizeof(respHttpCode);
-    DWORD dwRead = 0;
-    DWORD flags;
-    DWORD dwService;
-    WCHAR* server = CWStrTemp(serverA);
-    WCHAR* url = CWStrTemp(urlA);
-    DWORD infoLevel;
-
-    DWORD accessType = INTERNET_OPEN_TYPE_PRECONFIG;
-    HINTERNET hInet = InternetOpenW(kUserAgent, accessType, nullptr, nullptr, 0);
-    if (!hInet) {
-        goto Exit;
-    }
-    dwService = INTERNET_SERVICE_HTTP;
-    hConn = InternetConnectW(hInet, server, (INTERNET_PORT)port, nullptr, nullptr, dwService, 0, 1);
-    if (!hConn) {
-        goto Exit;
-    }
-
-    flags = INTERNET_FLAG_NO_UI;
-    if (port == 443) {
-        flags |= INTERNET_FLAG_SECURE;
-    }
-    hReq = HttpOpenRequestW(hConn, L"POST", url, nullptr, nullptr, nullptr, flags, 0);
-    if (!hReq) {
-        goto Exit;
-    }
-
-    if (headers && len(*headers) > 0) {
-        hdr = ToStr(*headers).s;
-        hdrLen = (DWORD)len(*headers);
-    }
-    if (data && len(*data) > 0) {
-        d = ToStr(*data).s;
-        dLen = (DWORD)len(*data);
-    }
-
-    InternetSetOptionW(hReq, INTERNET_OPTION_SEND_TIMEOUT, &timeoutMs, sizeof(timeoutMs));
-    InternetSetOptionW(hReq, INTERNET_OPTION_RECEIVE_TIMEOUT, &timeoutMs, sizeof(timeoutMs));
-
-    if (!HttpSendRequestA(hReq, hdr, hdrLen, d, dLen)) {
-        goto Exit;
-    }
-
-    infoLevel = HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER;
-    HttpQueryInfoW(hReq, infoLevel, &respHttpCode, &respHttpCodeSize, nullptr);
-
-    do {
-        char buf[1024];
-        if (!InternetReadFile(hReq, buf, sizeof(buf), &dwRead)) {
-            goto Exit;
-        }
-        ok = resp.Append(Str(buf, (int)dwRead));
-        if (!ok) {
-            goto Exit;
-        }
-    } while (dwRead > 0);
-
-#if 0
-    // it looks like I should be calling HttpEndRequest(), but it always claims
-    // a timeout even though the data has been sent, received and we get HTTP 200
-    if (!HttpEndRequest(hReq, nullptr, 0, 0)) {
-        LogLastError();
-        goto Exit;
-    }
-#endif
-    ok = (200 == respHttpCode);
-Exit:
-    if (hReq) {
-        InternetCloseHandle(hReq);
-    }
-    if (hConn) {
-        InternetCloseHandle(hConn);
-    }
-    if (hInet) {
-        InternetCloseHandle(hInet);
-    }
     return ok;
 }
 
@@ -481,5 +379,3 @@ Exit2:
     }
     return ok;
 }
-
-#endif

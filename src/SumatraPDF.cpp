@@ -5560,7 +5560,7 @@ bool SaveAnnotationsToMaybeNewPdfFile(WindowTab* tab) {
 
     OPENFILENAME ofn{};
     str::Builder fileFilter;
-    str::BuilderReserve(fileFilter, 256);
+    fileFilter.Reserve(256);
     fileFilter.Append(Tr("PDF documents"));
     fileFilter.Append(StrL("\1*.pdf\1"));
     fileFilter.Append(StrL("\1*.*\1"));
@@ -6182,7 +6182,7 @@ static void SaveCurrentFileAs(MainWindow* win) {
     // double-zero terminated string isn't cut by the string handling
     // methods too early on)
     str::Builder fileFilter;
-    str::BuilderReserve(fileFilter, 256);
+    fileFilter.Reserve(256);
     if (AppendFileFilterForDoc(ctrl, fileFilter)) {
         fileFilter.Append(fmt("\1*%s\1", defExt));
     }
@@ -6483,7 +6483,7 @@ static void RenameCurrentFile(MainWindow* win) {
     Str defExt = ctrl->GetDefaultFileExt();
     TempWStr defExtW = ToWStrTemp(defExt);
     str::Builder fileFilter;
-    str::BuilderReserve(fileFilter, 256);
+    fileFilter.Reserve(256);
     bool ok = AppendFileFilterForDoc(ctrl, fileFilter);
     ReportIf(!ok);
     fileFilter.Append(fmt("\1*%s\1", defExt));
@@ -10994,7 +10994,7 @@ static Str ManualInjectThemeCss(Str html) {
         insertAt = 0;
     }
     str::Builder result;
-    str::BuilderReserve(result, len(html) + len(css));
+    result.Reserve(len(html) + len(css));
     result.Append(Str(html.s, insertAt));
     result.Append(css);
     result.Append(Str(html.s + insertAt, len(html) - insertAt));
@@ -11402,7 +11402,7 @@ static Annotation* CreateImageStampAnnotation(MainWindow* win, WindowTab* tab, D
 static TempStr PickImageFilePathTemp(HWND hwnd) {
     WCHAR pathW[MAX_PATH + 1]{};
     str::Builder fileFilter;
-    str::BuilderReserve(fileFilter, 256);
+    fileFilter.Reserve(256);
     fileFilter.Append(Tr("Image files"));
     fileFilter.Append(StrL("\1*.png;*.jpg;*.jpeg;*.jfif;*.bmp;*.gif;*.tif;*.tiff;*.webp;*.heic;*.heif;*.ico\1"));
     fileFilter.Append(Tr("All files"));
@@ -16049,7 +16049,6 @@ static void ShutdownCommon() {
     uitask::Destroy();
     FreeLibsumatrapdfDll();
     UninstallCrashHandler();
-    dbghelp::FreeCallstackLogs();
 }
 
 static void ReplaceColor(ParsedColor& col, Str maybeColor) {
@@ -17508,7 +17507,6 @@ void CrashHandlerSetSettings(Str settings) {
 // so we do not need a hard link for every tool that builds CrashHandlerNoOp.
 // libsumatrapdf.dll (or the static main module) exports fz_last_uncaught_error.
 static const char* LookupUncaughtMupdfError() {
-#if OS_WIN
     using Fn = const char* (*)();
     HMODULE modules[2] = {
         GetModuleHandleW(L"libsumatrapdf.dll"),
@@ -17526,7 +17524,6 @@ static const char* LookupUncaughtMupdfError() {
             }
         }
     }
-#endif
     return nullptr;
 }
 
@@ -18056,7 +18053,6 @@ int APIENTRY WinMain(_In_ HINSTANCE /*hInstance*/, _In_opt_ HINSTANCE /*hPrevIns
         ShowPrintersDialog(flags.silent || flags.showConsole);
         goto Exit;
     }
-    FileWatcherInit();
 
     if (flags.testRenderPage) {
         TestRenderPage(flags);
@@ -18587,8 +18583,6 @@ Exit:
 
     FileWatcherWaitForShutdown();
     delete gRenderCache;
-    SaveCallstackLogs();
-    dbghelp::FreeCallstackLogs();
 
     // must be after uitask::Destroy() because we might have queued ReloadSettings()
     // which crashes if gSettings is freed

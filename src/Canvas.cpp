@@ -2,7 +2,6 @@
    License: GPLv3 */
 
 #include "base/Base.h"
-#include "base/BitManip.h"
 #include "base/WinDynCalls.h"
 #include "gui/Dpi.h"
 #include "base/File.h"
@@ -4283,7 +4282,7 @@ static bool gWheelZoomRelative = true;
 // we guess this is part of continous zoom action if WM_MOUSEWHEEL
 static bool IsFirstWheelMsg(LARGE_INTEGER& lastTime) {
     auto currTime = TimeGet();
-    auto elapsedMs = TimeDiffMs(lastTime, currTime);
+    auto elapsedMs = TimeSinceInMs(lastTime);
     // 150 ms is a heuristic based on looking at logs
     if (elapsedMs < 150.0) {
         // logf("IsFirstWheelMsg: no, elapsed: %.f\n", (float)elapsedMs);
