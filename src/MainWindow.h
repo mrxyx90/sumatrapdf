@@ -64,7 +64,7 @@ struct FindMatch {
 constexpr float kCaptionTabBarDyFactor = 1.0f;
 
 // gap in pixels between top of caption and tabs; this area allows dragging the window
-constexpr int kCaptionTopPadding = 1;
+constexpr int kCaptionTopPadding = 0;
 
 enum CaptionButtons {
     CB_BTN_FIRST = 0,

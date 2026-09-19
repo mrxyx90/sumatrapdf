@@ -3083,7 +3083,7 @@ static void CreateCaptionLayout(MainWindow* win) {
     // single row: sys | menu | tabs | gap | min | max/restore | close
     // two row:     sys | menu hwnd | drag | min | max/restore | close
     win->captionRow1 = new HBox();
-    win->captionRow1->alignCross = CrossAxisAlign::CrossStart;
+    win->captionRow1->alignCross = CrossAxisAlign::CrossEnd;
     win->captionRow1->AddChild(win->capBtn[CB_SYSTEM_MENU]);
     win->captionRow1->AddChild(win->capBtn[CB_MENU]);
     win->captionRow1->AddChild(win->capBtn[CB_HOME]);

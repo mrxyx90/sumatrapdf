@@ -223,7 +223,7 @@ static int GetFloatingToolbarMinY(MainWindow* win, int frameTop) {
     } else if (!win->captionRect.IsEmpty()) {
         topConstraint = frameTop + win->captionRect.y + win->captionRect.dy;
     }
-    return topConstraint + DpiScale(5);
+    return topConstraint + DpiScale(10);
 }
 
 static void PositionFloatingToolbar(FloatingToolbar* tb) {
