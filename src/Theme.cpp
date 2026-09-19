@@ -856,7 +856,7 @@ static void UpdateGuiColorsFromTheme() {
     gColsRichText[kColRichBg] = ctlBg;
 
     gColsTab[kColTabText] = text;
-    gColsTab[kColTabBg] = ThemeInactiveTabBackgroundColor();
+    gColsTab[kColTabBg] = ThemeActiveTabBackgroundColor();
     gColsTab[kColTabInactiveBg] = ThemeInactiveTabBackgroundColor();
 
     // custom top-level windows (dialogs, popups) sit their content on ctlBg,
