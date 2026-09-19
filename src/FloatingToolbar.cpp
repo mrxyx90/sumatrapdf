@@ -23,6 +23,7 @@
 #include "ScreenshotCapture.h"
 #include "AnnotPlacement.h"
 #include "Theme.h"
+#include "Notifications.h"
 
 constexpr const WCHAR* kFloatingToolbarClassName = L"SumatraFloatingToolbar";
 constexpr int kFloatingToolbarIconSize = 22;
@@ -61,7 +62,6 @@ struct FloatingToolbar {
     Rect dragOrig;
     int activeCmdId = 0;
     bool screenshotAnimating = false;
-    HWND screenshotToast = nullptr;
 };
 
 static Color FloatingBg() {
@@ -107,106 +107,6 @@ struct FloatingIconButton : VirtIconButton {
     }
 };
 
-struct ScreenshotToastData {
-    FloatingToolbar* toolbar = nullptr;
-    TempStr fileName;
-};
-
-static LRESULT CALLBACK ScreenshotToastWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
-    auto* data = (ScreenshotToastData*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
-    switch (msg) {
-    case WM_NCCREATE: {
-        auto* cs = (CREATESTRUCTW*)lp;
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)cs->lpCreateParams);
-        return TRUE;
-    }
-    case WM_TIMER:
-        if (wp == 1) {
-            KillTimer(hwnd, 1);
-            if (data && data->toolbar && data->toolbar->screenshotToast == hwnd) {
-                data->toolbar->screenshotToast = nullptr;
-            }
-            DestroyWindow(hwnd);
-            return 0;
-        }
-        break;
-    case WM_PAINT: {
-        PAINTSTRUCT ps{};
-        HDC hdc = BeginPaint(hwnd, &ps);
-        RECT rc{};
-        GetClientRect(hwnd, &rc);
-        FillRect(hdc, &rc, (HBRUSH)(COLOR_WINDOW + 1));
-        FrameRect(hdc, &rc, (HBRUSH)(COLOR_WINDOWFRAME + 1));
-        SetBkMode(hdc, TRANSPARENT);
-        SetTextColor(hdc, GetSysColor(COLOR_WINDOWTEXT));
-        DrawTextW(hdc, L"✓ Screenshot saved", -1, &rc, DT_CENTER | DT_TOP | DT_SINGLELINE);
-        if (data) {
-            WStr wFileName = ToWStrTemp(data->fileName);
-            RECT fileRc = rc;
-            fileRc.top += 24;
-            DrawTextW(hdc, CWStrTemp(wFileName), -1, &fileRc, DT_CENTER | DT_END_ELLIPSIS | DT_SINGLELINE);
-        }
-        EndPaint(hwnd, &ps);
-        return 0;
-    }
-    case WM_NCHITTEST:
-        return HTTRANSPARENT;
-    case WM_NCDESTROY:
-        delete data;
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
-        return 0;
-    }
-    return DefWindowProcW(hwnd, msg, wp, lp);
-}
-
-static void ShowScreenshotToast(FloatingToolbar* tb, Str fileName) {
-    if (!tb || len(fileName) == 0) {
-        return;
-    }
-    if (tb->screenshotToast) {
-        DestroyWindow(tb->screenshotToast);
-        tb->screenshotToast = nullptr;
-    }
-
-    static bool registered = false;
-    constexpr const WCHAR* kToastClassName = L"SumatraFloatingScreenshotToast";
-    if (!registered) {
-        WNDCLASSEXW wc{};
-        wc.cbSize = sizeof(wc);
-        wc.lpfnWndProc = ScreenshotToastWndProc;
-        wc.hInstance = GetModuleHandleW(nullptr);
-        wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-        wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-        wc.lpszClassName = kToastClassName;
-        if (RegisterClassExW(&wc) || GetLastError() == ERROR_CLASS_ALREADY_EXISTS) {
-            registered = true;
-        }
-    }
-    if (!registered) {
-        return;
-    }
-
-    auto* data = new ScreenshotToastData();
-    data->toolbar = tb;
-    data->fileName = str::Dup(fileName);
-    HWND hwnd = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, kToastClassName, nullptr,
-                                WS_POPUP | WS_BORDER, 0, 0, 300, 52, tb->win->hwndFrame,
-                                nullptr, GetModuleHandleW(nullptr), data);
-    if (!hwnd) {
-        str::Free(data->fileName);
-        delete data;
-        return;
-    }
-
-    RECT frame{};
-    GetWindowRect(tb->win->hwndFrame, &frame);
-    int x = frame.left + ((frame.right - frame.left) - 300) / 2;
-    int y = frame.bottom - 90;
-    SetWindowPos(hwnd, HWND_TOP, x, y, 300, 52, SWP_NOACTIVATE | SWP_SHOWWINDOW);
-    tb->screenshotToast = hwnd;
-    SetTimer(hwnd, 1, 1000, nullptr);
-}
-
 static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
     if (!tb || !ev || !ev->target) {
         return;
@@ -232,11 +132,15 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
         // current tool selection and just invoke the screenshot command.
         TempStr savedPath = TakeScreenshotOfWindow(tb->win->hwndCanvas);
         if (len(savedPath) > 0) {
-            WStr wPath = ToWStrTemp(savedPath);
-            WCHAR* path = CWStrTemp(wPath);
-            const WCHAR* fileName = wcsrchr(path, L'\\');
-            fileName = fileName ? fileName + 1 : path;
-            ShowScreenshotToast(tb, ToUtf8Temp(WStr(fileName)));
+            str::Builder msg;
+            msg.Append(fmt(Tr("Saved screenshot to '%s'").s, savedPath));
+            NotificationCreateArgs args;
+            args.hwndParent = tb->win->hwndCanvas;
+            args.font = GetDefaultGuiFont();
+            args.timeoutMs = 5000;
+            args.msg = ToStr(msg);
+            args.plainText = true; // the saved path is external text
+            ShowNotification(args);
         }
         tb->screenshotAnimating = true;
         SetTimer(tb->host->native, 1, 220, nullptr);
