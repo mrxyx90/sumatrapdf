@@ -120,7 +120,7 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
 
     if (cmd == CmdCommandPalette) {
         tb->commandPaletteAnimating = true;
-        SetTimer(tb->host->native, 1, 220, nullptr);
+        SetTimer(tb->host->native, 1, 300, nullptr);
         tb->host->Invalidate(false);
         HwndPostCommand(tb->win->hwndFrame, cmd, 0);
         return;
@@ -140,7 +140,7 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
             ShowNotification(args);
         }
         tb->screenshotAnimating = true;
-        SetTimer(tb->host->native, 1, 220, nullptr);
+        SetTimer(tb->host->native, 1, 300, nullptr);
         tb->host->Invalidate(false);
         return;
     }
