@@ -60,6 +60,7 @@ struct FloatingToolbar {
     POINT dragStart{};
     Rect dragOrig;
     int activeCmdId = 0;
+    bool screenshotAnimating = false;
 };
 
 static Color FloatingBg() {
@@ -85,7 +86,8 @@ struct FloatingIconButton : VirtIconButton {
 
     void Paint(VirtPaintCtx& ctx) override {
         bool active = toolbar && toolbar->activeCmdId == id;
-        if (active) {
+        bool screenshotFlash = toolbar && toolbar->screenshotAnimating && id == CmdScreenshot;
+        if (active || screenshotFlash) {
             // Use the same solid blue selection treatment as the reference
             // toolbar. The selected button remains clearly active without
             // changing which tool is selected.
@@ -121,6 +123,9 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
         // Screenshot is independent from the annotation tools: keep the
         // current tool selection and just invoke the screenshot command.
         TakeScreenshotOfWindow(tb->win->hwndCanvas);
+        tb->screenshotAnimating = true;
+        SetTimer(tb->host->native, 1, 220, nullptr);
+        tb->host->Invalidate(false);
         return;
     }
 
@@ -288,6 +293,14 @@ static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
     }
 
     switch (ev->msg) {
+    case WM_TIMER:
+        if (ev->wp == 1) {
+            KillTimer(tb->host->native, 1);
+            tb->screenshotAnimating = false;
+            tb->host->Invalidate(false);
+            ev->didHandle = true;
+        }
+        break;
     case WM_LBUTTONDOWN: {
         Point p(GET_X_LPARAM(ev->lp), GET_Y_LPARAM(ev->lp));
         ILayout* hit = ElementFromPoint(tb->host->vroot, p);
