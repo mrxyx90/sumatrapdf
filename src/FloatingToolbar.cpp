@@ -134,7 +134,7 @@ static LRESULT CALLBACK ScreenshotToastWndProc(HWND hwnd, UINT msg, WPARAM wp, L
         SetTextColor(hdc, GetSysColor(COLOR_WINDOWTEXT));
         DrawTextW(hdc, L"✓ Screenshot saved", -1, &rc, DT_CENTER | DT_TOP | DT_SINGLELINE);
         if (data) {
-            TempStr wFileName = ToWStrTemp(data->fileName);
+            WStr wFileName = ToWStrTemp(data->fileName);
             RECT fileRc = rc;
             fileRc.top += 24;
             DrawTextW(hdc, wFileName, -1, &fileRc, DT_CENTER | DT_END_ELLIPSIS | DT_SINGLELINE);
@@ -153,7 +153,7 @@ static LRESULT CALLBACK ScreenshotToastWndProc(HWND hwnd, UINT msg, WPARAM wp, L
 }
 
 static void ShowScreenshotToast(FloatingToolbar* tb, Str fileName) {
-    if (!tb || !fileName) {
+    if (!tb || len(fileName) == 0) {
         return;
     }
     if (tb->screenshotToast) {
@@ -224,8 +224,11 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
         // Screenshot is independent from the annotation tools: keep the
         // current tool selection and just invoke the screenshot command.
         TempStr savedPath = TakeScreenshotOfWindow(tb->win->hwndCanvas);
-        if (savedPath) {
-            ShowScreenshotToast(tb, path::GetBaseNameTemp(savedPath));
+        if (len(savedPath) > 0) {
+            WStr wPath = ToWStrTemp(savedPath);
+            const WCHAR* fileName = wcsrchr(wPath, L'\\');
+            fileName = fileName ? fileName + 1 : wPath;
+            ShowScreenshotToast(tb, ToUtf8Temp(fileName));
         }
         tb->screenshotAnimating = true;
         SetTimer(tb->host->native, 1, 220, nullptr);
