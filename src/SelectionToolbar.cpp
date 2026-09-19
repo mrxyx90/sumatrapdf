@@ -386,13 +386,11 @@ static void InvokeSelectionToolbarCommand(SelectionToolbar* tb, int cmdId) {
     }
     MainWindow* win = tb->win;
     LPARAM commandPoint = 0;
-    if (cmdId == CmdCreateAnnotText) {
-        Point selectionEnd;
-        if (GetSelectionEndPoint(win, selectionEnd)) {
-            commandPoint = MAKELPARAM(selectionEnd.x, selectionEnd.y);
-        }
-        DeleteOldSelectionInfo(win, true);
+    Point selectionEnd;
+    if (GetSelectionEndPoint(win, selectionEnd)) {
+        commandPoint = MAKELPARAM(selectionEnd.x, selectionEnd.y);
     }
+    DeleteOldSelectionInfo(win, true);
     HideSelectionToolbar(win);
     tb->dismissed = true;
 
