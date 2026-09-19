@@ -207,7 +207,7 @@ void TabCtrl::SetBounds(Rect r) {
 // like Chrome: only the selected tab shows (and hit-tests) its ✕, so a click
 // on a non-selected tab always selects it and can't accidentally close it
 bool TabCtrl::CloseVisible() {
-    return ti->canClose && IsSelected();
+    return ti->canClose && (IsSelected() || IsUnderMouse());
 }
 
 void TabCtrl::Paint(VirtPaintCtx& ctx) {
