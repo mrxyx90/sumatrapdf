@@ -212,6 +212,20 @@ static void MoveFloatingToolbar(FloatingToolbar* tb, Rect r) {
     SetWindowPos(tb->host->native, HWND_TOP, r.x, r.y, r.dx, r.dy, SWP_NOACTIVATE);
 }
 
+static int GetFloatingToolbarMinY(MainWindow* win, int frameTop) {
+    int topConstraint = frameTop;
+    if (win->hwndToolbar && IsWindowVisible(win->hwndToolbar)) {
+        RECT tr{};
+        GetWindowRect(win->hwndToolbar, &tr);
+        POINT pt{tr.left, tr.bottom};
+        ScreenToClient(win->hwndFrame, &pt);
+        topConstraint = frameTop + pt.y;
+    } else if (!win->captionRect.IsEmpty()) {
+        topConstraint = frameTop + win->captionRect.y + win->captionRect.dy;
+    }
+    return topConstraint + DpiScale(5);
+}
+
 static void PositionFloatingToolbar(FloatingToolbar* tb) {
     if (!tb || !tb->host) {
         return;
@@ -237,8 +251,9 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
     }
     ShowWindow(tb->host->native, SW_SHOWNOACTIVATE);
 
+    int minY = GetFloatingToolbarMinY(tb->win, fr.y);
     int x = fr.x + DpiScale(12);
-    int y = fr.y + DpiScale(75);
+    int y = minY;
 
     // When the application is resized, keep the toolbar anchored to the same
     // horizontal side of the frame. A toolbar in the left half keeps its
@@ -277,7 +292,6 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
     // restored position must never allow the popup outside the frame.
     int minX = fr.x + DpiScale(12);
     int maxX = std::max(minX, fr.x + fr.dx - w - DpiScale(12));
-    int minY = fr.y + DpiScale(75);
     int maxY = std::max(minY, fr.y + fr.dy - h - DpiScale(12));
     x = std::clamp(x, minX, maxX);
     y = std::clamp(y, minY, maxY);
@@ -343,7 +357,7 @@ static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
             RECT frame{};
             GetWindowRect(tb->win->hwndFrame, &frame);
             int minX = frame.left + DpiScale(12);
-            int minY = frame.top + DpiScale(75);
+            int minY = GetFloatingToolbarMinY(tb->win, frame.top);
             int maxX = std::max<int>(minX, frame.right - tb->dragOrig.dx - DpiScale(12));
             int maxY = std::max<int>(minY, frame.bottom - tb->dragOrig.dy - DpiScale(12));
             int x = std::clamp(tb->dragOrig.x + dx, minX, maxX);

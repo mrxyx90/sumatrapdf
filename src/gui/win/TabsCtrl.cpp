@@ -223,6 +223,13 @@ void TabCtrl::Paint(VirtPaintCtx& ctx) {
 
     gfx->FillRect(r, tabBgCol);
 
+    if (!IsSelected() && tabsCtrl) {
+        int idx = Idx();
+        if (idx + 1 != tabsCtrl->GetSelected()) {
+            gfx->FillRect({r.x + r.dx - 1, r.y + DpiScale(6), 1, r.dy - DpiScale(12)}, AccentColor(tabBgCol, 35));
+        }
+    }
+
     bool isRtl = IsTabsRtl(hwnd);
     PlatformFont* font = tabsCtrl->GetFont();
 
