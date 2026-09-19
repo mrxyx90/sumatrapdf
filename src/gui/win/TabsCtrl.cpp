@@ -1012,7 +1012,7 @@ LRESULT TabsCtrl::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 return 0;
             }
             HDC hdc = GetDC(hwnd);
-            Color bgCol = GetColor(kColTabBg);
+            Color bgCol = GetColor(kColTabInactiveBg);
             if (vroot) {
                 PaintVirtTree(vroot, hdc, clientRc, bgCol);
             } else {
