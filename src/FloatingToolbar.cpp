@@ -133,7 +133,7 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
         TempStr savedPath = TakeScreenshotOfWindow(tb->win->hwndCanvas);
         if (len(savedPath) > 0) {
             str::Builder msg;
-            msg.Append(fmt(Tr("Saved screenshot to '%s'").s, savedPath));
+            msg.Append(fmt("Saved screenshot to '%s'", savedPath));
             NotificationCreateArgs args;
             args.hwndParent = tb->win->hwndCanvas;
             args.font = GetDefaultGuiFont();
