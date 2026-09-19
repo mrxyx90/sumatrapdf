@@ -3092,12 +3092,12 @@ static void CreateCaptionLayout(MainWindow* win) {
     win->captionRow1->AddChild(win->capDrag1, 1);
     win->captionRow1->AddChild(win->capGap);
     win->captionRow1->AddChild(win->capBtn[CB_MINIMIZE]);
-    win->captionRow1->AddChild(new Spacer(DpiScale(4), 0));
+    win->captionRow1->AddChild(new Spacer(DpiScale(6), 0));
     win->captionRow1->AddChild(win->capBtn[CB_MAXIMIZE]);
     win->captionRow1->AddChild(win->capBtn[CB_RESTORE]);
-    win->captionRow1->AddChild(new Spacer(DpiScale(4), 0));
-    win->captionRow1->AddChild(win->capBtn[CB_CLOSE]);
     win->captionRow1->AddChild(new Spacer(DpiScale(6), 0));
+    win->captionRow1->AddChild(win->capBtn[CB_CLOSE]);
+    win->captionRow1->AddChild(new Spacer(DpiScale(8), 0));
 
     // two-row tabs sit under the menu, stopping short of the window buttons
     win->captionRow2 = new HBox();
@@ -14055,9 +14055,9 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
                 bgCol = GdiRgbFromColor(hotBg);
             }
             SolidBrush bgBr(bgCol);
-            int x = rButton.x - DpiScale(2);
+            int x = rButton.x - DpiScale(3);
             int y = rButton.y;
-            int w = rButton.dx + DpiScale(4);
+            int w = rButton.dx + DpiScale(6);
             int h = rButton.dy;
             // leave the frame-border pixel visible at the outer top corner;
             // only the outer edge borders the frame, the bottom is interior
