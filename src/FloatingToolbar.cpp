@@ -95,7 +95,7 @@ struct FloatingIconButton : VirtIconButton {
             ctx.gfx->FillRoundedRect(ctx.bounds, DpiScale(6), hoverBg);
         }
         if (active || screenshotFlash) {
-            ctx.gfx->FillRoundedRect(ctx.bounds, DpiScale(6), 0xff3e5368);
+            ctx.gfx->FillRoundedRect(ctx.bounds, DpiScale(6), MkRgb(0x3e, 0x53, 0x68));
         }
 
         if (pixmap) {
