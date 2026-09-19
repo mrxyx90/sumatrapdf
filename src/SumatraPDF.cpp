@@ -14140,7 +14140,8 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
         if (px) {
             int x = rButton.x + (rButton.dx - px->width) / 2;
             int y = rButton.y + (rButton.dy - px->height) / 2;
-            HwndDrawPixmap(hdc, px, x, y);
+            GfxHdc hdcGfx(hdc);
+            hdcGfx.DrawPixmap(px, {x, y, px->width, px->height});
         }
     }
 }

@@ -952,13 +952,5 @@ void OpenHomeTab(MainWindow* win) {
     WindowTab* homeTab = new WindowTab(win);
     homeTab->type = WindowTab::Type::About;
     homeTab->canvasRc = win->canvasRc;
-    TabInfo* newTab = new TabInfo();
-    newTab->text = str::Dup(StrL("Home"));
-    newTab->tooltip = {};
-    newTab->isPinned = true;
-    newTab->canClose = true;
-    newTab->userData = (UINT_PTR)homeTab;
-    int insertedIdx = win->tabsCtrl->InsertTab(0, newTab, true);
-    win->InsertTab(0, homeTab);
-    TabsSelect(win, insertedIdx);
+    AddTabToWindow(win, homeTab);
 }
