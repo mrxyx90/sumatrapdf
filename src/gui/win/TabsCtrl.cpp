@@ -13,6 +13,7 @@
 #include "gui/Gfx.h"
 #include "gui/GuiColors.h"
 #include "gui/VirtCtrl.h"
+#include "Theme.h"
 #include "gui/win/TabsCtrl.h"
 
 // Forward declaration - defined in MainWindow.cpp
