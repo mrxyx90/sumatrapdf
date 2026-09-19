@@ -947,9 +947,8 @@ void OpenHomeTab(MainWindow* win) {
         win->homeTab->type = WindowTab::Type::About;
         win->homeTab->canvasRc = win->canvasRc;
     }
-    win->currentTabTemp = win->homeTab;
+    LoadModelIntoTab(win->homeTab);
     if (win->tabsCtrl) {
         win->tabsCtrl->SetSelected(-1);
     }
-    ScheduleUiUpdate(win, kUiForceRelayout | kUiRelayout);
 }

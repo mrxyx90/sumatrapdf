@@ -429,27 +429,6 @@ void UpdateRectangularSelectionEdit(MainWindow* win, int x, int y) {
     win->selectionMeasure = win->AsFixed() ? win->AsFixed()->CvtFromScreen(win->selectionRect).Size() : SizeF();
 }
 
-void PaintTransparentRectangles(Gfx* gfx, Rect screenRc, Vec<Rect>& rects, Color selectionColor, u8 alpha, int pad,
-                                bool drawBorder) {
-    Vec<Rect> paintedRects;
-    // A bordered selection is the 3.6.1 look: font-height boxes as-is and a
-    // 1px outline. Find highlights stay borderless and pad the box.
-    int clipPad = drawBorder ? 1 : pad;
-    screenRc.Inflate(clipPad, clipPad);
-    for (int i = 0; i < len(rects); i++) {
-        Rect rc = rects[i];
-        if (!drawBorder && pad > 0) {
-            rc.Inflate(pad, pad);
-        }
-        rc = rc.Intersect(screenRc);
-        if (!rc.IsEmpty()) {
-            VecAppend(paintedRects, rc);
-        }
-    }
-    int outlineWidth = drawBorder ? 1 : 0;
-    gfx->FillRects(paintedRects.els, len(paintedRects), selectionColor, alpha, outlineWidth);
-}
-
 static Rect QuadScreenBounds(const Point* pts) {
     int x0 = pts[0].x, y0 = pts[0].y, x1 = x0, y1 = y0;
     for (int i = 1; i < 4; i++) {
@@ -459,27 +438,6 @@ static Rect QuadScreenBounds(const Point* pts) {
         y1 = std::max(y1, pts[i].y);
     }
     return Rect::FromXY(x0, y0, x1, y1);
-}
-
-static void PaintTransparentQuads(Gfx* gfx, Rect screenRc, Vec<Point>& pts, Color selectionColor, u8 alpha,
-                                  bool drawBorder) {
-    int nQuads = len(pts) / 4;
-    if (nQuads <= 0) {
-        return;
-    }
-    screenRc.Inflate(1, 1);
-    Vec<Point> painted;
-    for (int i = 0; i < nQuads; i++) {
-        Point* q = pts.els + ((ptrdiff_t)i * 4);
-        if (QuadScreenBounds(q).Intersect(screenRc).IsEmpty()) {
-            continue;
-        }
-        for (int k = 0; k < 4; k++) {
-            VecAppend(painted, q[k]);
-        }
-    }
-    int outlineWidth = drawBorder ? 1 : 0;
-    gfx->FillQuads(painted.els, len(painted) / 4, selectionColor, alpha, outlineWidth);
 }
 
 // Touch selection handles: a dot under each end of the selection, big enough
