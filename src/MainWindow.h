@@ -344,6 +344,7 @@ struct MainWindow { // NOLINT(clang-analyzer-optin.performance.Padding)
     VirtSplitter* favSplitter = nullptr;
 
     TabsCtrl* tabsCtrl = nullptr;
+    WindowTab* homeTab = nullptr;
     bool tabsVisible = false;
     bool tabsInTitlebar = false;
 

@@ -644,7 +644,7 @@ static void MainWindowTabClosed(MainWindow* win, TabsCtrl::ClosedEvent* ev) {
 }
 
 static void MainWindowTabSelectionChanging(MainWindow* win, TabsCtrl::SelectionChangingEvent* ev) {
-    // TODO: Should we allow the switch of the tab if we are in process of printing?
+    win->currentTabTemp = nullptr;
     SaveCurrentWindowTab(win);
     ev->preventChanging = false;
 }
@@ -942,15 +942,14 @@ void OpenHomeTab(MainWindow* win) {
     if (!win) {
         return;
     }
-    int nTabs = win->TabCount();
-    for (int i = 0; i < nTabs; i++) {
-        if (win->GetTab(i)->IsAboutTab()) {
-            TabsSelect(win, i);
-            return;
-        }
+    if (!win->homeTab) {
+        win->homeTab = new WindowTab(win);
+        win->homeTab->type = WindowTab::Type::About;
+        win->homeTab->canvasRc = win->canvasRc;
     }
-    WindowTab* homeTab = new WindowTab(win);
-    homeTab->type = WindowTab::Type::About;
-    homeTab->canvasRc = win->canvasRc;
-    AddTabToWindow(win, homeTab);
+    win->currentTabTemp = win->homeTab;
+    if (win->tabsCtrl) {
+        win->tabsCtrl->SetSelected(-1);
+    }
+    ScheduleUiUpdate(win, kUiForceRelayout | kUiRelayout);
 }
