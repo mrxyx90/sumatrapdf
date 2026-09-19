@@ -13628,7 +13628,20 @@ void OpenSystemMenu(MainWindow* win) {
 static int CaptionButtonAt(MainWindow* win, Point pt) {
     UnmirrorRtl(win->hwndFrame, pt);
     for (int i = CB_BTN_FIRST; i < CB_BTN_COUNT; i++) {
-        if (win->captionBtn[i].visible && win->captionBtn[i].rect.Contains(pt)) {
+        Rect r = win->captionBtn[i].rect;
+        if (i == CB_MINIMIZE || i == CB_MAXIMIZE || i == CB_RESTORE || i == CB_CLOSE) {
+            r.y = 0;
+            if (win->captionRect.dy > 0) {
+                r.dy = win->captionRect.dy;
+            }
+        }
+        if (i == CB_CLOSE) {
+            int clientDx = HwndClientRect(win->hwndFrame).dx;
+            if (r.x + r.dx < clientDx) {
+                r.dx = clientDx - r.x;
+            }
+        }
+        if (win->captionBtn[i].visible && r.Contains(pt)) {
             return i;
         }
     }
