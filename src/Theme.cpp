@@ -138,7 +138,7 @@ static Str themesTxt = StrL(R"(Themes [
     [
         Name = Charcoal
         TextColor = #ffffff
-        BackgroundColor = #2d2d30
+        BackgroundColor = #202020
         ControlBackgroundColor = #2d2d30
         ActiveTabBackgroundColor = #2d2d30
         InactiveTabBackgroundColor = #45454a
