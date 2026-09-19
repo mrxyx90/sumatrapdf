@@ -4860,6 +4860,12 @@ void LoadModelIntoTab(WindowTab* tab) {
     // document
     StopKeyboardLinkFollowing(win);
     StopSelectTextWithKeyboard(win);
+    // the tab bar already selected tab but win->ctrl is still the outgoing
+    // document; keep CurrentTab() matching win->ctrl until that document is
+    // closed (paints, toolbar updates from cancelled placement)
+    if (win->ctrl) {
+        win->currentTabTemp = FindTabByController(win->ctrl);
+    }
     if (gSettings->lazyLoading && win->ctrl && !tab->ctrl && !tab->IsNonDocumentTab() &&
         tab->loadState == WindowTab::LoadState::None) {
         NotificationCreateArgs args;
@@ -4867,19 +4873,10 @@ void LoadModelIntoTab(WindowTab* tab) {
         args.msg = fmt(Tr("Please wait - loading...").s);
         args.warning = true;
         ShowNotification(args);
-        // the tab bar already selected tab but win->ctrl is still the outgoing
-        // document; paint that document's tab so CurrentTab() matches win->ctrl
-        WindowTab* prevTabTemp = win->currentTabTemp;
-        win->currentTabTemp = FindTabByController(win->ctrl);
         // Use ShowMainWindow so SW_SHOW does not drop a pending maximize (#5529)
         ShowMainWindow(win, gSettings->windowState);
         // display the notification ASAP
         win->RedrawAll(true);
-        if (IsMainWindowValid(win)) {
-            // the pump may have closed prevTabTemp
-            bool prevAlive = !prevTabTemp || win->GetTabIdx(prevTabTemp) >= 0;
-            win->currentTabTemp = prevAlive ? prevTabTemp : nullptr;
-        }
     }
     // ShowWindow / RedrawAll can pump messages, potentially destroying win
     if (!IsMainWindowValidAndNotClosing(win)) {
@@ -9590,6 +9587,9 @@ static Annotation* MakeAnnotationsFromSelection(WindowTab* tab, AnnotCreateArgs*
 
     Annotation* annot = nullptr;
     Vec<Annotation*> created;
+    // creating the annotation and setting its quad points are separate journal
+    // operations; one gesture must be one undo step (issue #6217)
+    EngineMupdfBeginOperation(engine, "Mark up selection");
     for (auto pageNo : pageNos) {
         Vec<RectF> rects;
         for (auto& sel : *s) {
@@ -9605,12 +9605,14 @@ static Annotation* MakeAnnotationsFromSelection(WindowTab* tab, AnnotCreateArgs*
             for (Annotation* a : created) {
                 DeleteAnnotation(a);
             }
+            EngineMupdfEndOperation(engine);
             return nullptr;
         }
         SetQuadPointsAsRect(annot, rects);
         annot->bounds = GetBounds(annot);
         VecAppend(created, annot);
     }
+    EngineMupdfEndOperation(engine);
 
     // copy selection to clipboard so that user can use Ctrl-V to set contents
     if (args->copyToClipboard) {

@@ -112,6 +112,7 @@ import { testit as issue5845 } from "./issue-5845.ts";
 import { testit as issue5870 } from "./issue-5870.ts";
 import { testit as issue6199 } from "./issue-6199.ts";
 import { testit as issue6216 } from "./issue-6216.ts";
+import { testit as issue6217 } from "./issue-6217.ts";
 import { testit as comicFitPageRelayout } from "./comic-fit-page-relayout.ts";
 import { testit as ghsaP2ph2rvmQ37m } from "./security-ghsa-p2ph-2rvm-q37m.ts";
 import { testit as issue4753 } from "./issue-4753.ts";
@@ -137,6 +138,7 @@ import { testit as epubThemeRestyle } from "./epub-theme-restyle.ts";
 import { testit as embeddedImageAttachment } from "./embedded-image-attachment.ts";
 import { testit as ttsEngineCrashRecovery } from "./tts-engine-crash-recovery.ts";
 import { testit as lazyTabStateAfterSave } from "./lazy-tab-state-after-save.ts";
+import { testit as lazyTabSelectPaint } from "./lazy-tab-select-paint.ts";
 import { testit as issue5943 } from "./issue-5943.ts";
 import { testit as issue6117 } from "./issue-6117.ts";
 import { testit as issue6118 } from "./issue-6118.ts";
@@ -197,6 +199,7 @@ import { testit as annotCutPaste } from "./annot-cut-paste.ts";
 import { testit as ctxMenuReload } from "./ctx-menu-reload.ts";
 import { testit as homeTwoWindows } from "./home-two-windows.ts";
 import { testit as annotUndoRedo } from "./annot-undo-redo.ts";
+import { testit as annotUndoOneStep } from "./annot-undo-one-step.ts";
 import { testit as textAnnotationPlacement } from "./text-annotation-placement.ts";
 import { testit as freeTextAnnotationPlacement } from "./free-text-annotation-placement.ts";
 import { testit as freeTextEditToolbar } from "./free-text-edit-toolbar.ts";
@@ -305,6 +308,7 @@ async function annotationClipboardTests(): Promise<void> {
   beginSharedControlledSession();
   try {
     await annotUndoRedo();
+    await annotUndoOneStep();
     await annotCopyPaste();
     await annotCutPaste();
   } finally {
@@ -328,6 +332,7 @@ export const tests: NamedTest[] = [
   ["issue-5870", issue5870],
   ["issue-6199", issue6199],
   ["issue-6216", issue6216],
+  ["issue-6217", issue6217],
   ["comic-fit-page-relayout", comicFitPageRelayout],
   ["issue-6133", issue6133],
   ["issue-6184", issue6184],
@@ -347,6 +352,7 @@ export const tests: NamedTest[] = [
   ["embedded-image-attachment", embeddedImageAttachment],
   ["tts-engine-crash-recovery", ttsEngineCrashRecovery],
   ["lazy-tab-state-after-save", lazyTabStateAfterSave],
+  ["lazy-tab-select-paint", lazyTabSelectPaint],
   ["issue-4705", issue4705],
   ["toc-tree-sent-click", tocTreeSentClick],
   ["issue-5956", issue5956],
