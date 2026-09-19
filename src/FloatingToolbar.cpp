@@ -88,15 +88,22 @@ struct FloatingIconButton : VirtIconButton {
     void Paint(VirtPaintCtx& ctx) override {
         bool active = toolbar && toolbar->activeCmdId == id;
         bool screenshotFlash = toolbar && toolbar->screenshotAnimating && id == CmdScreenshot;
-        if (active || screenshotFlash) {
-            // Use the same solid blue selection treatment as the reference
-            // toolbar. The selected button remains clearly active without
-            // changing which tool is selected.
-            ctx.gfx->FillRoundedRect(ctx.bounds, DpiScale(6), 0xff0078d4);
-        } else if (IsEnabled() && HasFlag(vwfHovered) && hoverBg != kColorUnset) {
+
+        // Paint hover first, then the selected state on top. This keeps the
+        // hover feedback available without ever covering the selection state.
+        if (IsEnabled() && HasFlag(vwfHovered) && hoverBg != kColorUnset) {
             ctx.gfx->FillRoundedRect(ctx.bounds, DpiScale(6), hoverBg);
         }
-        VirtIconButton::Paint(ctx);
+        if (active || screenshotFlash) {
+            ctx.gfx->FillRoundedRect(ctx.bounds, DpiScale(6), 0xff0078d4);
+        }
+
+        if (pixmap) {
+            Size s2 = {pixmap->width, pixmap->height};
+            int x = ctx.content.x + (ctx.content.dx - s2.dx) / 2;
+            int y = ctx.content.y + (ctx.content.dy - s2.dy) / 2;
+            ctx.gfx->DrawPixmap(pixmap, {x, y, s2.dx, s2.dy});
+        }
     }
 };
 
