@@ -550,7 +550,7 @@ TempStr TakeScreenshotOfWindow(HWND hwnd) {
     if (FAILED(hr) || !picturesPath || len(picturesPath) == 0) {
         CoTaskMemFree(picturesPath);
         DeleteObject(hbmp);
-        return;
+        return {};
     }
 
     WCHAR screenshotDir[MAX_PATH];
