@@ -137,7 +137,7 @@ static LRESULT CALLBACK ScreenshotToastWndProc(HWND hwnd, UINT msg, WPARAM wp, L
             WStr wFileName = ToWStrTemp(data->fileName);
             RECT fileRc = rc;
             fileRc.top += 24;
-            DrawTextW(hdc, wFileName, -1, &fileRc, DT_CENTER | DT_END_ELLIPSIS | DT_SINGLELINE);
+            DrawTextW(hdc, CWStrTemp(wFileName), -1, &fileRc, DT_CENTER | DT_END_ELLIPSIS | DT_SINGLELINE);
         }
         EndPaint(hwnd, &ps);
         return 0;
@@ -226,9 +226,10 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
         TempStr savedPath = TakeScreenshotOfWindow(tb->win->hwndCanvas);
         if (len(savedPath) > 0) {
             WStr wPath = ToWStrTemp(savedPath);
-            const WCHAR* fileName = wcsrchr(wPath, L'\\');
-            fileName = fileName ? fileName + 1 : wPath;
-            ShowScreenshotToast(tb, ToUtf8Temp(fileName));
+            WCHAR* path = CWStrTemp(wPath);
+            const WCHAR* fileName = wcsrchr(path, L'\\');
+            fileName = fileName ? fileName + 1 : path;
+            ShowScreenshotToast(tb, ToUtf8Temp(WStr(fileName)));
         }
         tb->screenshotAnimating = true;
         SetTimer(tb->host->native, 1, 220, nullptr);
