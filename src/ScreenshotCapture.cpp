@@ -531,16 +531,16 @@ struct CaptureCtx {
 };
 
 
-void TakeScreenshotOfWindow(HWND hwnd) {
+TempStr TakeScreenshotOfWindow(HWND hwnd) {
     if (!hwnd || !IsWindow(hwnd)) {
-        return;
+        return {};
     }
 
     int w = 0, h = 0;
     HBITMAP hbmp = CaptureWindowBmp(hwnd, &w, &h);
     if (!hbmp || w <= 0 || h <= 0) {
         DeleteObject(hbmp);
-        return;
+        return {};
     }
 
     // Floating-toolbar screenshots are saved directly to the user's Pictures
@@ -558,7 +558,7 @@ void TakeScreenshotOfWindow(HWND hwnd) {
     CoTaskMemFree(picturesPath);
     if (n <= 0 || !CreateDirectoryW(screenshotDir, nullptr) && GetLastError() != ERROR_ALREADY_EXISTS) {
         DeleteObject(hbmp);
-        return;
+        return {};
     }
 
     SYSTEMTIME st{};
@@ -570,16 +570,17 @@ void TakeScreenshotOfWindow(HWND hwnd) {
                      st.wMilliseconds);
     if (n <= 0) {
         DeleteObject(hbmp);
-        return;
+        return {};
     }
 
     Gdiplus::Bitmap bitmap(hbmp, nullptr);
     CLSID pngClsid = GetGdiPlusEncoderClsid(WStrL(L"image/png"));
     if (bitmap.Save(filePath, &pngClsid, nullptr) != Gdiplus::Ok) {
         DeleteObject(hbmp);
-        return;
+        return {};
     }
     DeleteObject(hbmp);
+    return ToUtf8Temp(filePath);
 }
 
 static void CaptureOneItem(CaptureCtx* ctx, CaptureItem* item) {
