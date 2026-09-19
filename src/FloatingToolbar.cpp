@@ -62,6 +62,7 @@ struct FloatingToolbar {
     Rect dragOrig;
     int activeCmdId = 0;
     bool screenshotAnimating = false;
+    bool commandPaletteAnimating = false;
 };
 
 static Color FloatingBg() {
@@ -88,13 +89,14 @@ struct FloatingIconButton : VirtIconButton {
     void Paint(VirtPaintCtx& ctx) override {
         bool active = toolbar && toolbar->activeCmdId == id;
         bool screenshotFlash = toolbar && toolbar->screenshotAnimating && id == CmdScreenshot;
+        bool paletteFlash = toolbar && toolbar->commandPaletteAnimating && id == CmdCommandPalette;
 
         // Paint hover first, then the selected state on top. This keeps the
         // hover feedback available without ever covering the selection state.
         if (IsEnabled() && HasFlag(vwfHovered) && hoverBg != kColorUnset) {
             ctx.gfx->FillRoundedRect(ctx.bounds, DpiScale(6), hoverBg);
         }
-        if (active || screenshotFlash) {
+        if (active || screenshotFlash || paletteFlash) {
             ctx.gfx->FillRoundedRect(ctx.bounds, DpiScale(6), MkRgb(0x3e, 0x53, 0x68));
         }
 
@@ -125,6 +127,14 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
             ShowWindow(tb->win->hwndToolbar, SW_HIDE);
         }
         ScheduleUiUpdate(tb->win, kUiForceRelayout | kUiRelayout);
+    }
+
+    if (cmd == CmdCommandPalette) {
+        tb->commandPaletteAnimating = true;
+        SetTimer(tb->host->native, 1, 220, nullptr);
+        tb->host->Invalidate(false);
+        HwndPostCommand(tb->win->hwndFrame, cmd, 0);
+        return;
     }
 
     if (cmd == CmdScreenshot) {
@@ -330,6 +340,7 @@ static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
         if (ev->wp == 1) {
             KillTimer(tb->host->native, 1);
             tb->screenshotAnimating = false;
+            tb->commandPaletteAnimating = false;
             tb->host->Invalidate(false);
             ev->didHandle = true;
         }

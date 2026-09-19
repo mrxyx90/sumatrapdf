@@ -226,7 +226,7 @@ void TabCtrl::Paint(VirtPaintCtx& ctx) {
     if (!IsSelected() && tabsCtrl) {
         int idx = Idx();
         if (idx + 1 != tabsCtrl->GetSelected()) {
-            gfx->FillRect({r.x + r.dx - 1, r.y + DpiScale(6), 1, r.dy - DpiScale(12)}, AccentColor(tabBgCol, 35));
+            gfx->FillRect({r.x + r.dx - 1, r.y + DpiScale(4), 1, r.dy - DpiScale(8)}, ThemeEdgeColor());
         }
     }
 
