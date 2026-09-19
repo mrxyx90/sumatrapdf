@@ -74,7 +74,8 @@ enum CaptionButtons {
     CB_CLOSE = 3,
     CB_MENU = 4,
     CB_SYSTEM_MENU = 5,
-    CB_BTN_COUNT = 6
+    CB_HOME = 6,
+    CB_BTN_COUNT = 7
 };
 
 struct ButtonInfo {

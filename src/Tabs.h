@@ -18,6 +18,7 @@ void TabsOnCtrlTab(MainWindow* win, bool reverse);
 void UpdateTabWidth(MainWindow*);
 void SetTabsInTitlebar(MainWindow* win, bool inTitlebar);
 void RemoveTab(WindowTab*);
+void OpenHomeTab(MainWindow*);
 void SetTabInfoColor(WindowTab*);
 void UpdateTabIsError(WindowTab*);
 TempStr MakeTabTooltipTemp(Str path, bool dirty = false);

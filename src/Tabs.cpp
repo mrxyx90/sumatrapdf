@@ -780,7 +780,7 @@ WindowTab* AddTabToWindow(MainWindow* win, WindowTab* tab, bool deferUpdate) {
     int idx = win->TabCount();
     bool useTabs = SettingsUseTabs();
     bool noHomeTab = gSettings->noHomeTab;
-    bool createHomeTab = useTabs && !noHomeTab && (idx == 0);
+    bool createHomeTab = false;
     if (createHomeTab) {
         WindowTab* homeTab = new WindowTab(win);
         homeTab->type = WindowTab::Type::About;
@@ -936,4 +936,29 @@ void MoveTab(MainWindow* win, int dir) {
     win->tabsCtrl->SwapTabs(idx, newIdx);
     win->tabsCtrl->SetSelected(newIdx);
     win->tabsCtrl->LayoutTabs();
+}
+
+void OpenHomeTab(MainWindow* win) {
+    if (!win) {
+        return;
+    }
+    int nTabs = win->TabCount();
+    for (int i = 0; i < nTabs; i++) {
+        if (win->GetTab(i)->IsAboutTab()) {
+            TabsSelect(win, i);
+            return;
+        }
+    }
+    WindowTab* homeTab = new WindowTab(win);
+    homeTab->type = WindowTab::Type::About;
+    homeTab->canvasRc = win->canvasRc;
+    TabInfo* newTab = new TabInfo();
+    newTab->text = str::Dup(StrL("Home"));
+    newTab->tooltip = {};
+    newTab->isPinned = true;
+    newTab->canClose = true;
+    newTab->userData = (UINT_PTR)homeTab;
+    int insertedIdx = win->tabsCtrl->InsertTab(0, newTab, true);
+    win->InsertTab(0, homeTab);
+    TabsSelect(win, insertedIdx);
 }

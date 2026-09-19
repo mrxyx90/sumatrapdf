@@ -3086,6 +3086,7 @@ static void CreateCaptionLayout(MainWindow* win) {
     win->captionRow1->alignCross = CrossAxisAlign::CrossEnd;
     win->captionRow1->AddChild(win->capBtn[CB_SYSTEM_MENU]);
     win->captionRow1->AddChild(win->capBtn[CB_MENU]);
+    win->captionRow1->AddChild(win->capBtn[CB_HOME]);
     win->captionRow1->AddChild(win->capMenuSlot);
     win->captionRow1->AddChild(win->capTabsRow1, 1);
     win->captionRow1->AddChild(win->capDrag1, 1);
@@ -7529,6 +7530,7 @@ static void SyncCaptionLayout(MainWindow* win) {
     };
     setBtn(CB_SYSTEM_MENU, true, tabBtn);
     setBtn(CB_MENU, !twoRow, tabBtn);
+    setBtn(CB_HOME, true, tabBtn);
     setBtn(CB_MINIMIZE, true, winBtn);
     setBtn(CB_MAXIMIZE, !maximized, winBtn);
     setBtn(CB_RESTORE, maximized, winBtn);
@@ -13687,6 +13689,9 @@ static void HandleCaptionClick(MainWindow* win, int btnIdx) {
         case CB_SYSTEM_MENU:
             OpenSystemMenu(win);
             break;
+        case CB_HOME:
+            OpenHomeTab(win);
+            break;
     }
 }
 
@@ -14103,6 +14108,17 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
         int x = rButton.x + ((rButton.dx - xIcon) / 2);
         int y = rButton.y + ((rButton.dy - yIcon) / 2);
         DrawIconEx(hdc, x, y, hIcon, xIcon, yIcon, 0, nullptr, DI_NORMAL);
+    } else if (button == CB_HOME) {
+        SolidBrush bgBrHome(GdiRgbFromColor(ThemeControlBackgroundColor()));
+        gfx.FillRectangle(&bgBrHome, rButton.x, rButton.y, rButton.dx, rButton.dy);
+        int iconSize = DpiScale(16);
+        Color fg = ThemeWindowTextColor();
+        Pixmap* px = GetCachedPixmapForSvg(Str(gIconHome), iconSize, iconSize, fg, ThemeControlBackgroundColor());
+        if (px) {
+            int x = rButton.x + (rButton.dx - px->width) / 2;
+            int y = rButton.y + (rButton.dy - px->height) / 2;
+            HwndDrawPixmap(hdc, px, x, y);
+        }
     }
 }
 
