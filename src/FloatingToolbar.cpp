@@ -607,11 +607,9 @@ void UpdateFloatingToolbarActiveState(MainWindow* win) {
     } else if (win->pdfAnnotationsToolbarEnabled) {
         activeCmd = CmdToggleEditPDF;
     }
-    if (tb->activeCmdId != activeCmd) {
-        tb->activeCmdId = activeCmd;
-        if (tb->host) {
-            tb->host->Invalidate(false);
-        }
+    tb->activeCmdId = activeCmd;
+    if (tb->host) {
+        tb->host->Invalidate(false);
     }
 }
 
