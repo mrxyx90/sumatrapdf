@@ -8,3 +8,4 @@ void FloatingToolbarDestroy(MainWindow*);
 void FloatingToolbarOnWindowMoved(MainWindow*);
 void FloatingToolbarRelayout(MainWindow*);
 void FloatingToolbarUpdateTheme();
+void UpdateFloatingToolbarActiveState(MainWindow*);

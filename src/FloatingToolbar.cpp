@@ -575,3 +575,22 @@ void FloatingToolbarOnWindowMoved(MainWindow* win) {
     }
     tb->lastFrameRect = frame;
 }
+
+void UpdateFloatingToolbarActiveState(MainWindow* win) {
+    if (!win || !win->floatingToolbar) {
+        return;
+    }
+    FloatingToolbar* tb = win->floatingToolbar;
+    int activeCmd = 0;
+    if (win->pdfAnnotationsToolbarEnabled) {
+        activeCmd = CmdToggleEditPDF;
+    } else if (IsPlacingAnnotation(win)) {
+        activeCmd = win->annotPlacement.cmdId;
+    }
+    if (tb->activeCmdId != activeCmd) {
+        tb->activeCmdId = activeCmd;
+        if (tb->host) {
+            tb->host->Invalidate(false);
+        }
+    }
+}

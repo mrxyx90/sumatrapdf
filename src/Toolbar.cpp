@@ -52,6 +52,7 @@
 #include "Theme.h"
 #include "ReadAloud.h"
 #include "Toolbar.h"
+#include "FloatingToolbar.h"
 
 // https://docs.microsoft.com/en-us/windows/win32/controls/toolbar-control-reference
 
@@ -778,6 +779,7 @@ void ToolbarUpdateStateForWindow(MainWindow* win, bool setButtonsVisibility) {
             win->tabsCtrl->SetTabDirty(i, dirty);
         }
     }
+    UpdateFloatingToolbarActiveState(win);
 }
 
 void SetToolbarButtonEnableState(MainWindow* win, int cmdId, bool isEnabled) {
