@@ -13635,9 +13635,18 @@ static int CaptionButtonAt(MainWindow* win, Point pt) {
                 r.dy = win->captionRect.dy;
             }
         }
-        if (i == CB_CLOSE) {
+        if (i == CB_MINIMIZE) {
+            r.x -= DpiScale(7);
+            r.dx += DpiScale(14);
+        } else if (i == CB_MAXIMIZE || i == CB_RESTORE) {
+            r.x -= DpiScale(7);
+            r.dx += DpiScale(14);
+        } else if (i == CB_CLOSE) {
+            r.x -= DpiScale(7);
             int clientDx = HwndClientRect(win->hwndFrame).dx;
-            if (r.x + r.dx < clientDx) {
+            if (r.x + r.dx + DpiScale(7) < clientDx) {
+                r.dx += DpiScale(7);
+            } else {
                 r.dx = clientDx - r.x;
             }
         }
