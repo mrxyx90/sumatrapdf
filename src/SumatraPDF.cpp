@@ -5522,12 +5522,13 @@ bool SaveAnnotationsToExistingFile(WindowTab* tab) {
         tab->ignoreNextAutoReload = false;
         return false;
     }
+    ShowSavedAnnotationsNotification(win->hwndCanvas, path);
+
     ReloadDocument(win, false);
     // Re-arm: the save notifies the file watcher, which schedules an auto-reload.
     // We already reloaded above; skip that one watcher event so we do not open
     // the PDF twice (and race background work against a just-rewritten file).
     tab->ignoreNextAutoReload = true;
-    ShowSavedAnnotationsNotification(win->hwndCanvas, path);
     return true;
 }
 

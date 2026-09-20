@@ -81,6 +81,7 @@ struct FloatingIconButton : VirtIconButton {
     int sideLen = 0;
     Color hoverBg = kColorUnset;
     FloatingToolbar* toolbar = nullptr;
+    Pixmap* pixmapActive = nullptr;
 
     Size GetIdealSize() override {
         return {sideLen, sideLen};
@@ -100,11 +101,12 @@ struct FloatingIconButton : VirtIconButton {
             ctx.gfx->FillRoundedRect(ctx.bounds, DpiScale(6), MkRgb(0x3e, 0x53, 0x68));
         }
 
-        if (pixmap) {
-            Size s2 = {pixmap->width, pixmap->height};
+        Pixmap* px = (active || screenshotFlash || paletteFlash) && pixmapActive ? pixmapActive : pixmap;
+        if (px) {
+            Size s2 = {px->width, px->height};
             int x = ctx.content.x + (ctx.content.dx - s2.dx) / 2;
             int y = ctx.content.y + (ctx.content.dy - s2.dy) / 2;
-            ctx.gfx->DrawPixmap(pixmap, {x, y, s2.dx, s2.dy});
+            ctx.gfx->DrawPixmap(px, {x, y, s2.dx, s2.dy});
         }
     }
 };
@@ -448,6 +450,8 @@ static void BuildFloatingToolbar(FloatingToolbar* tb) {
         button->toolbar = tb;
         button->pixmap = GetCachedPixmapForSvg(Str(b.icon), iconSize, iconSize,
                                                 ThemeWindowTextColor(), FloatingBg());
+        button->pixmapActive = GetCachedPixmapForSvg(Str(b.icon), iconSize, iconSize,
+                                                kColWhite, MkRgb(0x3e, 0x53, 0x68));
         button->SetTooltip(Str(b.tip));
         button->id = b.cmdId;
         button->onClick = MkFunc1(OnFloatingButton, tb);
@@ -467,6 +471,8 @@ static void BuildFloatingToolbar(FloatingToolbar* tb) {
     screenshot->toolbar = tb;
     screenshot->pixmap = GetCachedPixmapForSvg(Str(kScreenshotIcon), iconSize, iconSize,
                                                 ThemeWindowTextColor(), FloatingBg());
+    screenshot->pixmapActive = GetCachedPixmapForSvg(Str(kScreenshotIcon), iconSize, iconSize,
+                                                kColWhite, MkRgb(0x3e, 0x53, 0x68));
     screenshot->SetTooltip(StrL("Screenshot"));
     screenshot->id = CmdScreenshot;
     screenshot->onClick = MkFunc1(OnFloatingButton, tb);
