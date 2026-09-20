@@ -7556,7 +7556,7 @@ static void SyncCaptionLayout(MainWindow* win) {
         win->captionBtn[id].id = id;
         win->captionBtn[id].visible = vis;
     };
-    setBtn(CB_SYSTEM_MENU, true, tabBtn);
+    setBtn(CB_SYSTEM_MENU, false, tabBtn);
     setBtn(CB_MENU, !twoRow, tabBtn);
     setBtn(CB_HOME, true, tabBtn);
     setBtn(CB_MINIMIZE, true, winBtn);
@@ -13639,6 +13639,10 @@ static void TrackCaptionPopupMenu(MainWindow* win, HMENU menu, Rect btnRect) {
 
 void OpenSystemMenu(MainWindow* win) {
     Rect r = win->captionBtn[CB_SYSTEM_MENU].rect;
+    if (r.IsEmpty()) {
+        // app icon button is hidden; anchor the menu at the frame's top-left
+        r = {0, 0, DpiScale(20), GetTabbarHeight(win->hwndFrame)};
+    }
     HMENU systemMenu = GetUpdatedSystemMenu(win->hwndFrame, false);
     TrackCaptionPopupMenu(win, systemMenu, r);
 }
