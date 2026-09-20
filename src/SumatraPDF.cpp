@@ -14175,27 +14175,22 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
             int midMenuHome = (win->captionBtn[CB_MENU].rect.x + win->captionBtn[CB_MENU].rect.dx + win->captionBtn[CB_HOME].rect.x) / 2;
             rcFill.dx = std::max(midMenuHome - rcFill.x, 1);
         }
-        SolidBrush bgBrMenu(GdiRgbFromColor(ThemeControlBackgroundColor()));
+        Color bgc = ThemeControlBackgroundColor();
+        SolidBrush bgBrMenu(GdiRgbFromColor(bgc));
         gfx.FillRectangle(&bgBrMenu, rcFill.x, rcFill.y, rcFill.dx, rcFill.dy);
 
         if (win->isMenuOpen) {
             stateId = CBS_PUSHED;
         }
-        u8 buttonRGB = 1;
-        if (CBS_PUSHED == stateId) {
-            buttonRGB = 0;
-        } else if (CBS_HOT == stateId) {
-            buttonRGB = 255;
+        bool isHot = (stateId == CBS_HOT);
+        bool isPushed = (stateId == CBS_PUSHED);
+
+        if (isHot || isPushed) {
+            Color hotBg = isPushed ? AccentColor(bgc, 40) : AccentColor(bgc, 20);
+            SolidBrush bgBr(GdiRgbFromColor(hotBg));
+            gfx.FillRectangle(&bgBr, rcFill.x, rcFill.y, rcFill.dx, rcFill.dy);
         }
 
-        if (buttonRGB != 1) {
-            if (GetLightness(ThemeWindowTextColor()) > GetLightness(ThemeControlBackgroundColor())) {
-                buttonRGB ^= 0xff;
-            }
-            u8 buttonAlpha = u8((255 - abs((int)GetLightness(ThemeControlBackgroundColor()) - buttonRGB)) / 2);
-            SolidBrush br(Gdiplus::Color(buttonAlpha, buttonRGB, buttonRGB, buttonRGB));
-            gfx.FillRectangle(&br, rcFill.x, rcFill.y, rcFill.dx, rcFill.dy);
-        }
         Color c = ThemeWindowTextColor();
         u8 r, g, b;
         UnpackColor(c, r, g, b);
@@ -14225,23 +14220,17 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
         int maxRight = std::max(tabLeft - DpiScale(3), rcFill.x + 1);
         rcFill.dx = std::max(maxRight - rcFill.x, 1);
 
-        SolidBrush bgBrHome(GdiRgbFromColor(ThemeControlBackgroundColor()));
+        Color bgc = ThemeControlBackgroundColor();
+        SolidBrush bgBrHome(GdiRgbFromColor(bgc));
         gfx.FillRectangle(&bgBrHome, rcFill.x, rcFill.y, rcFill.dx, rcFill.dy);
 
-        u8 buttonRGB = 1;
-        if (CBS_PUSHED == stateId) {
-            buttonRGB = 0;
-        } else if (CBS_HOT == stateId) {
-            buttonRGB = 255;
-        }
+        bool isHot = (stateId == CBS_HOT);
+        bool isPushed = (stateId == CBS_PUSHED);
 
-        if (buttonRGB != 1) {
-            if (GetLightness(ThemeWindowTextColor()) > GetLightness(ThemeControlBackgroundColor())) {
-                buttonRGB ^= 0xff;
-            }
-            u8 buttonAlpha = u8((255 - abs((int)GetLightness(ThemeControlBackgroundColor()) - buttonRGB)) / 2);
-            SolidBrush br(Gdiplus::Color(buttonAlpha, buttonRGB, buttonRGB, buttonRGB));
-            gfx.FillRectangle(&br, rcFill.x, rcFill.y, rcFill.dx, rcFill.dy);
+        if (isHot || isPushed) {
+            Color hotBg = isPushed ? AccentColor(bgc, 40) : AccentColor(bgc, 20);
+            SolidBrush bgBr(GdiRgbFromColor(hotBg));
+            gfx.FillRectangle(&bgBr, rcFill.x, rcFill.y, rcFill.dx, rcFill.dy);
         }
 
         int iconSize = DpiScale(20);
