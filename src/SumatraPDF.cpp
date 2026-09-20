@@ -13363,7 +13363,6 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
                     // not selected: that would take the next press, which is
                     // meant to select more text
                     StopSelectTextWithKeyboard(win);
-                    DeleteOldSelectionInfo(win, true);
                     RefreshAnnotationLists(tab);
                     MainWindowRerender(win);
                     ToolbarUpdateStateForWindow(win, true);
@@ -13388,6 +13387,9 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             AnnotCreateArgs args{annotType};
             SetAnnotCreateArgs(args, cmd);
             lastCreatedAnnot = MakeAnnotationsFromSelection(tab, &args);
+            if (lastCreatedAnnot) {
+                MainWindowRerender(win);
+            }
         } break;
 
             // Note: duplicated in OnWindowContextMenu because slightly different handling
