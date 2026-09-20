@@ -196,6 +196,8 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
     }
 
     // Switching to a new tool: cancel old placement and activate new tool instantly in 1 click
+    bool wasPlacing = IsPlacingAnnotation(tb->win);
+    bool wasPdfEditEnabled = tb->win->pdfAnnotationsToolbarEnabled;
     CancelAnnotationPlacement(tb->win);
     tb->activeCmdId = cmd;
     tb->host->Invalidate(false);
@@ -207,7 +209,12 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
             ShowWindow(tb->win->hwndToolbar, SW_SHOW);
             ScheduleUiUpdate(tb->win, kUiForceRelayout | kUiRelayout);
         }
-        HwndPostCommand(tb->win->hwndFrame, cmd, 0);
+        if (wasPlacing || wasPdfEditEnabled) {
+            EnablePdfAnnotationsToolbar(tb->win);
+            ToolbarUpdateStateForWindow(tb->win, true);
+        } else {
+            HwndPostCommand(tb->win->hwndFrame, cmd, 0);
+        }
         return;
     }
 
