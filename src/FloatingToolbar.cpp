@@ -64,7 +64,6 @@ struct FloatingToolbar {
     Rect dragOrig;
     int activeCmdId = 0;
     bool screenshotAnimating = false;
-    bool commandPaletteAnimating = false;
 };
 
 static Color FloatingBg() {
@@ -93,18 +92,17 @@ struct FloatingIconButton : VirtIconButton {
         bool paletteOpen = toolbar && id == CmdCommandPalette && IsCommandPaletteOpen(toolbar->win);
         bool active = (toolbar && toolbar->activeCmdId == id) || paletteOpen;
         bool screenshotFlash = toolbar && toolbar->screenshotAnimating && id == CmdScreenshot;
-        bool paletteFlash = toolbar && toolbar->commandPaletteAnimating && id == CmdCommandPalette;
 
         // Paint hover first, then the selected state on top. This keeps the
         // hover feedback available without ever covering the selection state.
         if (IsEnabled() && HasFlag(vwfHovered) && hoverBg != kColorUnset) {
             ctx.gfx->FillRoundedRect(ctx.bounds, DpiScale(6), hoverBg);
         }
-        if (active || screenshotFlash || paletteFlash) {
+        if (active || screenshotFlash) {
             ctx.gfx->FillRoundedRect(ctx.bounds, DpiScale(6), MkRgb(0x3e, 0x53, 0x68));
         }
 
-        Pixmap* px = (active || screenshotFlash || paletteFlash) && pixmapActive ? pixmapActive : pixmap;
+        Pixmap* px = (active || screenshotFlash) && pixmapActive ? pixmapActive : pixmap;
         if (px) {
             Size s2 = {px->width, px->height};
             int x = ctx.content.x + (ctx.content.dx - s2.dx) / 2;
@@ -124,9 +122,6 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
     }
 
     if (cmd == CmdCommandPalette) {
-        tb->commandPaletteAnimating = true;
-        SetTimer(tb->host->native, 1, 300, nullptr);
-        tb->host->Invalidate(false);
         HwndPostCommand(tb->win->hwndFrame, cmd, 0);
         return;
     }
@@ -377,7 +372,6 @@ static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
         if (ev->wp == 1) {
             KillTimer(tb->host->native, 1);
             tb->screenshotAnimating = false;
-            tb->commandPaletteAnimating = false;
             tb->host->Invalidate(false);
             ev->didHandle = true;
         }
