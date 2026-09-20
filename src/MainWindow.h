@@ -499,6 +499,10 @@ struct MainWindow { // NOLINT(clang-analyzer-optin.performance.Padding)
     Spacer* capDrag1 = nullptr;
     Spacer* capRow2Lead = nullptr;
     Spacer* capRow2Trail = nullptr;
+    // single-row caption: left margin before the menu (hamburger) button and
+    // the gap between the menu and the home button
+    Spacer* capMenuPadL = nullptr;
+    Spacer* capMenuHomeGap = nullptr;
 
     // home page thumbnail scrolling
     int homePageScrollY = 0;
