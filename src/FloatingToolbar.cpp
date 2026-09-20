@@ -175,8 +175,15 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
                 ScheduleUiUpdate(tb->win, kUiForceRelayout | kUiRelayout);
             }
             HwndPostCommand(tb->win->hwndFrame, cmd, 0);
+            // the toggle is posted, not sent: clear the highlight now so the
+            // button is not lit while the command is still in the queue
+            tb->activeCmdId = 0;
+        } else {
+            // the placement tool ended but Edit PDF mode stays on: re-sync so
+            // the toolbar highlights Edit PDF instead of ending up with no
+            // active button
+            UpdateFloatingToolbarActiveState(tb->win);
         }
-        tb->activeCmdId = 0;
         tb->host->Invalidate(false);
         return;
     }
