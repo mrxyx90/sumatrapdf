@@ -7558,7 +7558,7 @@ static void SyncCaptionLayout(MainWindow* win) {
     };
     setBtn(CB_SYSTEM_MENU, true, tabBtn);
     setBtn(CB_MENU, !twoRow, tabBtn);
-    setBtn(CB_HOME, true, tabBtn + DpiScale(6));
+    setBtn(CB_HOME, true, tabBtn);
     setBtn(CB_MINIMIZE, true, winBtn);
     setBtn(CB_MAXIMIZE, !maximized, winBtn);
     setBtn(CB_RESTORE, maximized, winBtn);
@@ -13648,7 +13648,7 @@ static int CaptionButtonAt(MainWindow* win, Point pt) {
         if (i == CB_MINIMIZE || i == CB_MAXIMIZE || i == CB_RESTORE || i == CB_CLOSE) {
             r.y = 0;
             if (win->captionRect.dy > 0) {
-                r.dy = win->captionRect.dy;
+                r.dy = win->captionRect.dy + 1;
             }
         }
         if (i == CB_MINIMIZE) {
@@ -13660,11 +13660,7 @@ static int CaptionButtonAt(MainWindow* win, Point pt) {
         } else if (i == CB_CLOSE) {
             r.x -= DpiScale(7);
             int clientDx = HwndClientRect(win->hwndFrame).dx;
-            if (r.x + r.dx + DpiScale(7) < clientDx) {
-                r.dx += DpiScale(7);
-            } else {
-                r.dx = clientDx - r.x;
-            }
+            r.dx = clientDx - r.x + 1;
         }
         if (win->captionBtn[i].visible && r.Contains(pt)) {
             return i;
