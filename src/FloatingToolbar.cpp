@@ -25,6 +25,7 @@
 #include "Theme.h"
 #include "Notifications.h"
 #include "Toolbar.h"
+#include "CommandPalette.h"
 
 constexpr const WCHAR* kFloatingToolbarClassName = L"SumatraFloatingToolbar";
 constexpr int kFloatingToolbarIconSize = 22;
@@ -89,7 +90,8 @@ struct FloatingIconButton : VirtIconButton {
     }
 
     void Paint(VirtPaintCtx& ctx) override {
-        bool active = toolbar && toolbar->activeCmdId == id;
+        bool paletteOpen = toolbar && id == CmdCommandPalette && IsCommandPaletteOpen(toolbar->win);
+        bool active = (toolbar && toolbar->activeCmdId == id) || paletteOpen;
         bool screenshotFlash = toolbar && toolbar->screenshotAnimating && id == CmdScreenshot;
         bool paletteFlash = toolbar && toolbar->commandPaletteAnimating && id == CmdCommandPalette;
 
