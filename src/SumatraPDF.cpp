@@ -3090,8 +3090,9 @@ static void CreateCaptionLayout(MainWindow* win) {
     win->capRow2Trail = new Spacer(0, 0);
     win->capMenuPadL = new Spacer(DpiScale(kCaptionMenuLeftPad), 0);
     win->capMenuHomeGap = new Spacer(DpiScale(kCaptionMenuHomeGap), 0);
+    win->capHomeTabsGap = new Spacer(DpiScale(kCaptionMenuHomeGap), 0);
 
-    // single row: pad | menu | gap | home | tabs | gap | min | max/restore | close
+    // single row: pad | menu | gap | home | gap | tabs | gap | min | max/restore | close
     // two row:     home | menu hwnd | drag | min | max/restore | close
     win->captionRow1 = new HBox();
     win->captionRow1->alignCross = CrossAxisAlign::CrossStart;
@@ -3100,6 +3101,7 @@ static void CreateCaptionLayout(MainWindow* win) {
     win->captionRow1->AddChild(win->capBtn[CB_MENU]);
     win->captionRow1->AddChild(win->capMenuHomeGap);
     win->captionRow1->AddChild(win->capBtn[CB_HOME]);
+    win->captionRow1->AddChild(win->capHomeTabsGap);
     win->captionRow1->AddChild(win->capMenuSlot);
     win->captionRow1->AddChild(win->capTabsRow1, 1);
     win->captionRow1->AddChild(win->capDrag1, 1);
@@ -7580,6 +7582,7 @@ static void SyncCaptionLayout(MainWindow* win) {
     // with it so the two-row menu bar stays flush as before
     SetVis(win->capMenuPadL, !twoRow);
     SetVis(win->capMenuHomeGap, !twoRow);
+    SetVis(win->capHomeTabsGap, !twoRow);
     SetVis(win->captionRow2, twoRow && hasFileTabs);
     SetVis(win->capTabsRow2, twoRow && hasFileTabs);
     SetVis(win->capRow2Lead, twoRow && hasFileTabs && isRtl);
@@ -13680,10 +13683,25 @@ static int CaptionButtonAt(MainWindow* win, Point pt) {
             int clientDx = HwndClientRect(win->hwndFrame).dx;
             r.dx = clientDx - r.x + 1;
         } else if (i == CB_MENU) {
-            // the hamburger sits tight against the caption edge / home button:
-            // give it 3px of clickable slack on each side
             r.x -= DpiScale(3);
-            r.dx += DpiScale(6);
+            if (win->captionBtn[CB_HOME].visible) {
+                int midMenuHome = (win->captionBtn[CB_MENU].rect.x + win->captionBtn[CB_MENU].rect.dx + win->captionBtn[CB_HOME].rect.x) / 2;
+                r.dx = std::max(midMenuHome - r.x, 1);
+            } else {
+                r.dx += DpiScale(6);
+            }
+        } else if (i == CB_HOME) {
+            if (win->captionBtn[CB_MENU].visible) {
+                int midMenuHome = (win->captionBtn[CB_MENU].rect.x + win->captionBtn[CB_MENU].rect.dx + win->captionBtn[CB_HOME].rect.x) / 2;
+                int right = r.x + r.dx;
+                r.x = midMenuHome;
+                r.dx = std::max(right - r.x, 1);
+            }
+            int tabLeft = (win->capTabsRow1 && win->capTabsRow1->lastBounds.dx > 0) ? win->capTabsRow1->lastBounds.x : (win->captionBtn[CB_HOME].rect.x + win->captionBtn[CB_HOME].rect.dx + DpiScale(kCaptionMenuHomeGap));
+            if (tabLeft > win->captionBtn[CB_HOME].rect.x) {
+                int midHomeTab = (win->captionBtn[CB_HOME].rect.x + win->captionBtn[CB_HOME].rect.dx + tabLeft) / 2;
+                r.dx = std::max(midHomeTab - r.x, 1);
+            }
         }
         if (win->captionBtn[i].visible && r.Contains(pt)) {
             return i;
@@ -14196,6 +14214,23 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
     } else if (button == CB_HOME) {
         SolidBrush bgBrHome(GdiRgbFromColor(ThemeControlBackgroundColor()));
         gfx.FillRectangle(&bgBrHome, rButton.x, rButton.y, rButton.dx, rButton.dy);
+
+        u8 buttonRGB = 1;
+        if (CBS_PUSHED == stateId) {
+            buttonRGB = 0;
+        } else if (CBS_HOT == stateId) {
+            buttonRGB = 255;
+        }
+
+        if (buttonRGB != 1) {
+            if (GetLightness(ThemeWindowTextColor()) > GetLightness(ThemeControlBackgroundColor())) {
+                buttonRGB ^= 0xff;
+            }
+            u8 buttonAlpha = u8((255 - abs((int)GetLightness(ThemeControlBackgroundColor()) - buttonRGB)) / 2);
+            SolidBrush br(Gdiplus::Color(buttonAlpha, buttonRGB, buttonRGB, buttonRGB));
+            gfx.FillRectangle(&br, rc.x, rc.y, rc.dx, rc.dy);
+        }
+
         int iconSize = DpiScale(20);
         Color fg = ThemeWindowTextColor();
         Pixmap* px = GetCachedPixmapForSvg(Str(gIconHome), iconSize, iconSize, fg, ThemeControlBackgroundColor());

@@ -503,6 +503,7 @@ struct MainWindow { // NOLINT(clang-analyzer-optin.performance.Padding)
     // the gap between the menu and the home button
     Spacer* capMenuPadL = nullptr;
     Spacer* capMenuHomeGap = nullptr;
+    Spacer* capHomeTabsGap = nullptr;
 
     // home page thumbnail scrolling
     int homePageScrollY = 0;
