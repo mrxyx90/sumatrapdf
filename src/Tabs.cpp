@@ -350,10 +350,7 @@ void TabsSelect(MainWindow* win, int tabIndex) {
 
     // same work as in onSelectionChanging and onSelectionChanged
     SaveCurrentWindowTab(win);
-    int prevIdx = tabsCtrl->SetSelected(tabIndex);
-    if (prevIdx < 0) {
-        return;
-    }
+    tabsCtrl->SetSelected(tabIndex);
     WindowTab* tab = tabs[tabIndex];
     // page-info tip is restored via MainWindow::pageInfoWanted in LoadModelIntoTab
     LoadModelIntoTab(tab);
@@ -942,6 +939,7 @@ void OpenHomeTab(MainWindow* win) {
     if (!win) {
         return;
     }
+    win->currentTabTemp = nullptr;
     if (!win->homeTab) {
         win->homeTab = new WindowTab(win);
         win->homeTab->type = WindowTab::Type::About;

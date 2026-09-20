@@ -616,9 +616,10 @@ void SelectTabInWindow(WindowTab* tab) {
         return;
     }
     auto* win = tab->win;
-    if (tab == win->CurrentTab()) {
+    if (!win->IsCurrentTabAbout() && tab == win->CurrentTab()) {
         return;
     }
+    win->currentTabTemp = nullptr;
     TabsSelect(win, win->GetTabIdx(tab));
 }
 
