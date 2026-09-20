@@ -699,6 +699,8 @@ void ToolbarUpdateStateForWindow(MainWindow* win, bool setButtonsVisibility) {
         bool remove = CommandShouldRemove(v);
         annotVisibilityChanged |= SetPdfAnnotationButtonHiddenByIdx(win, i, remove);
         SetPdfAnnotationButtonEnabledByIdx(win, i, annotButtonsEnabled && !CommandShouldDisable(v) && !remove);
+        bool isChecked = IsPlacingAnnotation(win) && win->annotPlacement.cmdId == bi.cmdId;
+        SetToolbarButtonCheckedState(win, bi.cmdId, isChecked);
         if (bi.cmdId == CmdSaveAnnotations) {
             // name the file it writes to, like the annotation list's Save button
             WindowTab* tab = win->CurrentTab();
@@ -1505,11 +1507,6 @@ static void OnToolbarButtonClicked(MainWindow* win, VirtMouseEvent* ev) {
         ev->didHandle = true;
         return;
     }
-    // annotation buttons are disabled while a placement mode is on
-    ToolbarVirt* tbv = win->toolbarVirt;
-    if (tbv && IsPlacingAnnotation(win) && VecContains(tbv->annotationItems, w)) {
-        return;
-    }
     // right-click: the drop-down, not the button's command
     if (ev->button == 1) {
         if (ShowToolbarButtonDropdown(win, cmdId)) {
@@ -2120,10 +2117,6 @@ static void ToolbarHoverDropdownOnMouseMove(MainWindow* win, const Point* client
     }
     if (w && FindHoverReg(tb, w->id)) {
         cmdId = w->id;
-    }
-    // except annotation buttons disabled by a placement mode
-    if (w && IsPlacingAnnotation(win) && VecContains(tb->annotationItems, w)) {
-        cmdId = 0;
     }
 
     if (tb->hoverCmdId != 0) {
