@@ -148,9 +148,12 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
         return;
     }
 
-    // If Edit PDF temporarily revealed the normal top toolbar, any other
-    // floating-toolbar action should restore its previously hidden state.
-    if (cmd != CmdToggleEditPDF && tb->win->floatingEditPdfRevealedToolbar) {
+    bool isAnnotTool = (cmd == CmdAnnotationHighlightBrush || cmd == CmdCreateAnnotInk || cmd == CmdCreateAnnotFreeText ||
+                        cmd == CmdCreateAnnotUnderline || cmd == CmdCreateAnnotSquiggly || cmd == CmdCreateAnnotStrikeOut ||
+                        (cmd >= CmdCreateAnnotFirst && cmd <= CmdCreateAnnotLast));
+
+    // If Edit PDF temporarily revealed the normal top toolbar, any non-annotation action restores its hidden state.
+    if (cmd != CmdToggleEditPDF && !isAnnotTool && tb->win->floatingEditPdfRevealedToolbar) {
         tb->win->floatingEditPdfRevealedToolbar = false;
         tb->win->isToolbarVisible = false;
         if (tb->win->hwndToolbar) {
@@ -212,6 +215,7 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
         cmd == CmdCreateAnnotUnderline || cmd == CmdCreateAnnotSquiggly || cmd == CmdCreateAnnotStrikeOut ||
         (cmd >= CmdCreateAnnotFirst && cmd <= CmdCreateAnnotLast)) {
         EnablePdfAnnotationsToolbar(tb->win);
+        ToolbarUpdateStateForWindow(tb->win, false);
         HwndSendCommand(tb->win->hwndFrame, cmd, 0);
         return;
     }
