@@ -282,6 +282,15 @@ static void SetPdfAnnotationButtonEnabledByIdx(MainWindow* win, int idx, bool is
     w->Invalidate();
 }
 
+static void SetPdfAnnotationButtonCheckedByIdx(MainWindow* win, int idx, bool isChecked) {
+    auto* ib = AsVirtIconButton(PdfAnnotationToolbarItemAt(win, idx));
+    if (!ib || ib->isSelected == isChecked) {
+        return;
+    }
+    ib->isSelected = isChecked;
+    ib->Invalidate();
+}
+
 // true if the row has to be laid out again
 static bool SetPdfAnnotationButtonHiddenByIdx(MainWindow* win, int idx, bool isHidden) {
     VirtCtrl* w = PdfAnnotationToolbarItemAt(win, idx);
@@ -700,7 +709,7 @@ void ToolbarUpdateStateForWindow(MainWindow* win, bool setButtonsVisibility) {
         annotVisibilityChanged |= SetPdfAnnotationButtonHiddenByIdx(win, i, remove);
         SetPdfAnnotationButtonEnabledByIdx(win, i, annotButtonsEnabled && !CommandShouldDisable(v) && !remove);
         bool isChecked = IsPlacingAnnotation(win) && win->annotPlacement.cmdId == bi.cmdId;
-        SetToolbarButtonCheckedState(win, bi.cmdId, isChecked);
+        SetPdfAnnotationButtonCheckedByIdx(win, i, isChecked);
         if (bi.cmdId == CmdSaveAnnotations) {
             // name the file it writes to, like the annotation list's Save button
             WindowTab* tab = win->CurrentTab();
@@ -1501,6 +1510,12 @@ static void OnToolbarButtonClicked(MainWindow* win, VirtMouseEvent* ev) {
     }
     int cmdId = w->id;
     if (cmdId == PageInfoId || cmdId == 0) {
+        return;
+    }
+    if (IsPlacingAnnotation(win) && win->annotPlacement.cmdId == cmdId) {
+        CancelAnnotationPlacement(win);
+        ToolbarUpdateStateForWindow(win, false);
+        ev->didHandle = true;
         return;
     }
     if (ToolbarDropdownJustClosed() && (cmdId == CmdToggleReadAloud || cmdId == CmdPauseReadAloud)) {
