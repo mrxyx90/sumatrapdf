@@ -1208,10 +1208,10 @@ int TabsCtrl::GetSelected() {
 
 int TabsCtrl::SetSelected(int idx) {
     int nTabs = TabCount();
-    if (idx < 0 || idx >= nTabs) {
+    if (idx != -1 && (idx < 0 || idx >= nTabs)) {
         logf("TabsCtrl::SetSelected(): idx: %d, TabsCount(): %d\n", idx, nTabs);
     }
-    ReportIf(idx < 0 || idx >= nTabs);
+    ReportIf(idx != -1 && (idx < 0 || idx >= nTabs));
     int prevSelectedIdx = selectedIdx;
     selectedIdx = idx;
     UpdateHover(tabHighlighted);
