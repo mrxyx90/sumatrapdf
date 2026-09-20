@@ -178,6 +178,13 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
             // the toggle is posted, not sent: clear the highlight now so the
             // button is not lit while the command is still in the queue
             tb->activeCmdId = 0;
+        } else if (!tb->win->isToolbarVisible && !tb->win->isToolbarOverlay && tb->win->pdfAnnotationsToolbarEnabled) {
+            // toolbar is hidden: deselecting the tool also exits Edit PDF
+            // mode, so no half-on state is left behind. The toggle is posted,
+            // not sent, so clear the highlight now; the command re-syncs
+            // once it lands
+            HwndPostCommand(tb->win->hwndFrame, CmdToggleEditPDF, 0);
+            tb->activeCmdId = 0;
         } else {
             // the placement tool ended but Edit PDF mode stays on: re-sync so
             // the toolbar highlights Edit PDF instead of ending up with no
@@ -205,6 +212,17 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
     }
 
     if (isAnnotTool) {
+        // switching from a floating-revealed Edit PDF to a tool hides the
+        // toolbar again: it was only revealed for the Edit PDF row, and a
+        // hidden toolbar must not be shown by picking a tool
+        if (tb->win->floatingEditPdfRevealedToolbar) {
+            tb->win->floatingEditPdfRevealedToolbar = false;
+            tb->win->isToolbarVisible = false;
+            if (tb->win->hwndToolbar) {
+                ShowWindow(tb->win->hwndToolbar, SW_HIDE);
+            }
+            ScheduleUiUpdate(tb->win, kUiForceRelayout | kUiRelayout);
+        }
         EnablePdfAnnotationsToolbar(tb->win);
         ToolbarUpdateStateForWindow(tb->win, false);
         HwndSendCommand(tb->win->hwndFrame, cmd, 0);
