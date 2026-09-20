@@ -809,7 +809,7 @@ void SetToolbarButtonEnableState(MainWindow* win, int cmdId, bool isEnabled) {
     }
 }
 
-static void SetPdfAnnotationsToolbarEnabled(MainWindow* win, bool enabled) {
+void SetPdfAnnotationsToolbarEnabled(MainWindow* win, bool enabled) {
     if (!win) {
         return;
     }
