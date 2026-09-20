@@ -21,6 +21,7 @@ License: GPLv3 */
 #include "base/Win.h"
 
 #include "Theme.h"
+#include "FloatingToolbar.h"
 
 // The installer and uninstaller never load settings, so CreateThemeCommands()
 // doesn't run and there is no current theme - every Theme*Color() accessor
@@ -135,7 +136,7 @@ static Str themesTxt = StrL(R"(Themes [
     [
         Name = Charcoal
         TextColor = #ffffff
-        BackgroundColor = #2d2d30
+        BackgroundColor = #202020
         ControlBackgroundColor = #2d2d30
         ActiveTabBackgroundColor = #2d2d30
         InactiveTabBackgroundColor = #45454a
@@ -651,6 +652,10 @@ void SetThemeByIndex(int themeIdx) {
     // different colors (the System theme, high contrast, a settings edit)
     UpdateGuiColorsFromTheme();
     if (themeChanged) {
+        // Rebuild the floating toolbar immediately after the new theme colors
+        // are installed, so its background and SVG icons change in the same
+        // theme-switch operation rather than waiting for another repaint.
+        FloatingToolbarUpdateTheme();
         UpdateAfterThemeChange();
     }
     DarkModeRememberTreeViewStyle();
@@ -851,8 +856,8 @@ static void UpdateGuiColorsFromTheme() {
     gColsRichText[kColRichBg] = ctlBg;
 
     gColsTab[kColTabText] = text;
-    gColsTab[kColTabBg] = ThemeActiveTabBackgroundColor();
-    gColsTab[kColTabInactiveBg] = ThemeInactiveTabBackgroundColor();
+    gColsTab[kColTabBg] = ThemeInactiveTabBackgroundColor();
+    gColsTab[kColTabInactiveBg] = ThemeActiveTabBackgroundColor();
 
     // custom top-level windows (dialogs, popups) sit their content on ctlBg,
     // like the side panels; a window that wants something else (the toolbar's
@@ -872,6 +877,7 @@ static void UpdateGuiColorsFromTheme() {
 // into gui/'s defaults, then rebuild and repaint everything that shows them.
 void SumatraUpdateTheme() {
     UpdateGuiColorsFromTheme();
+    FloatingToolbarUpdateTheme();
     UpdateAfterThemeChange();
 }
 

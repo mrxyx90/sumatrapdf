@@ -350,10 +350,7 @@ void TabsSelect(MainWindow* win, int tabIndex) {
 
     // same work as in onSelectionChanging and onSelectionChanged
     SaveCurrentWindowTab(win);
-    int prevIdx = tabsCtrl->SetSelected(tabIndex);
-    if (prevIdx < 0) {
-        return;
-    }
+    tabsCtrl->SetSelected(tabIndex);
     WindowTab* tab = tabs[tabIndex];
     // page-info tip is restored via MainWindow::pageInfoWanted in LoadModelIntoTab
     LoadModelIntoTab(tab);
@@ -644,7 +641,7 @@ static void MainWindowTabClosed(MainWindow* win, TabsCtrl::ClosedEvent* ev) {
 }
 
 static void MainWindowTabSelectionChanging(MainWindow* win, TabsCtrl::SelectionChangingEvent* ev) {
-    // TODO: Should we allow the switch of the tab if we are in process of printing?
+    win->currentTabTemp = nullptr;
     SaveCurrentWindowTab(win);
     ev->preventChanging = false;
 }
@@ -780,7 +777,7 @@ WindowTab* AddTabToWindow(MainWindow* win, WindowTab* tab, bool deferUpdate) {
     int idx = win->TabCount();
     bool useTabs = SettingsUseTabs();
     bool noHomeTab = gSettings->noHomeTab;
-    bool createHomeTab = useTabs && !noHomeTab && (idx == 0);
+    bool createHomeTab = false;
     if (createHomeTab) {
         WindowTab* homeTab = new WindowTab(win);
         homeTab->type = WindowTab::Type::About;
@@ -936,4 +933,20 @@ void MoveTab(MainWindow* win, int dir) {
     win->tabsCtrl->SwapTabs(idx, newIdx);
     win->tabsCtrl->SetSelected(newIdx);
     win->tabsCtrl->LayoutTabs();
+}
+
+void OpenHomeTab(MainWindow* win) {
+    if (!win) {
+        return;
+    }
+    win->currentTabTemp = nullptr;
+    if (!win->homeTab) {
+        win->homeTab = new WindowTab(win);
+        win->homeTab->type = WindowTab::Type::About;
+        win->homeTab->canvasRc = win->canvasRc;
+    }
+    LoadModelIntoTab(win->homeTab);
+    if (win->tabsCtrl) {
+        win->tabsCtrl->SetSelected(-1);
+    }
 }
