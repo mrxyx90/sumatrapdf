@@ -136,7 +136,7 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
             NotificationCreateArgs args;
             args.hwndParent = tb->win->hwndCanvas;
             args.font = GetDefaultGuiFont();
-            args.timeoutMs = 5000;
+            args.timeoutMs = kNotifDefaultTimeOut;
             args.msg = ToStr(msg);
             args.plainText = true;
             ShowNotification(args);
