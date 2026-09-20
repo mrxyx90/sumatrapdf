@@ -5418,7 +5418,7 @@ static void ShowSavedAnnotationsNotification(HWND hwndParent, Str path) {
     NotificationCreateArgs nargs;
     nargs.hwndParent = hwndParent;
     nargs.font = GetDefaultGuiFont();
-    nargs.timeoutMs = 5000;
+    nargs.timeoutMs = kNotifDefaultTimeOut;
     nargs.msg = ToStr(msg);
     nargs.plainText = true; // `path` is not ours, don't parse it as tip markup
     ShowNotification(nargs);
@@ -5522,13 +5522,12 @@ bool SaveAnnotationsToExistingFile(WindowTab* tab) {
         tab->ignoreNextAutoReload = false;
         return false;
     }
-    ShowSavedAnnotationsNotification(win->hwndCanvas, path);
-
     ReloadDocument(win, false);
     // Re-arm: the save notifies the file watcher, which schedules an auto-reload.
     // We already reloaded above; skip that one watcher event so we do not open
     // the PDF twice (and race background work against a just-rewritten file).
     tab->ignoreNextAutoReload = true;
+    ShowSavedAnnotationsNotification(win->hwndCanvas, path);
     return true;
 }
 
