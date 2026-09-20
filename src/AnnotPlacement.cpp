@@ -33,6 +33,7 @@
 #include "SelectTextKeyboard.h"
 #include "Commands.h"
 #include "Toolbar.h"
+#include "FloatingToolbar.h"
 #include "Translations.h"
 #include "SvgIcons.h"
 
