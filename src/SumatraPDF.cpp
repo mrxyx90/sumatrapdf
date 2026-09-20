@@ -13683,7 +13683,7 @@ static int CaptionButtonAt(MainWindow* win, Point pt) {
             int clientDx = HwndClientRect(win->hwndFrame).dx;
             r.dx = clientDx - r.x + 1;
         } else if (i == CB_MENU) {
-            r.x -= DpiScale(3);
+            r.x = DpiScale(3);
             if (win->captionBtn[CB_HOME].visible) {
                 int midMenuHome = (win->captionBtn[CB_MENU].rect.x + win->captionBtn[CB_MENU].rect.dx + win->captionBtn[CB_HOME].rect.x) / 2;
                 r.dx = std::max(midMenuHome - r.x, 1);
@@ -13691,17 +13691,14 @@ static int CaptionButtonAt(MainWindow* win, Point pt) {
                 r.dx += DpiScale(6);
             }
         } else if (i == CB_HOME) {
+            int midMenuHome = r.x;
             if (win->captionBtn[CB_MENU].visible) {
-                int midMenuHome = (win->captionBtn[CB_MENU].rect.x + win->captionBtn[CB_MENU].rect.dx + win->captionBtn[CB_HOME].rect.x) / 2;
-                int right = r.x + r.dx;
-                r.x = midMenuHome;
-                r.dx = std::max(right - r.x, 1);
+                midMenuHome = (win->captionBtn[CB_MENU].rect.x + win->captionBtn[CB_MENU].rect.dx + win->captionBtn[CB_HOME].rect.x) / 2;
             }
+            r.x = midMenuHome;
             int tabLeft = (win->capTabsRow1 && win->capTabsRow1->lastBounds.dx > 0) ? win->capTabsRow1->lastBounds.x : (win->captionBtn[CB_HOME].rect.x + win->captionBtn[CB_HOME].rect.dx + DpiScale(kCaptionMenuHomeGap));
-            if (tabLeft > win->captionBtn[CB_HOME].rect.x) {
-                int midHomeTab = (win->captionBtn[CB_HOME].rect.x + win->captionBtn[CB_HOME].rect.dx + tabLeft) / 2;
-                r.dx = std::max(midHomeTab - r.x, 1);
-            }
+            int maxRight = std::max(tabLeft - DpiScale(3), r.x + 1);
+            r.dx = std::max(maxRight - r.x, 1);
         }
         if (win->captionBtn[i].visible && r.Contains(pt)) {
             return i;
@@ -14172,8 +14169,14 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
         int iconPx = DpiScale(kCaptionGlyphDip);
         DrawCaptionSysButtonGlyph(hdc, kind, rc, iconCol, iconPx);
     } else if (button == CB_MENU) {
+        Rect rcFill = rButton;
+        rcFill.x = DpiScale(3);
+        if (win->captionBtn[CB_HOME].visible) {
+            int midMenuHome = (win->captionBtn[CB_MENU].rect.x + win->captionBtn[CB_MENU].rect.dx + win->captionBtn[CB_HOME].rect.x) / 2;
+            rcFill.dx = std::max(midMenuHome - rcFill.x, 1);
+        }
         SolidBrush bgBrMenu(GdiRgbFromColor(ThemeControlBackgroundColor()));
-        gfx.FillRectangle(&bgBrMenu, rButton.x, rButton.y, rButton.dx, rButton.dy);
+        gfx.FillRectangle(&bgBrMenu, rcFill.x, rcFill.y, rcFill.dx, rcFill.dy);
 
         if (win->isMenuOpen) {
             stateId = CBS_PUSHED;
@@ -14191,7 +14194,7 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
             }
             u8 buttonAlpha = u8((255 - abs((int)GetLightness(ThemeControlBackgroundColor()) - buttonRGB)) / 2);
             SolidBrush br(Gdiplus::Color(buttonAlpha, buttonRGB, buttonRGB, buttonRGB));
-            gfx.FillRectangle(&br, rc.x, rc.y, rc.dx, rc.dy);
+            gfx.FillRectangle(&br, rcFill.x, rcFill.y, rcFill.dx, rcFill.dy);
         }
         Color c = ThemeWindowTextColor();
         u8 r, g, b;
@@ -14212,8 +14215,18 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
         int y = rButton.y + ((rButton.dy - yIcon) / 2);
         DrawIconEx(hdc, x, y, hIcon, xIcon, yIcon, 0, nullptr, DI_NORMAL);
     } else if (button == CB_HOME) {
+        Rect rcFill = rButton;
+        int midMenuHome = rButton.x;
+        if (win->captionBtn[CB_MENU].visible) {
+            midMenuHome = (win->captionBtn[CB_MENU].rect.x + win->captionBtn[CB_MENU].rect.dx + win->captionBtn[CB_HOME].rect.x) / 2;
+        }
+        rcFill.x = midMenuHome;
+        int tabLeft = (win->capTabsRow1 && win->capTabsRow1->lastBounds.dx > 0) ? win->capTabsRow1->lastBounds.x : (win->captionBtn[CB_HOME].rect.x + win->captionBtn[CB_HOME].rect.dx + DpiScale(kCaptionMenuHomeGap));
+        int maxRight = std::max(tabLeft - DpiScale(3), rcFill.x + 1);
+        rcFill.dx = std::max(maxRight - rcFill.x, 1);
+
         SolidBrush bgBrHome(GdiRgbFromColor(ThemeControlBackgroundColor()));
-        gfx.FillRectangle(&bgBrHome, rButton.x, rButton.y, rButton.dx, rButton.dy);
+        gfx.FillRectangle(&bgBrHome, rcFill.x, rcFill.y, rcFill.dx, rcFill.dy);
 
         u8 buttonRGB = 1;
         if (CBS_PUSHED == stateId) {
@@ -14228,7 +14241,7 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
             }
             u8 buttonAlpha = u8((255 - abs((int)GetLightness(ThemeControlBackgroundColor()) - buttonRGB)) / 2);
             SolidBrush br(Gdiplus::Color(buttonAlpha, buttonRGB, buttonRGB, buttonRGB));
-            gfx.FillRectangle(&br, rc.x, rc.y, rc.dx, rc.dy);
+            gfx.FillRectangle(&br, rcFill.x, rcFill.y, rcFill.dx, rcFill.dy);
         }
 
         int iconSize = DpiScale(20);
