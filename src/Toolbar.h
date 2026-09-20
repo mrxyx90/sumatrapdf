@@ -180,3 +180,9 @@ void ToolbarFocusFrame(MainWindow*);
 bool ToolbarFrameIsVisible(MainWindow*);
 void ToolbarPostCommand(MainWindow*, int cmdId);
 void ToolbarSetHeight(MainWindow*, int dy);
+
+// Helper for floating toolbar to build annotation color hover menu
+void BuildAnnotColorsHoverMenuForCmd(MainWindow* win, int cmdId, ToolbarHoverBuildEvent* ev);
+
+// Check if a command is an annotation color command
+bool IsAnnotColorCmd(int cmdId);

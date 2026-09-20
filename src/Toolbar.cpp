@@ -1501,7 +1501,6 @@ void ToolbarNoteDropdownClosed() {
 }
 
 static bool ShowToolbarButtonDropdown(MainWindow*, int cmdId);
-static bool IsAnnotColorCmd(int cmdId);
 
 static void OnToolbarButtonClicked(MainWindow* win, VirtMouseEvent* ev) {
     VirtCtrl* w = ev->target;
@@ -2353,7 +2352,7 @@ static const int kAnnotColorCmds[] = {
     CmdCreateAnnotInk,           CmdCreateAnnotStamp,     CmdCreateAnnotCaret,     CmdCreateAnnotFileAttachment,
 };
 
-static bool IsAnnotColorCmd(int cmdId) {
+bool IsAnnotColorCmd(int cmdId) {
     for (int id : kAnnotColorCmds) {
         if (id == cmdId) {
             return true;
@@ -3741,3 +3740,13 @@ static void OnToolbarNativeMsg(MainWindow* win, VirtHostNativeMsg* ev) {
 void ToolbarSetNativeHooks(MainWindow* win, VirtHost* host) {
     host->onNativeMsg = MkFunc1(OnToolbarNativeMsg, win);
 }
+
+// Helper for floating toolbar to build annotation color hover menu
+void BuildAnnotColorsHoverMenuForCmd(MainWindow* win, int cmdId, ToolbarHoverBuildEvent* ev) {
+    if (!ev) {
+        return;
+    }
+    ev->cmdId = cmdId;
+    BuildAnnotColorsHoverMenu(win, ev);
+}
+
