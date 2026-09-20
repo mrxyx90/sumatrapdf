@@ -13679,6 +13679,11 @@ static int CaptionButtonAt(MainWindow* win, Point pt) {
             r.x -= DpiScale(7);
             int clientDx = HwndClientRect(win->hwndFrame).dx;
             r.dx = clientDx - r.x + 1;
+        } else if (i == CB_MENU) {
+            // the hamburger sits tight against the caption edge / home button:
+            // give it 3px of clickable slack on each side
+            r.x -= DpiScale(3);
+            r.dx += DpiScale(6);
         }
         if (win->captionBtn[i].visible && r.Contains(pt)) {
             return i;
