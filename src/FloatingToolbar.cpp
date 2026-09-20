@@ -24,6 +24,7 @@
 #include "AnnotPlacement.h"
 #include "Theme.h"
 #include "Notifications.h"
+#include "Toolbar.h"
 
 constexpr const WCHAR* kFloatingToolbarClassName = L"SumatraFloatingToolbar";
 constexpr int kFloatingToolbarIconSize = 22;
@@ -208,7 +209,9 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
     tb->host->Invalidate(false);
 
     if (cmd == CmdAnnotationHighlightBrush || cmd == CmdCreateAnnotInk || cmd == CmdCreateAnnotFreeText ||
-        cmd == CmdCreateAnnotUnderline || cmd == CmdCreateAnnotSquiggly || cmd == CmdCreateAnnotStrikeOut) {
+        cmd == CmdCreateAnnotUnderline || cmd == CmdCreateAnnotSquiggly || cmd == CmdCreateAnnotStrikeOut ||
+        (cmd >= CmdCreateAnnotFirst && cmd <= CmdCreateAnnotLast)) {
+        EnablePdfAnnotationsToolbar(tb->win);
         HwndSendCommand(tb->win->hwndFrame, cmd, 0);
         return;
     }
