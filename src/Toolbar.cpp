@@ -635,7 +635,7 @@ static void SetPdfAnnotationsToolbarVisible(MainWindow* win, bool visible) {
         return;
     }
     tb->annotationRow->SetVisibility(want);
-    SetToolbarButtonCheckedState(win, CmdToggleEditPDF, visible);
+    SetToolbarButtonCheckedState(win, CmdToggleEditPDF, visible && !IsPlacingAnnotation(win));
     ToolbarSetHeight(win, tb->rowDy * (visible ? 2 : 1));
     tb->host->Relayout();
     tb->host->Invalidate(true);

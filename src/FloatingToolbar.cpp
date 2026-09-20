@@ -162,23 +162,6 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
         ScheduleUiUpdate(tb->win, kUiForceRelayout | kUiRelayout);
     }
 
-    // Fully deactivate any previously active tool before activating a new one
-    if (tb->activeCmdId != 0 && tb->activeCmdId != cmd) {
-        CancelAnnotationPlacement(tb->win);
-        if (tb->activeCmdId == CmdToggleEditPDF) {
-            if (tb->win->floatingEditPdfRevealedToolbar) {
-                tb->win->floatingEditPdfRevealedToolbar = false;
-                tb->win->isToolbarVisible = false;
-                if (tb->win->hwndToolbar) {
-                    ShowWindow(tb->win->hwndToolbar, SW_HIDE);
-                }
-                ScheduleUiUpdate(tb->win, kUiForceRelayout | kUiRelayout);
-            }
-            HwndPostCommand(tb->win->hwndFrame, CmdToggleEditPDF, 0);
-        }
-        tb->activeCmdId = 0;
-    }
-
     // Clicking the already active tool again deactivates it
     if (tb->activeCmdId == cmd) {
         CancelAnnotationPlacement(tb->win);
@@ -198,7 +181,11 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
         return;
     }
 
-    // Edit PDF toggle handling
+    // Switching to a new tool: cancel old placement and activate new tool instantly in 1 click
+    CancelAnnotationPlacement(tb->win);
+    tb->activeCmdId = cmd;
+    tb->host->Invalidate(false);
+
     if (cmd == CmdToggleEditPDF) {
         if (!tb->win->isToolbarVisible && !tb->win->isToolbarOverlay && tb->win->hwndToolbar) {
             tb->win->floatingEditPdfRevealedToolbar = true;
@@ -206,19 +193,17 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
             ShowWindow(tb->win->hwndToolbar, SW_SHOW);
             ScheduleUiUpdate(tb->win, kUiForceRelayout | kUiRelayout);
         }
+        HwndPostCommand(tb->win->hwndFrame, cmd, 0);
+        return;
     }
 
-    tb->activeCmdId = cmd;
-    tb->host->Invalidate(false);
-
-    if (cmd == CmdAnnotationHighlightBrush || cmd == CmdCreateAnnotInk || cmd == CmdCreateAnnotFreeText ||
-        cmd == CmdCreateAnnotUnderline || cmd == CmdCreateAnnotSquiggly || cmd == CmdCreateAnnotStrikeOut ||
-        (cmd >= CmdCreateAnnotFirst && cmd <= CmdCreateAnnotLast)) {
+    if (isAnnotTool) {
         EnablePdfAnnotationsToolbar(tb->win);
         ToolbarUpdateStateForWindow(tb->win, false);
         HwndSendCommand(tb->win->hwndFrame, cmd, 0);
         return;
     }
+
     HwndPostCommand(tb->win->hwndFrame, cmd, 0);
 }
 
@@ -589,10 +574,10 @@ void UpdateFloatingToolbarActiveState(MainWindow* win) {
     }
     FloatingToolbar* tb = win->floatingToolbar;
     int activeCmd = 0;
-    if (win->pdfAnnotationsToolbarEnabled) {
-        activeCmd = CmdToggleEditPDF;
-    } else if (IsPlacingAnnotation(win)) {
+    if (IsPlacingAnnotation(win)) {
         activeCmd = win->annotPlacement.cmdId;
+    } else if (win->pdfAnnotationsToolbarEnabled) {
+        activeCmd = CmdToggleEditPDF;
     }
     if (tb->activeCmdId != activeCmd) {
         tb->activeCmdId = activeCmd;
