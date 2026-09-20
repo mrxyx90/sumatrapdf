@@ -3068,6 +3068,10 @@ void VirtCaptionButton::SetBounds(Rect r) {
 }
 
 constexpr int kTabsButtonGapX = 32;
+// single-row caption: margin between the frame edge and the menu (hamburger)
+// button, and the gap between the menu and the home button
+constexpr int kCaptionMenuLeftPad = 8;
+constexpr int kCaptionMenuHomeGap = 8;
 
 static void CreateCaptionLayout(MainWindow* win) {
     for (int i = CB_BTN_FIRST; i < CB_BTN_COUNT; i++) {
@@ -3084,13 +3088,17 @@ static void CreateCaptionLayout(MainWindow* win) {
     win->capDrag1 = new Spacer(0, 0);
     win->capRow2Lead = new Spacer(0, 0);
     win->capRow2Trail = new Spacer(0, 0);
+    win->capMenuPadL = new Spacer(DpiScale(kCaptionMenuLeftPad), 0);
+    win->capMenuHomeGap = new Spacer(DpiScale(kCaptionMenuHomeGap), 0);
 
-    // single row: sys | menu | tabs | gap | min | max/restore | close
-    // two row:     sys | menu hwnd | drag | min | max/restore | close
+    // single row: pad | menu | gap | home | tabs | gap | min | max/restore | close
+    // two row:     home | menu hwnd | drag | min | max/restore | close
     win->captionRow1 = new HBox();
     win->captionRow1->alignCross = CrossAxisAlign::CrossStart;
+    win->captionRow1->AddChild(win->capMenuPadL);
     win->captionRow1->AddChild(win->capBtn[CB_SYSTEM_MENU]);
     win->captionRow1->AddChild(win->capBtn[CB_MENU]);
+    win->captionRow1->AddChild(win->capMenuHomeGap);
     win->captionRow1->AddChild(win->capBtn[CB_HOME]);
     win->captionRow1->AddChild(win->capMenuSlot);
     win->captionRow1->AddChild(win->capTabsRow1, 1);
@@ -7568,6 +7576,10 @@ static void SyncCaptionLayout(MainWindow* win) {
     SetVis(win->capTabsRow1, !twoRow);
     SetVis(win->capDrag1, twoRow);
     SetVis(win->capGap, !twoRow);
+    // the hamburger only exists in the single-row caption; keep its margins
+    // with it so the two-row menu bar stays flush as before
+    SetVis(win->capMenuPadL, !twoRow);
+    SetVis(win->capMenuHomeGap, !twoRow);
     SetVis(win->captionRow2, twoRow && hasFileTabs);
     SetVis(win->capTabsRow2, twoRow && hasFileTabs);
     SetVis(win->capRow2Lead, twoRow && hasFileTabs && isRtl);
