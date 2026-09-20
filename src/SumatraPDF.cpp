@@ -11628,6 +11628,8 @@ static void UndoRedoInTab(WindowTab* tab, bool redo) {
         return;
     }
 
+    int activeToolCmdId = win->annotPlacement.cmdId;
+
     // an in-flight placement or drag would write to what we are about to undo
     CancelAnnotationPlacement(win);
     CancelDrag(win);
@@ -11645,6 +11647,11 @@ static void UndoRedoInTab(WindowTab* tab, bool redo) {
     // the wrapper deletes above mark the document modified; the journal knows better
     EngineMupdfRefreshModifiedState(engine);
     DeleteOldSelectionInfo(win, true);
+
+    if (activeToolCmdId != 0) {
+        StartAnnotationPlacement(win, activeToolCmdId);
+    }
+
     RefreshAnnotationLists(tab);
     NotifyAnnotationsChanged(tab);
     ToolbarUpdateStateForWindow(win, true);
