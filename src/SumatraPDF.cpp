@@ -9450,7 +9450,17 @@ static void OnFrameKeyEsc(MainWindow* win) {
     if (StopSelectTextWithKeyboard(win)) {
         return;
     }
-    if (CancelAnnotationPlacement(win)) {
+    if (IsPlacingAnnotation(win) || win->pdfAnnotationsToolbarEnabled) {
+        CancelAnnotationPlacement(win);
+        if (win->floatingEditPdfRevealedToolbar) {
+            win->floatingEditPdfRevealedToolbar = false;
+            win->isToolbarVisible = false;
+            if (win->hwndToolbar) {
+                ShowWindow(win->hwndToolbar, SW_HIDE);
+            }
+            ScheduleUiUpdate(win, kUiForceRelayout | kUiRelayout);
+        }
+        SetPdfAnnotationsToolbarEnabled(win, false);
         return;
     }
     if (CancelPlacingSignature(win)) {
