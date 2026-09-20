@@ -1538,6 +1538,11 @@ static void HideCanvasScrollbars(MainWindow* win) {
 SeqStrings gScrollbarModeNames = "windows\0smart\0overlay\0hidden\0";
 
 int ScrollbarModeFromPrefs() {
+    // embedded hosts get native scrollbars; override here, not in gSettings,
+    // so the user's choice isn't written back to the settings file
+    if (gMyWindowWasEmbedded) {
+        return kScrollbarWindows;
+    }
     int idx = SeqStrIndexIS(gScrollbarModeNames, gSettings->scrollbars);
     if (idx < 0) {
         idx = kScrollbarWindows;
@@ -4873,7 +4878,7 @@ void LoadModelIntoTab(WindowTab* tab) {
         tab->loadState == WindowTab::LoadState::None) {
         NotificationCreateArgs args;
         args.hwndParent = win->hwndCanvas;
-        args.msg = fmt(Tr("Please wait - loading...").s);
+        args.msg = fmt(Tr("Loading...").s);
         args.warning = true;
         ShowNotification(args);
         // Use ShowMainWindow so SW_SHOW does not drop a pending maximize (#5529)
@@ -10038,8 +10043,7 @@ static void NotifyUrlSelectionTruncated(WindowTab* tab) {
     args.tab = tab;
     args.warning = true;
     args.timeoutMs = 5000;
-    args.msg =
-        Tr("Selection was too long for a URL and was shortened. Use a POST selection handler to send all of it.");
+    args.msg = Tr("Selection was too long for a URL and was shortened.");
     ShowNotification(args);
 }
 
@@ -11551,6 +11555,13 @@ static void PrintCurrentFileDeferred(MainWindow* win) {
     PrintCurrentFile(win);
 }
 
+static void PrintSelectionDeferred(MainWindow* win) {
+    if (!IsMainWindowValidAndNotClosing(win)) {
+        return;
+    }
+    PrintCurrentFile(win, false, true);
+}
+
 // A gesture that writes to the document as it goes (a resize drag writes the
 // annotation on every mouse move) should still be a single undo step, so it
 // holds one journal operation open from start to end. Both calls are safe to
@@ -11667,8 +11678,7 @@ static void ApplyRedactionsInTab(WindowTab* tab) {
         return;
     }
     MainWindowRerender(win);
-    ShowTemporaryNotification(win->hwndCanvas, Tr("Redactions applied. Saving the file makes them permanent."),
-                              kNotif5SecsTimeOut);
+    ShowTemporaryNotification(win->hwndCanvas, Tr("Redactions applied."), kNotif5SecsTimeOut);
 }
 
 static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
@@ -11920,6 +11930,12 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
         case CmdPrint:
             // not PrintCurrentFile(win): see PrintCurrentFileDeferred
             uitask::Post(MkFunc0(PrintCurrentFileDeferred, win), "CmdPrint");
+            break;
+
+        case CmdPrintSelection:
+            // the print dialog with "Selection" pre-selected; the selection
+            // can also be printed via CmdPrint by picking that radio button
+            uitask::Post(MkFunc0(PrintSelectionDeferred, win), "CmdPrintSelection");
             break;
 
         case CmdCopyFilePath:
@@ -14626,7 +14642,6 @@ static LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPAR
     if (win && !gMyWindowWasEmbedded && isChildWindow) {
         logf("Detected window embedded in another window\n");
         gMyWindowWasEmbedded = true;
-        str::ReplaceWithCopy(&gSettings->scrollbars, StrL("windows"));
         uitask::Post(MkFunc0(ApplyEmbeddedWindowChrome, win), "ApplyEmbeddedWindowChrome");
     }
     // custom caption is incompatible with WS_CHILD hosts; skip even before
@@ -17509,14 +17524,7 @@ static void ShowCrashHandlerMessage() {
         return;
     }
 
-#if 0
-    int res = MsgBox(nullptr, Tr("Sorry, that shouldn't have happened!\n\nPlease press 'Cancel', if you want to help us fix the cause of this crash."), Tr("SumatraPDF crashed"), MB_ICONERROR | MB_OKCANCEL | MbRtlReadingMaybe());
-    if (IDCANCEL == res) {
-        LaunchBrowser(kCrashReportUrl);
-    }
-#endif
-
-    Str msg = Tr("We're sorry, SumatraPDF crashed.\n\nPress 'Cancel' to see crash report.");
+    Str msg = Tr("SumatraPDF crashed.\n\nPress 'Cancel' to see the crash report.");
     uint flags = MB_ICONERROR | MB_OK | MB_OKCANCEL | MbRtlReadingMaybe();
     flags |= MB_SETFOREGROUND | MB_TOPMOST;
 
@@ -18095,9 +18103,6 @@ int APIENTRY WinMain(_In_ HINSTANCE /*hInstance*/, _In_opt_ HINSTANCE /*hPrevIns
     // UpdateDocumentColors() keeps it in sync after this
     AtomicBoolSet(&gRenderCache->grayscalePageColors, gSettings->fixedPageUI.grayscale);
 
-    if (gMyWindowWasEmbedded) {
-        str::ReplaceWithCopy(&gSettings->scrollbars, StrL("windows"));
-    }
     SetCurrentLang(flags.lang ? flags.lang : gSettings->uiLanguage);
     if (flags.showPrintersDialog) {
         // -console / -silent: list to stdout only, no dialog window (#5810)

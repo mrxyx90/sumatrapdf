@@ -23,6 +23,22 @@ This is reliable across document types (PDF, XPS, CBZ, etc.) but means:
 Press `Ctrl + P` (or toolbar / menu) to open the system print dialog. There you
 pick the printer, number of copies, and page range.
 
+### Printing part of a page
+
+To print only a fragment of a page (a detail of a drawing, one table):
+
+1. Select the area as a rectangle: hold `Ctrl` and drag with the left mouse
+   button (or drag with the right mouse button).
+2. Right-click the selection and choose **Print Selection...**, or press
+   `Ctrl + P` and pick **Selection** under *Page Range* in the print dialog.
+3. To print the fragment at its real size choose **Actual size (1:1)**
+   under *Advanced*; **Shrink** / **Fit** scale it to the paper instead.
+
+The selection prints on one sheet, at the top-left (or centered with
+**Center page horizontally**). Only rectangular selections can be printed;
+a text selection is not offered. The Windows 11 print dialog can't print a
+selection, so SumatraPDF uses the classic dialog for it.
+
 ### The Advanced options
 
 The system print dialog has an **Advanced** tab (a second tab next to
@@ -36,14 +52,16 @@ The system print dialog has an **Advanced** tab (a second tab next to
 
 **Page scaling**
 
-- **Shrink pages to printable area (if necessary)** – default; only scales down
+- **Shrink pages to printable area** – default; only scales down
   pages that are too big for the paper, leaves smaller pages at original size
 - **Fit pages to printable area** – scale every page up or down so it fills the
   printable area, keeping the aspect ratio
-- **Stretch pages to fill paper (ignore aspect ratio)** – fill the paper in both
+- **Stretch pages to fill paper** – fill the paper in both
   dimensions, *not* keeping the aspect ratio (the page is distorted to fit)
-- **Use original page sizes** – print at 100%, no scaling (best for forms,
-  labels and anything that must print at an exact size)
+- **Actual size (1:1)** – print at 100%, no scaling
+  (best for forms, labels, technical drawings and anything that must print at
+  an exact size). For images the size comes from the resolution
+  recorded in the file; see [Printing at actual size](#printing-at-actual-size-11)
 
 **Other**
 
@@ -141,7 +159,8 @@ Order doesn't matter. Available tokens:
 
 | Option | Meaning |
 | --- | --- |
-| `noscale` | print at 100% (no scaling) |
+| `noscale` | print at 100% (no scaling), i.e. actual size / 1:1 |
+| `dpi=<n>` | resolution to assume for the document, e.g. `dpi=300` for a 300 dpi scan whose file says otherwise (or nothing); decides the size `noscale` prints at |
 | `shrink` | scale down only pages too big for the paper (default) |
 | `fit` | scale every page to fill the printable area, keeping aspect ratio |
 | `stretch` | fill the paper in both dimensions, ignoring aspect ratio |
@@ -226,6 +245,7 @@ advanced setting (in `Settings → Advanced Options`):
 PrinterDefaults [
 	PrintScale = none
 	Collate = collate
+	PrintDpi = 0
 ]
 ```
 
@@ -235,6 +255,39 @@ PrinterDefaults [
   (leave the printer/driver default), `collate`, `nocollate`. You can still
   change it per print in the dialog. For command-line printing, use the
   `collate` / `nocollate` `-print-settings` tokens instead.
+- `PrintDpi` — resolution to assume for the document when printing at original
+  size; `0` (default) uses what the file says. The same as `dpi=<n>` in
+  `-print-settings`, for printing from the window. See
+  [Printing at actual size](#printing-at-actual-size-11).
+
+## Printing at actual size (1:1)
+
+"Actual size" needs two things: no scaling (**Actual size (1:1)** in the
+dialog, `noscale` on the command line) and a correct idea of how big the
+document is.
+
+- **PDF, XPS, DjVu, EPUB...** have real page sizes, so no scaling is all it takes.
+- **Images** (TIFF, PNG, JPEG, BMP, scans) are only pixels; their physical size is
+  pixels divided by the resolution stored in the file (TIFF resolution tags,
+  PNG `pHYs`, JPEG JFIF density, EXIF). SumatraPDF uses that, and assumes 96 dpi
+  when the file has none. A 300 dpi A3 scan therefore prints as A3 only if the
+  scanner wrote 300 dpi into the file; a file with no resolution prints about
+  3x too large, and a file that claims 72 dpi comes out bigger still. The
+  resolution SumatraPDF read is shown in Document Properties (`Ctrl + D`) as
+  *DPI*.
+- **Image folders and comic books** (CBZ, CBR, a directory of images) are always
+  treated as 96 dpi, whatever the images say, so their pages fit a screen.
+
+When the file's resolution is missing or wrong, tell SumatraPDF what it is:
+
+- from the window: set `PrinterDefaults.PrintDpi` (Settings → Advanced Options),
+  e.g. `PrintDpi = 300`, then print with **Actual size (1:1)**
+- from the command line: `-print-settings "noscale,dpi=300"`
+
+The override only sets the size; the pixels are still sent at full resolution.
+
+Printing a rectangular selection (see [Printing part of a page](#printing-part-of-a-page))
+at actual size works the same way: choose **Actual size (1:1)**.
 
 ## Recipes for common tasks
 
@@ -248,6 +301,12 @@ SumatraPDF.exe -print-to-default -silent document.pdf
 
 ```
 SumatraPDF.exe -print-to "Label Printer" -print-settings "noscale" label.pdf
+```
+
+**Print a scan at its real size when the file lacks (or lies about) its DPI**
+
+```
+SumatraPDF.exe -print-to "Plotter" -print-settings "noscale,dpi=300" drawing.tif
 ```
 
 **Print a small page centered on larger paper (e.g. an envelope)**
