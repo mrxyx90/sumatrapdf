@@ -27,8 +27,8 @@ struct NotificationClosedEvent {
 
 using NotificationClosed = Func1<NotificationClosedEvent*>;
 
-constexpr const int kNotifDefaultTimeOut = 800; // 800ms
-constexpr const int kNotif5SecsTimeOut = 1500; // 1.5 second
+constexpr const int kNotifDefaultTimeOut = 1500; // 1.5sec
+constexpr const int kNotif5SecsTimeOut = 1000 * 5; // 5 second
 constexpr const int kNotifNoTimeout = 0;
 
 // where on the canvas the notification is anchored. The corner variants stack
