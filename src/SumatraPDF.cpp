@@ -14224,11 +14224,12 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
         SolidBrush bgBrHome(GdiRgbFromColor(bgc));
         gfx.FillRectangle(&bgBrHome, rcFill.x, rcFill.y, rcFill.dx, rcFill.dy);
 
+        bool isHomeActive = win->IsCurrentTabAbout();
         bool isHot = (stateId == CBS_HOT);
         bool isPushed = (stateId == CBS_PUSHED);
 
-        if (isHot || isPushed) {
-            Color hotBg = isPushed ? AccentColor(bgc, 40) : AccentColor(bgc, 20);
+        if (isHot || isPushed || isHomeActive) {
+            Color hotBg = (isPushed || isHomeActive) ? AccentColor(bgc, 40) : AccentColor(bgc, 20);
             SolidBrush bgBr(GdiRgbFromColor(hotBg));
             gfx.FillRectangle(&bgBr, rcFill.x, rcFill.y, rcFill.dx, rcFill.dy);
         }
