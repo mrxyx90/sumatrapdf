@@ -39,7 +39,7 @@ void RemapSelOnRenumber(MainWindow* win, DisplayModel* dm);
 void RemapTextSelection(DisplayModel* dm);
 void PaintTransparentRectangles(Gfx* gfx, Rect screenRc, Vec<Rect>& rects, Color selectionColor,
                                 u8 alpha = kSelectionDefaultAlpha, int pad = 2, bool drawBorder = false);
-void PaintSelection(MainWindow* win, Gfx* gfx);
+void PaintSelection(MainWindow* win, Gfx* gfx, HDC hdc);
 void UpdateTextSelection(MainWindow* win, bool select = true);
 void CopySelectionToClipboard(MainWindow* win);
 void CopySelectionAsImageToClipboard(MainWindow* win);

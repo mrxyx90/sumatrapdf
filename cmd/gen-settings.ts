@@ -1729,6 +1729,14 @@ const globalPrefs: Field[] = [
       "out to hide it. Empty (the default) is the standard set. SelectionHandlers with " +
       "SelectToolbarNameOrSvg still come last",
   ).ver("3.7"),
+  compactStruct(
+    "FloatingToolbarPosition",
+    pointPos,
+    "last screen position of the main floating toolbar; x/y of 0 means use the default position",
+  )
+    .structName("Point")
+    .internal()
+    .ver("3.7"),
   field(
     "TabsMru",
     Bool,

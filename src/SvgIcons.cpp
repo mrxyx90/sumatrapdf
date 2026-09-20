@@ -324,6 +324,14 @@ const char* gIconHomeThumbnails =
   <rect x="14" y="14" width="6" height="6" rx="1" />
 </svg>)";
 
+// https://github.com/tabler/tabler-icons/blob/main/icons/outline/home.svg
+const char* gIconHome =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <path d="M5 12l-2 2l9 -9l9 9l-2 -2" />
+  <path d="M5 10v10a1 1 0 0 0 1 1h4v-6a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v6h4a1 1 0 0 0 1 -1v-10" />
+</svg>)";
+
 // https://github.com/tabler/tabler-icons/blob/main/icons/outline/pin.svg
 const char* gIconPin =
     R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">

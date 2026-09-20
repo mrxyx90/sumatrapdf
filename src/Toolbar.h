@@ -45,6 +45,7 @@ Rect GetToolbarButtonScreenRect(MainWindow*, int cmdId);
 void ToolbarNoteDropdownClosed();
 void TogglePdfAnnotationsToolbar(MainWindow*);
 void EnablePdfAnnotationsToolbar(MainWindow*);
+void SetPdfAnnotationsToolbarEnabled(MainWindow*, bool);
 int ToolbarIconSize();
 
 TempStr ToolbarButtonsResultTemp(int* exitCodeOut);
