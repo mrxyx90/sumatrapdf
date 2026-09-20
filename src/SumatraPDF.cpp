@@ -13686,7 +13686,7 @@ static int CaptionButtonAt(MainWindow* win, Point pt) {
             r.x = DpiScale(3);
             if (win->captionBtn[CB_HOME].visible) {
                 int midMenuHome = (win->captionBtn[CB_MENU].rect.x + win->captionBtn[CB_MENU].rect.dx + win->captionBtn[CB_HOME].rect.x) / 2;
-                r.dx = std::max(midMenuHome - r.x, 1);
+                r.dx = std::max(midMenuHome - DpiScale(1) - r.x, 1);
             } else {
                 r.dx += DpiScale(6);
             }
@@ -13695,7 +13695,7 @@ static int CaptionButtonAt(MainWindow* win, Point pt) {
             if (win->captionBtn[CB_MENU].visible) {
                 midMenuHome = (win->captionBtn[CB_MENU].rect.x + win->captionBtn[CB_MENU].rect.dx + win->captionBtn[CB_HOME].rect.x) / 2;
             }
-            r.x = midMenuHome;
+            r.x = midMenuHome + DpiScale(1);
             int tabLeft = (win->capTabsRow1 && win->capTabsRow1->lastBounds.dx > 0) ? win->capTabsRow1->lastBounds.x : (win->captionBtn[CB_HOME].rect.x + win->captionBtn[CB_HOME].rect.dx + DpiScale(kCaptionMenuHomeGap));
             int maxRight = std::max(tabLeft - DpiScale(3), r.x + 1);
             r.dx = std::max(maxRight - r.x, 1);
@@ -14173,7 +14173,7 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
         rcFill.x = DpiScale(3);
         if (win->captionBtn[CB_HOME].visible) {
             int midMenuHome = (win->captionBtn[CB_MENU].rect.x + win->captionBtn[CB_MENU].rect.dx + win->captionBtn[CB_HOME].rect.x) / 2;
-            rcFill.dx = std::max(midMenuHome - rcFill.x, 1);
+            rcFill.dx = std::max(midMenuHome - DpiScale(1) - rcFill.x, 1);
         }
         Color bgc = ThemeControlBackgroundColor();
         SolidBrush bgBrMenu(GdiRgbFromColor(bgc));
@@ -14215,7 +14215,7 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
         if (win->captionBtn[CB_MENU].visible) {
             midMenuHome = (win->captionBtn[CB_MENU].rect.x + win->captionBtn[CB_MENU].rect.dx + win->captionBtn[CB_HOME].rect.x) / 2;
         }
-        rcFill.x = midMenuHome;
+        rcFill.x = midMenuHome + DpiScale(1);
         int tabLeft = (win->capTabsRow1 && win->capTabsRow1->lastBounds.dx > 0) ? win->capTabsRow1->lastBounds.x : (win->captionBtn[CB_HOME].rect.x + win->captionBtn[CB_HOME].rect.dx + DpiScale(kCaptionMenuHomeGap));
         int maxRight = std::max(tabLeft - DpiScale(3), rcFill.x + 1);
         rcFill.dx = std::max(maxRight - rcFill.x, 1);
