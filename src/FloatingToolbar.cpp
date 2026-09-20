@@ -618,3 +618,14 @@ void UpdateFloatingToolbarActiveState(MainWindow* win) {
         }
     }
 }
+
+bool IsCursorOverFloatingToolbar(MainWindow* win) {
+    if (!win || !win->floatingToolbar || !win->floatingToolbar->host) {
+        return false;
+    }
+    POINT ptScreen{};
+    GetCursorPos(&ptScreen);
+    HWND hwndUnderCursor = WindowFromPoint(ptScreen);
+    HWND floatingHwnd = win->floatingToolbar->host->native;
+    return hwndUnderCursor == floatingHwnd || IsChild(floatingHwnd, hwndUnderCursor);
+}

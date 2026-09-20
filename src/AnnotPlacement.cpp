@@ -539,7 +539,7 @@ void StartAnnotationPlacement(MainWindow* win, int cmdId) {
 
     HwndSetFocus(win->hwndFrame);
     Point pt = HwndGetCursorPos(win->hwndCanvas);
-    if (HwndClientRect(win->hwndCanvas).Contains(pt)) {
+    if (HwndClientRect(win->hwndCanvas).Contains(pt) && !IsCursorOverFloatingToolbar(win)) {
         SetPlacementCursor(win);
     }
 }
@@ -1006,6 +1006,9 @@ bool AnnotationPlacementOnMouseMove(MainWindow* win, Point pt, WPARAM key) {
 
 bool AnnotationPlacementOnSetCursor(MainWindow* win) {
     if (!IsPlacingAnnotation(win) || KindOf(win) == AnnotPlacementKind::Highlighter) {
+        return false;
+    }
+    if (IsCursorOverFloatingToolbar(win)) {
         return false;
     }
     SetPlacementCursor(win);

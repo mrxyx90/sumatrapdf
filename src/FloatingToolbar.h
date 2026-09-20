@@ -9,3 +9,4 @@ void FloatingToolbarOnWindowMoved(MainWindow*);
 void FloatingToolbarRelayout(MainWindow*);
 void FloatingToolbarUpdateTheme();
 void UpdateFloatingToolbarActiveState(MainWindow*);
+bool IsCursorOverFloatingToolbar(MainWindow*);
