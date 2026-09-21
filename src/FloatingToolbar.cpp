@@ -238,14 +238,14 @@ static void OpenFloatingToolbarHoverDropdown(FloatingToolbar* tb, int cmdId, Vir
     int x;
     if (buttonCenterX < frameCenterX) {
         // Button is on left half, show dropdown to the right of the button
-        x = buttonScreenRect.x + buttonScreenRect.dx;
+        x = buttonScreenRect.x + buttonScreenRect.dx + DpiScale(6);
     } else {
         // Button is on right half, show dropdown to the left of the button
-        x = buttonScreenRect.x - sz.dx;
+        x = buttonScreenRect.x - sz.dx - DpiScale(6);
     }
 
-    // Vertical position: under the button
-    int y = buttonScreenRect.y + buttonScreenRect.dy;
+    // Vertical position: centered alongside the button
+    int y = buttonScreenRect.y + ((buttonScreenRect.dy - sz.dy) / 2);
 
     Rect r{x, y, sz.dx, sz.dy};
     r = ShiftRectToWorkArea(r, tb->win->hwndFrame, true);
@@ -539,7 +539,9 @@ static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
             ev->didHandle = true;
         } else if (ev->wp == kFloatingToolbarCloseHoverDropdownTimerId) {
             tb->host->KillTimer(kFloatingToolbarCloseHoverDropdownTimerId);
-            HideFloatingToolbarHoverDropdown(tb);
+            if (tb->hoverPendingCmdId == 0) {
+                HideFloatingToolbarHoverDropdown(tb);
+            }
             ev->didHandle = true;
         }
         break;
