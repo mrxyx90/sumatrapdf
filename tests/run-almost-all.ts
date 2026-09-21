@@ -117,6 +117,7 @@ import { testit as issue6216 } from "./issue-6216.ts";
 import { testit as issue6217 } from "./issue-6217.ts";
 import { testit as comicFitPageRelayout } from "./comic-fit-page-relayout.ts";
 import { testit as issue6225 } from "./issue-6225.ts";
+import { testit as issue6229 } from "./issue-6229.ts";
 import { testit as ghsaP2ph2rvmQ37m } from "./security-ghsa-p2ph-2rvm-q37m.ts";
 import { testit as issue4753 } from "./issue-4753.ts";
 import { testit as issue4055 } from "./issue-4055.ts";
@@ -142,6 +143,7 @@ import { testit as embeddedImageAttachment } from "./embedded-image-attachment.t
 import { testit as ttsEngineCrashRecovery } from "./tts-engine-crash-recovery.ts";
 import { testit as lazyTabStateAfterSave } from "./lazy-tab-state-after-save.ts";
 import { testit as lazyTabSelectPaint } from "./lazy-tab-select-paint.ts";
+import { testit as restoreChmMissingTab } from "./restore-chm-missing-tab.ts";
 import { testit as issue5943 } from "./issue-5943.ts";
 import { testit as issue6117 } from "./issue-6117.ts";
 import { testit as issue6118 } from "./issue-6118.ts";
@@ -167,6 +169,8 @@ import { testit as issue4576 } from "./issue-4576.ts";
 import { testit as issue5850 } from "./issue-5850.ts";
 
 import { testit as issue6028 } from "./issue-6028.ts";
+import { testit as issue6228 } from "./issue-6228.ts";
+import { testit as issue6230 } from "./issue-6230.ts";
 import { testit as issue6062 } from "./issue-6062.ts";
 import { testit as issue5969 } from "./issue-5969.ts";
 import { testit as issue5867 } from "./issue-5867.ts";
@@ -338,6 +342,7 @@ export const tests: NamedTest[] = [
   ["issue-6217", issue6217],
   ["comic-fit-page-relayout", comicFitPageRelayout],
   ["issue-6225", issue6225],
+  ["issue-6229", issue6229],
   ["issue-6133", issue6133],
   ["issue-6184", issue6184],
   ["image-only-palette-items", imageOnlyPaletteItems],
@@ -357,6 +362,7 @@ export const tests: NamedTest[] = [
   ["tts-engine-crash-recovery", ttsEngineCrashRecovery],
   ["lazy-tab-state-after-save", lazyTabStateAfterSave],
   ["lazy-tab-select-paint", lazyTabSelectPaint],
+  ["restore-chm-missing-tab", restoreChmMissingTab],
   ["issue-4705", issue4705],
   ["toc-tree-sent-click", tocTreeSentClick],
   ["issue-5956", issue5956],
@@ -550,6 +556,8 @@ export const tests: NamedTest[] = [
   ["issue-4576", issue4576],
   ["issue-5850", issue5850],
   ["issue-6028", issue6028],
+  ["issue-6228", issue6228],
+  ["issue-6230", issue6230],
   ["issue-5969", issue5969],
   ["issue-5867", issue5867],
   ["issue-5899", issue5899],
