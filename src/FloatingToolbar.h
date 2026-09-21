@@ -2,6 +2,7 @@
    License: GPLv3 */
 
 struct MainWindow;
+struct FloatingToolbar;
 
 void FloatingToolbarCreate(MainWindow*);
 void FloatingToolbarDestroy(MainWindow*);
@@ -10,3 +11,4 @@ void FloatingToolbarRelayout(MainWindow*);
 void FloatingToolbarUpdateTheme();
 void UpdateFloatingToolbarActiveState(MainWindow*);
 bool IsCursorOverFloatingToolbar(MainWindow*);
+void HideFloatingToolbarHoverDropdown(FloatingToolbar*);

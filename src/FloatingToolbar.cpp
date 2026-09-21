@@ -86,7 +86,7 @@ static Color FloatingHover() {
     return ThemeHotBackgroundColor();
 }
 
-static void HideFloatingToolbarHoverDropdown(FloatingToolbar* tb);
+void HideFloatingToolbarHoverDropdown(FloatingToolbar* tb);
 Rect GetFloatingToolbarButtonScreenRect(MainWindow* win, int cmdId);
 
 struct FloatingIconButton : VirtIconButton {
@@ -161,7 +161,7 @@ struct FloatingIconButton : VirtIconButton {
     }
 };
 
-static void HideFloatingToolbarHoverDropdown(FloatingToolbar* tb) {
+void HideFloatingToolbarHoverDropdown(FloatingToolbar* tb) {
     if (!tb) {
         return;
     }
@@ -550,8 +550,8 @@ static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
                 overButton = bRect.Contains(ptScreen);
             }
             if (overPopup || overButton) {
-                // Mouse is still on button or in popup window: keep open!
-                tb->host->KillTimer(kFloatingToolbarCloseHoverDropdownTimerId);
+                // Mouse is still on button or in popup window: keep open and check again soon
+                tb->host->SetTimer(kFloatingToolbarCloseHoverDropdownTimerId, 150);
             } else if (tb->hoverPendingCmdId == 0) {
                 HideFloatingToolbarHoverDropdown(tb);
             }
