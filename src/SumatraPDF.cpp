@@ -2257,6 +2257,16 @@ static void UpdateUiForCurrentTab(MainWindow* win) {
     RebuildMenuBarForWindow(win);
     // the toolbar isn't supported for ebook docs (yet)
     ShowOrHideToolbar(win);
+    // restore per-tab annotation toolbar and active tool placement state
+    WindowTab* currentTab = win->CurrentTab();
+    if (currentTab) {
+        win->pdfAnnotationsToolbarEnabled = currentTab->pdfAnnotationsToolbarEnabled;
+        if (currentTab->annotPlacement.cmdId != 0) {
+            StartAnnotationPlacement(win, currentTab->annotPlacement.cmdId);
+        }
+    }
+    UpdateFloatingToolbarActiveState(win);
+
     // TODO: unify?
     ToolbarUpdateStateForWindow(win, true);
     UpdateToolbarState(win);

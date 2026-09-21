@@ -753,7 +753,11 @@ void SaveCurrentWindowTab(MainWindow* win) {
     }
 
     WindowTab* tab = win->CurrentTab();
-    if (win->tocLoaded && tab->ctrl) {
+    if (tab) {
+        tab->pdfAnnotationsToolbarEnabled = win->pdfAnnotationsToolbarEnabled;
+        tab->annotPlacement = win->annotPlacement;
+    }
+    if (win->tocLoaded && tab && tab->ctrl) {
         TocTree* tocTree = tab->ctrl->GetToc();
         UpdateTocExpansionState(tab->tocState, win->tocTreeView, tocTree);
     }
