@@ -387,6 +387,14 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
         EnablePdfAnnotationsToolbar(tb->win);
         ToolbarUpdateStateForWindow(tb->win, false);
         HwndSendCommand(tb->win->hwndFrame, cmd, 0);
+
+        if (IsAnnotColorCmd(cmd)) {
+            tb->hoverPendingCmdId = cmd;
+            tb->hoverButton = ev->target;
+            tb->host->KillTimer(kFloatingToolbarOpenHoverDropdownTimerId);
+            tb->host->SetTimer(kFloatingToolbarOpenHoverDropdownTimerId, UiTooltipDelayMs());
+        }
+
         return;
     }
 
