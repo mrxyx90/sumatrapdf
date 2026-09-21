@@ -87,6 +87,7 @@ static Color FloatingHover() {
 }
 
 static void HideFloatingToolbarHoverDropdown(FloatingToolbar* tb);
+Rect GetFloatingToolbarButtonScreenRect(MainWindow* win, int cmdId);
 
 struct FloatingIconButton : VirtIconButton {
     int sideLen = 0;
