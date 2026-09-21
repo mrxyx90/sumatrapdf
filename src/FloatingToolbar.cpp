@@ -807,3 +807,37 @@ bool IsCursorOverFloatingToolbar(MainWindow* win) {
     HWND floatingHwnd = win->floatingToolbar->host->native;
     return hwndUnderCursor == floatingHwnd || IsChild(floatingHwnd, hwndUnderCursor);
 }
+
+static VirtCtrl* FindButtonInLayout(ILayout* layout, int cmdId) {
+    if (!layout) {
+        return nullptr;
+    }
+    if (VirtCtrl* vc = layout->AsVirtCtrl()) {
+        if (vc->id == cmdId) {
+            return vc;
+        }
+    }
+    int count = layout->LayoutChildCount();
+    for (int i = 0; i < count; i++) {
+        if (VirtCtrl* found = FindButtonInLayout(layout->LayoutChildAt(i), cmdId)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+Rect GetFloatingToolbarButtonScreenRect(MainWindow* win, int cmdId) {
+    if (!win || !win->floatingToolbar || !win->floatingToolbar->host) {
+        return {};
+    }
+    FloatingToolbar* tb = win->floatingToolbar;
+    VirtHost* host = tb->host;
+    if (!host || !host->vroot) {
+        return {};
+    }
+    VirtCtrl* btn = FindButtonInLayout(host->vroot->owned, cmdId);
+    if (!btn) {
+        return {};
+    }
+    return host->ToScreen(btn->lastBounds);
+}
