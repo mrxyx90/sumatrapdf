@@ -130,8 +130,8 @@ const commandsRaw = [
     "CmdOpenEmbeddedPDF", "Open Embedded PDF",
     "CmdSaveAttachment", "Save Attachment...",
     "CmdOpenAttachment", "Open Attachment",
-    "CmdOptions", "Options...",
-    "CmdAdvancedOptions", "Advanced Options...",
+    "CmdOptions", "Settings...",
+    "", "removed: CmdAdvancedOptions",
     "CmdAdvancedSettings", "Advanced Settings...",
     "CmdChangeLanguage", "Change Language...",
     "CmdCheckUpdate", "Check For Updates",
@@ -324,6 +324,7 @@ const commandsRaw = [
     "CmdToggleReadingBar", "Reading Bar",
     "CmdToggleReadingBarInvert", "Reading Bar Invert",
     "CmdGoToHomePage", "Go To Home Page",
+    "CmdToggleFreePan", "Toggle Free Pan",
     "CmdNone", "Do nothing",
     "CmdFileHistory", "Open Recent File",
     "CmdFavorite", "Go to Favorite",
@@ -331,10 +332,18 @@ const commandsRaw = [
     "CmdToggleGrayscale", "Toggle Grayscale",
     "CmdPrintSelection", "Print Selection...",
     "CmdAutoGenerateTOC", "Generate Table Of Contents",
+    "CmdOpenSettingsFile", "Open Settings File...",
 ];
 
 // removed slots are dropped: nothing outside the generators should see them
 export const commands: string[] = commandsRaw.filter((_, i) => commandsRaw[i - (i % 2)] !== "");
+
+// Extra command palette texts for a command, so a different wording finds it
+// too. [command name, text]; a command may appear more than once.
+// prettier-ignore
+export const commandAltDescs: [string, string][] = [
+    ["CmdNavigateFilesInFolder", "Browse Files In Folder..."],
+];
 
 function getNames(): string[] {
   const names: string[] = [];
@@ -425,6 +434,26 @@ function generateArrays(): string {
     lines.push(`    "${desc}\\0"`);
   }
   lines.push(`    "\\0";`);
+  lines.push("");
+
+  // gCommandAltDescs / gCommandAltDescIds: parallel, like the tables above
+  for (const [name] of commandAltDescs) {
+    if (!liveNames.includes(name)) {
+      console.error(`commandAltDescs: unknown command '${name}'`);
+      process.exit(1);
+    }
+  }
+  lines.push("SeqStrings gCommandAltDescs =");
+  for (const [, desc] of commandAltDescs) {
+    lines.push(`    "${desc}\\0"`);
+  }
+  lines.push(`    "\\0";`);
+  lines.push("");
+  lines.push("i32 gCommandAltDescIds[] = {");
+  for (const [name] of commandAltDescs) {
+    lines.push(`    ${name},`);
+  }
+  lines.push("};");
   lines.push("// clang-format on");
 
   return lines.join("\n");

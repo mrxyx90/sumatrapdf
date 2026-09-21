@@ -128,7 +128,6 @@ enum {
     CmdSaveAttachment = 319,
     CmdOpenAttachment = 320,
     CmdOptions = 321,
-    CmdAdvancedOptions = 322,
     CmdAdvancedSettings = 323,
     CmdChangeLanguage = 324,
     CmdCheckUpdate = 325,
@@ -318,15 +317,17 @@ enum {
     CmdToggleReadingBar = 511,
     CmdToggleReadingBarInvert = 512,
     CmdGoToHomePage = 513,
-    CmdNone = 514,
-    CmdFileHistory = 515,
-    CmdFavorite = 516,
-    CmdReadAloudFromCursorPosition = 517,
-    CmdToggleGrayscale = 518,
-    CmdPrintSelection = 519,
-    CmdAutoGenerateTOC = 520,
+    CmdToggleFreePan = 514,
+    CmdNone = 515,
+    CmdFileHistory = 516,
+    CmdFavorite = 517,
+    CmdReadAloudFromCursorPosition = 518,
+    CmdToggleGrayscale = 519,
+    CmdPrintSelection = 520,
+    CmdAutoGenerateTOC = 521,
+    CmdOpenSettingsFile = 522,
 
-    CmdLast = 520,
+    CmdLast = 522,
     CmdFirstCustom = CmdLast + 100,
 
     // aliases, at the end to not mess ordering
@@ -415,6 +416,9 @@ void FreeCustomCommand(CustomCommand* cmd);
 
 extern CustomCommand* gFirstCustomCommand;
 extern SeqStrings gCommandDescriptions;
+// alternate command palette texts, parallel to gCommandAltDescIds
+extern SeqStrings gCommandAltDescs;
+extern i32 gCommandAltDescIds[];
 
 int GetCommandIdByName(Str);
 int GetCommandIdByDesc(Str);

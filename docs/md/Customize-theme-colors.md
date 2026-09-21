@@ -6,7 +6,7 @@ You can change the colors of the SumatraPDF UI by creating a custom theme with t
 
 To create a theme:
 
-- Navigate to the `Settings` / `Advanced Options...` menu (or open the Command Palette with `Ctrl + K`, type `adv` to narrow the results, and select the `Advanced Options...` command)
+- Use the `Settings` / `Open Settings File...` menu (or the same command in the Command Palette, `Ctrl + K`)
 - This opens the `SumatraPDF-settings.txt` file in your default text editor
 - Scroll to the bottom, find the `Themes` array, and add new theme definitions
 

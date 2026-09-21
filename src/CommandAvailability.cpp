@@ -44,8 +44,8 @@ static UINT_PTR gNoDocWhitelist[] = {
     CmdContributeTranslation,
     CmdOptions,
     CmdSetInverseSearch,
-    CmdAdvancedOptions,
     CmdAdvancedSettings,
+    CmdOpenSettingsFile,
     CmdChangeLanguage,
     CmdChangeTheme,
     CmdCheckUpdate,
@@ -154,7 +154,8 @@ static UINT_PTR removeIfNoFullscreenPerms[] = {
 static UINT_PTR removeIfNoPrefsPerms[] = {
     CmdOptions,
     CmdSetInverseSearch,
-    CmdAdvancedOptions,
+    CmdAdvancedSettings,
+    CmdOpenSettingsFile,
     CmdPinSelectedDocument,
     CmdForgetSelectedDocument,
     CmdFavoriteAdd,
@@ -209,8 +210,8 @@ static UINT_PTR removeIfNoDiskAccessPerm[] = {
     CmdDeleteFileAndOpenNext,
     CmdSendByEmail,
     CmdContributeTranslation,
-    CmdAdvancedOptions,
     CmdAdvancedSettings,
+    CmdOpenSettingsFile,
     CmdFavoriteAdd,
     CmdFavoriteDel,
     CmdFavoriteToggle,
@@ -757,6 +758,10 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
     }
 
     if (cmdId == CmdToggleTrimEmptyMargins && !ctx.isFixedPage) {
+        return CommandVisibility::Hide;
+    }
+
+    if (cmdId == CmdToggleFreePan && !ctx.isFixedPage) {
         return CommandVisibility::Hide;
     }
 

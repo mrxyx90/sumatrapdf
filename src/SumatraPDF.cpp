@@ -2560,6 +2560,7 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
             if (fs) {
                 dm->SetUniformPageWidth(fs->uniformPageWidth);
                 dm->SetTrimEmptyMargins(fs->trimEmptyMargins);
+                dm->SetFreePan(fs->freePan);
             }
             // migrate in place only. SaveSettings() here would rebuild
             // gInitialSessionData and free the TabState a lazily restored
@@ -8623,6 +8624,16 @@ static void ToggleTrimEmptyMargins(MainWindow* win) {
     dm->SetScrollState(state);
 }
 
+static void ToggleFreePan(MainWindow* win) {
+    DisplayModel* dm = win->AsFixed();
+    if (!dm) {
+        return;
+    }
+    ScrollState state = dm->GetScrollState();
+    dm->SetFreePan(!dm->GetFreePan());
+    dm->SetScrollState(state);
+}
+
 static Point GetSelectionCenter(MainWindow* win) {
     bool hasSelection = win->showSelection && win->CurrentTab()->selectionOnPage;
     if (!hasSelection) {
@@ -10907,9 +10918,11 @@ static Rect ClampHelpWindowRect(Rect r, HWND hwndForMonitor) {
 }
 
 // First open: upper half of the parent, on the side with more leftover space.
+// Wide enough for the manual's table-of-contents sidebar, which the page CSS
+// shows only from a 950px viewport (docs/manual.shell.html).
 static Rect DefaultHelpWindowRect(HWND parent) {
     int dpi = parent ? DpiGetForHwnd(parent) : DpiGet();
-    Size size{DpiScaleByDpi(dpi, 720), DpiScaleByDpi(dpi, 860)};
+    Size size{DpiScaleByDpi(dpi, 1000), DpiScaleByDpi(dpi, 860)};
 
     Rect frame;
     if (parent) {
@@ -12243,6 +12256,10 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             ToggleTrimEmptyMargins(win);
             break;
 
+        case CmdToggleFreePan:
+            ToggleFreePan(win);
+            break;
+
         case CmdToggleToolbar:
             if (GetCommandArg(cmd, kCmdArgState)) {
                 // explicit state: on -> show (pinned), off -> hide
@@ -12789,9 +12806,12 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             ShowSettingsDialog(win);
             break;
 
-        case CmdAdvancedOptions:
         case CmdAdvancedSettings:
             ShowAdvancedSettingsDialog(win);
+            break;
+
+        case CmdOpenSettingsFile:
+            OpenSettingsFileInEditor();
             break;
 
         case CmdChangeTheme:

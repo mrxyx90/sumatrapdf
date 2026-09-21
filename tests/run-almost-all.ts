@@ -171,6 +171,11 @@ import { testit as issue5850 } from "./issue-5850.ts";
 import { testit as issue6028 } from "./issue-6028.ts";
 import { testit as issue6228 } from "./issue-6228.ts";
 import { testit as issue6230 } from "./issue-6230.ts";
+import { testit as issue6232 } from "./issue-6232.ts";
+import { testit as issue6232Filter } from "./issue-6232-filter.ts";
+import { testit as issue6232Refresh } from "./issue-6232-refresh.ts";
+import { testit as issue6232PathEdit } from "./issue-6232-path-edit.ts";
+import { testit as issue6224 } from "./issue-6224.ts";
 import { testit as issue6062 } from "./issue-6062.ts";
 import { testit as issue5969 } from "./issue-5969.ts";
 import { testit as issue5867 } from "./issue-5867.ts";
@@ -231,6 +236,7 @@ import { testit as issue5956 } from "./issue-5956.ts";
 import { testit as issue6113 } from "./issue-6113.ts";
 import { testit as imageOnlyPaletteItems } from "./image-only-palette-items.ts";
 import { testit as commandPaletteShortcutFilter } from "./command-palette-shortcut-filter.ts";
+import { testit as commandPaletteAltNames } from "./command-palette-alt-names.ts";
 import { testit as commandPaletteThumbnails } from "./command-palette-thumbnails.ts";
 import { testit as commandPaletteAnnotations } from "./command-palette-annotations.ts";
 import { testit as paletteDeleteAnnotation } from "./palette-delete-annotation.ts";
@@ -327,6 +333,7 @@ export const tests: NamedTest[] = [
   // first: it drives the home page, whose thumbnail selection follows the
   // mouse, so it is the one test that cares what the machine was doing before
   ["issue-5978", issue5978],
+  ["issue-2799", issue2799],
   ["ink-thickness", inkThickness],
   ["ink-annotation-placement", inkAnnotationPlacement],
   ["annot-moveable-types", annotMoveableTypes],
@@ -449,7 +456,6 @@ export const tests: NamedTest[] = [
   ["issue-1914", issue1914],
   ["issue-1198", issue1198],
   ["issue-2568", issue2568],
-  ["issue-2799", issue2799],
   ["issue-6190", issue6190],
   ["issue-6201", issue6201],
   ["issue-6194", issue6194],
@@ -558,6 +564,11 @@ export const tests: NamedTest[] = [
   ["issue-6028", issue6028],
   ["issue-6228", issue6228],
   ["issue-6230", issue6230],
+  ["issue-6232", issue6232],
+  ["issue-6232-filter", issue6232Filter],
+  ["issue-6232-refresh", issue6232Refresh],
+  ["issue-6232-path-edit", issue6232PathEdit],
+  ["issue-6224", issue6224],
   ["issue-5969", issue5969],
   ["issue-5867", issue5867],
   ["issue-5899", issue5899],
@@ -566,6 +577,7 @@ export const tests: NamedTest[] = [
   ["home-theme-icons", homeThemeIcons],
   ["issue-5971", issue5971],
   ["command-palette-shortcut-filter", commandPaletteShortcutFilter],
+  ["command-palette-alt-names", commandPaletteAltNames],
   ["command-palette-thumbnails", commandPaletteThumbnails],
   ["command-palette-annotations", commandPaletteAnnotations],
   ["palette-delete-annotation", paletteDeleteAnnotation],

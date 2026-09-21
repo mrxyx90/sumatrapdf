@@ -47,7 +47,7 @@ Toolbar = overlay
 
 To customize the toolbar:
 
-- use the `Settings` / `Advanced Options...` menu (or open the Command Palette with `Ctrl + K`, type `adv` to narrow the results, and select the `Advanced Options...` command)
+- use the `Settings` / `Open Settings File...` menu (or the same command in the Command Palette, `Ctrl + K`)
 - this opens the advanced settings file in your default text editor
 - find the `Shortcuts` array and add new shortcut definitions
 

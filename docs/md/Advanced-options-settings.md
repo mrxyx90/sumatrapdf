@@ -1,13 +1,15 @@
-# Advanced options / settings
+# Advanced settings
 
 SumatraPDF has many [advanced settings](https://www.sumatrapdfreader.org/settings/settings) to customize look and behavior.
 
-To open advanced settings file:
+To edit advanced settings:
 
-- menu `Settings` / `Advanced options...`
-- or with Command Palette: `Ctrl + K`, type `adv` to narrow down to command, press `Enter` to select `Advanced Options...` command
+- menu `Settings` / `Advanced Settings...` opens a dialog for viewing and editing them
+- or with Command Palette: `Ctrl + K`, type `adv` to narrow down to command, press `Enter` to select `Advanced Settings...` command
 
-This opens a settings text file in default .txt editor. Make changes and save the file.
+The dialog edits single values (booleans, numbers, strings, colors, enums, compact ones like `WindowMargin`). Lists (`Shortcuts`, `Themes`, `ExternalViewers`, `SelectionHandlers`, ...) are edited in the settings file.
+
+To edit the settings file directly, use menu `Settings` / `Open Settings File...` (or the same command in Command Palette: `Ctrl + K`, type `open settings`, press `Enter`; or the **Open Settings File** button in the Advanced Settings dialog). This opens the settings text file in default .txt editor. Make changes and save the file.
 
 To reset to default settings, delete settings file. SumatraPDF will re-create it with default values.
 
@@ -1314,6 +1316,10 @@ FileStates [
     ; if true, empty margins around page content are trimmed from display
     ; (introduced in version 3.7)
     TrimEmptyMargins = false
+
+    ; if true, the view can be panned past the page edges, so any part of a page
+    ; can be brought to the center of the window (introduced in version 3.7)
+    FreePan = false
   ]
 ]
 

@@ -32,7 +32,7 @@ CmdFixDefaultApp,,Fix Default App For Extension,"`CmdFixDefaultApp .pdf` opens t
 CmdFileHistory,,Open Recent File,"`CmdFileHistory <path>` opens that file; used for the recent files listed in the File menu, each of which carries its own path, ver 3.7+"
 CmdFavorite,,Go to Favorite,"`CmdFavorite <path> page=<page>` goes to that favorite; used for the favorites listed in the Favorites menu, each of which carries its own file path and page, ver 3.7+"
 CmdOpenNextFileInFolder,Shift + Ctrl + Right,Open Next File In Folder,
-CmdNavigateFilesInFolder,Shift + Ctrl + Up,Navigate Files in Folder,"directory browser for openable files in the current file's folder (stays open; Enter/double-click replaces the current tab, Ctrl+Enter/Ctrl+double-click switches to the tab already showing the file or opens a new tab, Alt+Up goes to the parent directory, Del moves the selected file to the recycle bin, F5 re-reads the directory); also used when `FilePicker = sumatrapdf`, ver 3.7+"
+CmdNavigateFilesInFolder,Shift + Ctrl + Up,Navigate Files in Folder,"directory browser for openable files in the current file's folder (stays open; Enter/double-click replaces the current tab, Ctrl+Enter/Ctrl+double-click switches to the tab already showing the file or opens a new tab, Alt+Up or Backspace goes to the parent directory (from a drive root: to Home), Alt+Left and Alt+Right go back and forward through the folders visited, Home lists drives and Explorer's Quick access, the search field (Ctrl+F, or just start typing) filters the list the way the command palette matches, clicking the folder path edits it in place (Enter goes to that directory or to a file's directory with the file selected, Esc or an invalid path restores it), Del moves the selected file to the recycle bin, F5 re-reads the directory); also used when `FilePicker = sumatrapdf`; also listed in the command palette as `Browse Files In Folder...`, ver 3.7+"
 CmdOpenPrevFileInFolder,Shift + Ctrl + Left,Open Previous File In Folder,
 CmdOpenSelectedDocument,,Open Selected Document,
 CmdPinSelectedDocument,,Pin Selected Document,
@@ -111,6 +111,7 @@ CmdToggleFullscreen,"f, Shift + Ctrl + L, F11",Toggle Fullscreen,
 CmdToggleMangaMode,,Toggle Manga Mode,"Right-to-left facing/book layout for fixed-page documents; before 3.7 this was limited to comic books"
 CmdToggleUniformPageWidth,,Toggle Uniform Page Width,"At percentage zoom levels, scales every page to the width page 1 has at that zoom; remembered per document (fixes #5512)"
 CmdToggleTrimEmptyMargins,,Toggle Trim Empty Margins,"Trims empty margins around page content from display on demand, ver 3.7+"
+CmdToggleFreePan,,Toggle Free Pan,"Lets the view go past the page edges by half a window, so any part of a page (a corner of a drawing) can be brought to the center of the screen; remembered per document, ver 3.7+"
 CmdToggleMenuBar,F9,Toggle Menu Bar,
 CmdTogglePageInfo,i,Show / Hide Current Page Number,was Shift + i before 3.6
 CmdTogglePageBoxes,,Toggle Page Boxes,"ver 3.7+, outlines the PDF MediaBox, CropBox, BleedBox, TrimBox and ArtBox on each page (only boxes that page actually has) and labels them. Palette and Debug menu. No default shortcut (fixes #814)"
@@ -329,8 +330,8 @@ CmdInvokeInverseSearch,,Invoke Inverse Search,ver 3.6+
 
 ```commands
 Command IDs,Keyboard shortcuts,Command Palette,Notes
-CmdAdvancedOptions,,Advanced Options...,Opens the settings file in a text editor
-CmdAdvancedSettings,,Advanced Settings...,"ver 3.7+, opens a dialog for viewing and editing the advanced settings: filter by name, click a setting to toggle / pick / edit its value, then Save"
+CmdOpenSettingsFile,,Open Settings File...,"Opens the settings file in the text editor associated with .txt files; menu `Settings` / `Open Settings File...`, ver 3.7+"
+CmdAdvancedSettings,,Advanced Settings...,"ver 3.7+, opens a dialog for viewing and editing the advanced settings: filter by name, click a setting to toggle / pick / edit its value, then Save; `CmdAdvancedOptions` in a shortcut definition still means this command"
 CmdChangeLanguage,,Change Language...,
 CmdCheckUpdate,,Check For Updates,
 CmdClearHistory,,Clear History,Clears history of opened files (for recently opened list in home page)
@@ -339,7 +340,7 @@ CmdDeleteCachedFiles,,Delete Cached Files,"ver 3.7+, deletes local copies of com
 CmdContributeTranslation,,Contribute Translation,
 CmdForgetSelectedDocument,,Remove Selected Document From History,
 CmdListPrinters,,List Printers,ver 3.7+
-CmdOptions,,Options...,
+CmdOptions,,Settings...,
 CmdSetInverseSearch,,Set Inverse Search Command Line,"ver 3.7+, opens a dialog to set the SyncTeX inverse-search command and enables TeX enhancements"
 CmdScreenshot,,Take Screenshot,"ver 3.7+, can be registered as a global hotkey via Shortcuts entry (e.g. Key = Global PrtSc) or through the Settings menu"
 CmdCropImage,,Crop Image,ver 3.7+
