@@ -86,6 +86,8 @@ static Color FloatingHover() {
     return ThemeHotBackgroundColor();
 }
 
+static void HideFloatingToolbarHoverDropdown(FloatingToolbar* tb);
+
 struct FloatingIconButton : VirtIconButton {
     int sideLen = 0;
     Color hoverBg = kColorUnset;
@@ -133,7 +135,7 @@ struct FloatingIconButton : VirtIconButton {
                 }
                 // If the hover dropdown is open for this button, set a timer to close it
                 if (toolbar->hoverCmdId == id) {
-                    toolbar->host->SetTimer(kFloatingToolbarCloseHoverDropdownTimerId, 300);
+                    toolbar->host->SetTimer(kFloatingToolbarCloseHoverDropdownTimerId, 150);
                 }
             }
         }
@@ -539,7 +541,17 @@ static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
             ev->didHandle = true;
         } else if (ev->wp == kFloatingToolbarCloseHoverDropdownTimerId) {
             tb->host->KillTimer(kFloatingToolbarCloseHoverDropdownTimerId);
-            if (tb->hoverPendingCmdId == 0) {
+            Point ptScreen = UiCursorScreenPos();
+            bool overPopup = tb->hoverHost && tb->hoverHost->ScreenRect().Contains(ptScreen);
+            bool overButton = false;
+            if (tb->hoverButton && tb->hoverCmdId != 0) {
+                Rect bRect = GetFloatingToolbarButtonScreenRect(tb->win, tb->hoverCmdId);
+                overButton = bRect.Contains(ptScreen);
+            }
+            if (overPopup || overButton) {
+                // Mouse is still on button or in popup window: keep open!
+                tb->host->KillTimer(kFloatingToolbarCloseHoverDropdownTimerId);
+            } else if (tb->hoverPendingCmdId == 0) {
                 HideFloatingToolbarHoverDropdown(tb);
             }
             ev->didHandle = true;
