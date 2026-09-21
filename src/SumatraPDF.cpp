@@ -13630,10 +13630,16 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
     StopSelectTextWithKeyboard(win);
     DeleteOldSelectionInfo(win, true);
     RefreshAnnotationLists(tab);
-    // Drop the cached page bitmap. SetSelectedAnnotation only ScheduleRepaint
-    // (selection handles); without this the new annot is invisible until a
-    // later click re-selects it and forces a re-render (issue #6037).
-    MainWindowRerender(win);
+    // During interactive placement the annotation is already visible through
+    // the placement overlay. Don't invalidate the whole page here: that would
+    // briefly remove the overlay before the newly created annotation is
+    // rendered, causing a visible flicker on mouse-up. The normal repaint path
+    // will pick up the new annotation without dropping the current frame.
+    if (!isAnnotationPlacementCommit) {
+        MainWindowRerender(win);
+    } else {
+        HwndInvalidate(win->hwndCanvas);
+    }
     ToolbarUpdateStateForWindow(win, true);
 
     // in Edit PDF a new annotation is selected, so it can be moved, resized, or
