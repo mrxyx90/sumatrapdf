@@ -2261,8 +2261,8 @@ static void UpdateUiForCurrentTab(MainWindow* win) {
     WindowTab* currentTab = win->CurrentTab();
     if (currentTab) {
         win->pdfAnnotationsToolbarEnabled = currentTab->pdfAnnotationsToolbarEnabled;
-        if (currentTab->annotPlacement.cmdId != 0) {
-            StartAnnotationPlacement(win, currentTab->annotPlacement.cmdId);
+        if (currentTab->annotPlacementCmdId != 0) {
+            StartAnnotationPlacement(win, currentTab->annotPlacementCmdId);
         }
     }
     UpdateFloatingToolbarActiveState(win);

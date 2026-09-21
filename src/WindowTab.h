@@ -117,7 +117,7 @@ struct WindowTab {
 
     // per-tab annotation toolbar and placement tool state
     bool pdfAnnotationsToolbarEnabled = false;
-    AnnotPlacement annotPlacement{};
+    int annotPlacementCmdId = 0;
 
     // state of the table of contents
     bool showToc = false;

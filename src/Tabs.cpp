@@ -755,7 +755,7 @@ void SaveCurrentWindowTab(MainWindow* win) {
     WindowTab* tab = win->CurrentTab();
     if (tab) {
         tab->pdfAnnotationsToolbarEnabled = win->pdfAnnotationsToolbarEnabled;
-        tab->annotPlacement = win->annotPlacement;
+        tab->annotPlacementCmdId = win->annotPlacement.cmdId;
     }
     if (win->tocLoaded && tab && tab->ctrl) {
         TocTree* tocTree = tab->ctrl->GetToc();
