@@ -256,6 +256,8 @@ static void UpdateAIChatTabVisibility(MainWindow* win) {
     if (!win || !win->aiChatTabs) {
         return;
     }
+    // Search-only and AI-only views have no visible tab controls. The tab
+    // buttons appear only after the other WebView has actually been created.
     bool showTabs = win->aiChatWebView != nullptr && win->aiChatSearchWebView != nullptr;
     if (win->aiChatAiTabBtn) {
         win->aiChatAiTabBtn->SetIsVisible(showTabs);
@@ -1384,6 +1386,10 @@ void CreateAIChatPanel(MainWindow* win) {
         win->aiChatSearchTabBtn->textPadding = Insets{4, 12, 4, 12};
         tabs->AddChild(win->aiChatAiTabBtn, 1);
         tabs->AddChild(win->aiChatSearchTabBtn, 1);
+        // Keep the tab buttons hidden until both WebViews exist. The HBox stays
+        // in the layout tree but has no visible controls in Search-only mode.
+        win->aiChatAiTabBtn->SetIsVisible(false);
+        win->aiChatSearchTabBtn->SetIsVisible(false);
         win->aiChatTabs = tabs;
     }
 
