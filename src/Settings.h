@@ -920,6 +920,8 @@ struct Settings {
     // remembered engine for Translate Selection: Google, DeepL, Grok
     // Build, Claude Code, OpenAI Codex or Antigravity
     Str translateEngine;
+    // search mode for selection search: sidebar (opens in sidebar) or popup (opens in 600x1000 popup window)
+    Str selectionSearchMode;
     // ISO code of the current UI language
     Str uiLanguage;
     // SumatraPDF won't offer to update to this version again
@@ -2211,6 +2213,7 @@ static const FieldInfo gSettingsFields[] = {
     {offsetof(Settings, translateToLang), SettingType::String, (intptr_t)"", true},
     {offsetof(Settings, translateFromLang), SettingType::String, (intptr_t)"", true},
     {offsetof(Settings, translateEngine), SettingType::String, (intptr_t)"", true},
+    {offsetof(Settings, selectionSearchMode), SettingType::String, (intptr_t)"sidebar", false},
     {(size_t)-1, SettingType::Comment, 0},
     {offsetof(Settings, annotations), SettingType::Struct, (intptr_t)&gAnnotationsInfo},
     {(size_t)-1, SettingType::Comment, 0},

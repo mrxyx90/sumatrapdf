@@ -289,7 +289,14 @@ void RelayoutSearchPanel(MainWindow* win) {
 }
 
 void OpenSearchSelectionInSidebar(MainWindow* win, Str engineName, Str url) {
-    if (!win || !win->hwndAiChatBox || !HasWebView()) {
+    if (!win || !HasWebView()) {
+        return;
+    }
+    if (gSettings && (gSettings->searchUIFloating || str::StartsWithI(gSettings->selectionSearchMode, StrL("popup")) || str::StartsWithI(gSettings->selectionSearchMode, StrL("floating")) || str::StartsWithI(gSettings->selectionSearchMode, StrL("window")))) {
+        OpenSearchSelectionInPopup(win, engineName, url);
+        return;
+    }
+    if (!win->hwndAiChatBox) {
         return;
     }
     win->aiChatUsed = true;
@@ -341,4 +348,107 @@ void OpenSearchSelectionInSidebar(MainWindow* win, Str engineName, Str url) {
     }
     RelayoutAIChatPanel(win);
     ScheduleUiUpdate(win);
+}
+
+struct SearchPopupWindow {
+    HWND hwnd = nullptr;
+    WebviewWnd* webView = nullptr;
+    Str engineName;
+};
+
+static SearchPopupWindow* gSearchPopupWnd = nullptr;
+
+static LRESULT CALLBACK WndProcSearchPopup(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    if (msg == WM_SIZE && gSearchPopupWnd && gSearchPopupWnd->webView) {
+        Rect rc = HwndClientRect(hwnd);
+        MoveWindow(gSearchPopupWnd->webView->hwnd, 0, 0, rc.dx, rc.dy, TRUE);
+        gSearchPopupWnd->webView->UpdateWebviewSize();
+        return 0;
+    }
+    if (msg == WM_DESTROY && gSearchPopupWnd) {
+        delete gSearchPopupWnd->webView;
+        gSearchPopupWnd->webView = nullptr;
+        delete gSearchPopupWnd;
+        gSearchPopupWnd = nullptr;
+        return 0;
+    }
+    return DefWindowProcW(hwnd, msg, wp, lp);
+}
+
+void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url) {
+    int w = DpiScale(550);
+    int h = DpiScale(1050);
+    Rect rcWork = GetWorkAreaRect({}, win ? win->hwndFrame : nullptr);
+    if (h > rcWork.dy) {
+        h = rcWork.dy;
+    }
+    int x = rcWork.x + rcWork.dx - w;
+    int y = rcWork.y + rcWork.dy - h;
+
+    if (!gSearchPopupWnd) {
+        HINSTANCE hinst = GetModuleHandle(nullptr);
+        const WCHAR* clsName = L"SUMATRA_SEARCH_POPUP";
+        WNDCLASSEXW wc = { sizeof(wc) };
+        wc.style = CS_HREDRAW | CS_VREDRAW;
+        wc.lpfnWndProc = WndProcSearchPopup;
+        wc.hInstance = hinst;
+        wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+        wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+        wc.lpszClassName = clsName;
+        RegisterClassExW(&wc);
+
+        HWND hwnd = CreateWindowExW(0, clsName, CWStrTemp(engineName),
+                                    WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                                    x, y, w, h, nullptr, nullptr, hinst, nullptr);
+        if (!hwnd) {
+            return;
+        }
+
+        auto* popup = new SearchPopupWindow();
+        popup->hwnd = hwnd;
+        str::ReplaceWithCopy(&popup->engineName, engineName);
+
+        auto* webView = new WebviewWnd();
+        webView->events.ctx = popup;
+        TempStr localAppData = GetSpecialFolderTemp(CSIDL_LOCAL_APPDATA);
+        TempStr safeName = str::ReplaceTemp(engineName, StrL(" "), StrL("_"));
+        webView->dataDir = str::Dup(fmt("%s\\SumatraPDF\\Search_%s", localAppData, safeName));
+        webView->allowClipboardRead = false;
+        webView->defaultBackgroundColor = kColWhite;
+        webView->forwardAppAccelerators = true;
+
+        CreateWebViewArgs wvArgs;
+        wvArgs.parent = hwnd;
+        wvArgs.pos = Rect(0, 0, w, h);
+        webView->Create(wvArgs);
+        if (webView->hwnd) {
+            webView->Navigate(url);
+            webView->SetIsVisible(true);
+            popup->webView = webView;
+            gSearchPopupWnd = popup;
+        } else {
+            delete webView;
+            delete popup;
+            DestroyWindow(hwnd);
+            return;
+        }
+    } else {
+        if (!str::EqI(gSearchPopupWnd->engineName, engineName)) {
+            str::ReplaceWithCopy(&gSearchPopupWnd->engineName, engineName);
+            SetWindowTextW(gSearchPopupWnd->hwnd, CWStrTemp(engineName));
+        }
+        gSearchPopupWnd->webView->Navigate(url);
+        SetWindowPos(gSearchPopupWnd->hwnd, HWND_TOP, x, y, w, h, SWP_SHOWWINDOW);
+    }
+}
+
+void OnSearchPopupFrameSize(MainWindow* win, int sizeType) {
+    if (!gSearchPopupWnd || !gSearchPopupWnd->hwnd) {
+        return;
+    }
+    if (SIZE_MINIMIZED == sizeType) {
+        if (IsWindowVisible(gSearchPopupWnd->hwnd) && !IsIconic(gSearchPopupWnd->hwnd)) {
+            ShowWindow(gSearchPopupWnd->hwnd, SW_MINIMIZE);
+        }
+    }
 }

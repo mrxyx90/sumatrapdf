@@ -6,4 +6,6 @@ struct MainWindow;
 void CreateSearchPanel(MainWindow* win);
 void DestroySearchPanel(MainWindow* win);
 void OpenSearchSelectionInSidebar(MainWindow* win, Str engineName, Str url);
+void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url);
+void OnSearchPopupFrameSize(MainWindow* win, int sizeType);
 void RelayoutSearchPanel(MainWindow* win);

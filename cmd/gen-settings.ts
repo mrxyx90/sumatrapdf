@@ -1870,6 +1870,13 @@ const globalPrefs: Field[] = [
   )
     .internal()
     .ver("3.7"),
+  field(
+    "SelectionSearchMode",
+    Str,
+    "sidebar",
+    "search mode for selection search: sidebar (opens in sidebar) or popup (opens in 600x1000 popup window)",
+  )
+    .ver("3.7"),
   emptyLine(),
   struct("Annotations", annotations, "default values for annotations in PDF documents").ver("3.3"),
   emptyLine(),
