@@ -279,7 +279,12 @@ static void LayoutAIChatBox(MainWindow* win) {
         return;
     }
 
-    UpdateAIChatPanelTitle(win, rc.dx);
+    // Google Search should not show the PDF filename in the panel header.
+    if (win->aiChatSearchMode && win->aiChatLabel) {
+        win->aiChatLabel->SetText(StrL(""));
+    } else {
+        UpdateAIChatPanelTitle(win, rc.dx);
+    }
     UpdateAIChatTabVisibility(win);
     LayoutTreeToSize(win->hwndAiChatBox, win->aiChatLayout, {rc.dx, rc.dy}, &win->aiChatRoot);
 
