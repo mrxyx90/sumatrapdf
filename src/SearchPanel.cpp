@@ -523,37 +523,60 @@ static void SetWindowAppUserModelID(HWND hwnd, const WCHAR* appIID) {
 }
 
 static HICON CreateSearchIcon(int size) {
-    HDC hdc = GetDC(nullptr);
-    HDC memDC = CreateCompatibleDC(hdc);
-    HBITMAP hBmp = CreateCompatibleBitmap(hdc, size, size);
-    HBITMAP hOldBmp = (HBITMAP)SelectObject(memDC, hBmp);
+    using namespace Gdiplus;
 
-    RECT rc = { 0, 0, size, size };
-    HBRUSH brBg = CreateSolidBrush(ColorToCOLORREF(ThemeControlBackgroundColor()));
-    FillRect(memDC, &rc, brBg);
-    DeleteObject(brBg);
+    const WCHAR* candidates[] = {
+        L"src\\gfx\\ic_search_modern.png",
+        L"gfx\\ic_search_modern.png",
+        L"ic_search_modern.png",
+    };
 
-    SetBkMode(memDC, TRANSPARENT);
-    SetTextColor(memDC, ColorToCOLORREF(ThemeWindowTextColor()));
-    HFONT font = CreateFontW(-size * 3 / 4, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-                             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                             CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-    HFONT oldFont = (HFONT)SelectObject(memDC, font);
+    Bitmap* srcBmp = nullptr;
+    for (const WCHAR* cand : candidates) {
+        if (FileExists(ToStrTemp(WStr(cand)))) {
+            srcBmp = Bitmap::FromFile(cand);
+            if (srcBmp && srcBmp->GetLastStatus() == Ok) {
+                break;
+            }
+            delete srcBmp;
+            srcBmp = nullptr;
+        }
+    }
 
-    DrawTextW(memDC, L"🔍", -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    if (!srcBmp) {
+        TempStr exeDir = GetSelfExeDirTemp();
+        const Str paths[] = {
+            path::JoinTemp(exeDir, StrL("src\\gfx\\ic_search_modern.png")),
+            path::JoinTemp(exeDir, StrL("..\\src\\gfx\\ic_search_modern.png")),
+            path::JoinTemp(exeDir, StrL("..\\..\\src\\gfx\\ic_search_modern.png")),
+        };
+        for (Str p : paths) {
+            if (FileExists(p)) {
+                srcBmp = Bitmap::FromFile(ToWStrTemp(p));
+                if (srcBmp && srcBmp->GetLastStatus() == Ok) {
+                    break;
+                }
+                delete srcBmp;
+                srcBmp = nullptr;
+            }
+        }
+    }
 
-    SelectObject(memDC, oldFont);
-    DeleteObject(font);
-    SelectObject(memDC, hOldBmp);
-    DeleteDC(memDC);
-    ReleaseDC(nullptr, hdc);
+    if (!srcBmp) {
+        return nullptr;
+    }
 
-    ICONINFO ii = { 0 };
-    ii.fIcon = TRUE;
-    ii.hbmColor = hBmp;
-    ii.hbmMask = hBmp;
-    HICON hIcon = CreateIconIndirect(&ii);
-    DeleteObject(hBmp);
+    Bitmap bmp(size, size, PixelFormat32bppARGB);
+    Graphics g(&bmp);
+    g.SetSmoothingMode(SmoothingModeAntiAlias);
+    g.SetInterpolationMode(InterpolationModeHighQualityBicubic);
+
+    g.Clear(Color(0, 0, 0, 0));
+    g.DrawImage(srcBmp, 0, 0, size, size);
+    delete srcBmp;
+
+    HICON hIcon = nullptr;
+    bmp.GetHICON(&hIcon);
     return hIcon;
 }
 

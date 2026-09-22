@@ -150,8 +150,8 @@ constexpr const WCHAR* kCanvasClassName = L"SUMATRA_PDF_CANVAS";
 
 constexpr const char* kRestrictionsFileName = "sumatrapdfrestrict.ini";
 
-constexpr const char* kSumatraWindowTitle = "SumatraPDF";
-constexpr const WCHAR* kSumatraWindowTitleW = L"SumatraPDF";
+constexpr const char* kSumatraWindowTitle = "Apdf";
+constexpr const WCHAR* kSumatraWindowTitleW = L"Apdf";
 
 // used to show it in debug, but is not very useful,
 // so always disable
