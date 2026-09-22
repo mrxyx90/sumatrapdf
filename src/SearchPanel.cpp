@@ -36,6 +36,7 @@
 
 struct SearchButtonState {
     bool isHovered = false;
+    bool isPressed = false;
     bool isTracking = false;
 };
 
@@ -47,7 +48,7 @@ static COLORREF ColorToCOLORREF(Color c) {
     return RGB(GetRed(c), GetGreen(c), GetBlue(c));
 }
 
-static void PaintOwnerDrawButton(HWND hwnd, const WCHAR* label, bool isHovered, bool isCloseBtn) {
+static void PaintOwnerDrawButton(HWND hwnd, const WCHAR* label, bool isHovered, bool isPressed, bool isCloseBtn) {
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(hwnd, &ps);
     RECT rc;
@@ -57,14 +58,19 @@ static void PaintOwnerDrawButton(HWND hwnd, const WCHAR* label, bool isHovered, 
     COLORREF txtCol = ColorToCOLORREF(ThemeWindowTextColor());
 
     if (isCloseBtn) {
-        if (isHovered) {
+        if (isPressed) {
+            bgCol = RGB(200, 60, 10); // Darker orange click effect
+            txtCol = RGB(255, 255, 255);
+        } else if (isHovered) {
             bgCol = RGB(240, 80, 20); // Orange hover effect
             txtCol = RGB(255, 255, 255);
         } else {
             bgCol = ColorToCOLORREF(ThemeControlBackgroundColor());
         }
     } else {
-        if (isHovered) {
+        if (isPressed) {
+            bgCol = ColorToCOLORREF(AccentColor(ThemeControlBackgroundColor(), 50)); // Click press effect
+        } else if (isHovered) {
             bgCol = ColorToCOLORREF(AccentColor(ThemeControlBackgroundColor(), 30)); // Title bar button hover effect
         } else {
             bgCol = ColorToCOLORREF(ThemeControlBackgroundColor());
@@ -83,16 +89,40 @@ static void PaintOwnerDrawButton(HWND hwnd, const WCHAR* label, bool isHovered, 
                              CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
     HFONT oldFont = (HFONT)SelectObject(hdc, font);
 
-    DrawTextW(hdc, label, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    RECT rcText = rc;
+    if (isPressed) {
+        OffsetRect(&rcText, DpiScale(1), DpiScale(1)); // Shift text 1px down and right on click!
+    }
+
+    DrawTextW(hdc, label, -1, &rcText, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 
     SelectObject(hdc, oldFont);
     DeleteObject(font);
     EndPaint(hwnd, &ps);
 }
 
+static bool IsPointOnVisualButton(HWND hwnd, POINT ptScreen) {
+    RECT rc;
+    GetClientRect(hwnd, &rc);
+    POINT ptClient = ptScreen;
+    ScreenToClient(hwnd, &ptClient);
+    if (!PtInRect(&rc, ptClient)) {
+        return false;
+    }
+    InflateRect(&rc, -DpiScale(2), -DpiScale(2));
+    return PtInRect(&rc, ptClient) != FALSE;
+}
+
 static LRESULT CALLBACK WndProcSearchBackBtn(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId, DWORD_PTR refData) {
     auto* win = (MainWindow*)refData;
     switch (msg) {
+        case WM_NCHITTEST: {
+            POINT ptScreen = { GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
+            if (!IsPointOnVisualButton(hwnd, ptScreen)) {
+                return HTTRANSPARENT;
+            }
+            return HTCLIENT;
+        }
         case WM_MOUSEMOVE:
             if (!gBackState.isTracking) {
                 TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, hwnd, 0 };
@@ -106,17 +136,28 @@ static LRESULT CALLBACK WndProcSearchBackBtn(HWND hwnd, UINT msg, WPARAM wp, LPA
             break;
         case WM_MOUSELEAVE:
             gBackState.isHovered = false;
+            gBackState.isPressed = false;
             gBackState.isTracking = false;
             InvalidateRect(hwnd, nullptr, FALSE);
             break;
+        case WM_LBUTTONDOWN:
+            gBackState.isPressed = true;
+            SetCapture(hwnd);
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return 0;
         case WM_ERASEBKGND:
             return 1;
         case WM_PAINT:
-            PaintOwnerDrawButton(hwnd, L"←", gBackState.isHovered, false);
+            PaintOwnerDrawButton(hwnd, L"←", gBackState.isHovered, gBackState.isPressed, false);
             return 0;
         case WM_LBUTTONUP:
-            if (win && win->webSearchWebView && win->webSearchWebView->CanGoBack()) {
-                win->webSearchWebView->GoBack();
+            if (gBackState.isPressed) {
+                gBackState.isPressed = false;
+                ReleaseCapture();
+                InvalidateRect(hwnd, nullptr, FALSE);
+                if (win && win->webSearchWebView && win->webSearchWebView->CanGoBack()) {
+                    win->webSearchWebView->GoBack();
+                }
             }
             return 0;
     }
@@ -126,6 +167,13 @@ static LRESULT CALLBACK WndProcSearchBackBtn(HWND hwnd, UINT msg, WPARAM wp, LPA
 static LRESULT CALLBACK WndProcSearchForwardBtn(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId, DWORD_PTR refData) {
     auto* win = (MainWindow*)refData;
     switch (msg) {
+        case WM_NCHITTEST: {
+            POINT ptScreen = { GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
+            if (!IsPointOnVisualButton(hwnd, ptScreen)) {
+                return HTTRANSPARENT;
+            }
+            return HTCLIENT;
+        }
         case WM_MOUSEMOVE:
             if (!gForwardState.isTracking) {
                 TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, hwnd, 0 };
@@ -139,17 +187,28 @@ static LRESULT CALLBACK WndProcSearchForwardBtn(HWND hwnd, UINT msg, WPARAM wp, 
             break;
         case WM_MOUSELEAVE:
             gForwardState.isHovered = false;
+            gForwardState.isPressed = false;
             gForwardState.isTracking = false;
             InvalidateRect(hwnd, nullptr, FALSE);
             break;
+        case WM_LBUTTONDOWN:
+            gForwardState.isPressed = true;
+            SetCapture(hwnd);
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return 0;
         case WM_ERASEBKGND:
             return 1;
         case WM_PAINT:
-            PaintOwnerDrawButton(hwnd, L"→", gForwardState.isHovered, false);
+            PaintOwnerDrawButton(hwnd, L"→", gForwardState.isHovered, gForwardState.isPressed, false);
             return 0;
         case WM_LBUTTONUP:
-            if (win && win->webSearchWebView && win->webSearchWebView->CanGoForward()) {
-                win->webSearchWebView->GoForward();
+            if (gForwardState.isPressed) {
+                gForwardState.isPressed = false;
+                ReleaseCapture();
+                InvalidateRect(hwnd, nullptr, FALSE);
+                if (win && win->webSearchWebView && win->webSearchWebView->CanGoForward()) {
+                    win->webSearchWebView->GoForward();
+                }
             }
             return 0;
     }
@@ -159,6 +218,13 @@ static LRESULT CALLBACK WndProcSearchForwardBtn(HWND hwnd, UINT msg, WPARAM wp, 
 static LRESULT CALLBACK WndProcSearchCloseBtn(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId, DWORD_PTR refData) {
     auto* win = (MainWindow*)refData;
     switch (msg) {
+        case WM_NCHITTEST: {
+            POINT ptScreen = { GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
+            if (!IsPointOnVisualButton(hwnd, ptScreen)) {
+                return HTTRANSPARENT;
+            }
+            return HTCLIENT;
+        }
         case WM_MOUSEMOVE:
             if (!gCloseState.isTracking) {
                 TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, hwnd, 0 };
@@ -172,28 +238,38 @@ static LRESULT CALLBACK WndProcSearchCloseBtn(HWND hwnd, UINT msg, WPARAM wp, LP
             break;
         case WM_MOUSELEAVE:
             gCloseState.isHovered = false;
+            gCloseState.isPressed = false;
             gCloseState.isTracking = false;
             InvalidateRect(hwnd, nullptr, FALSE);
             break;
+        case WM_LBUTTONDOWN:
+            gCloseState.isPressed = true;
+            SetCapture(hwnd);
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return 0;
         case WM_ERASEBKGND:
             return 1;
         case WM_PAINT:
-            PaintOwnerDrawButton(hwnd, L"×", gCloseState.isHovered, true);
+            PaintOwnerDrawButton(hwnd, L"×", gCloseState.isHovered, gCloseState.isPressed, true);
             return 0;
         case WM_LBUTTONUP:
-            if (win) {
+            if (gCloseState.isPressed) {
+                gCloseState.isPressed = false;
                 ReleaseCapture();
-                WindowTab* tab = win->CurrentTab();
-                if (tab) {
-                    AIChatSetTabPanelOpen(tab, AIChatBackend::None);
+                InvalidateRect(hwnd, nullptr, FALSE);
+                if (win) {
+                    WindowTab* tab = win->CurrentTab();
+                    if (tab) {
+                        AIChatSetTabPanelOpen(tab, AIChatBackend::None);
+                    }
+                    AIChatSyncPanelsToCurrentTab(win);
+                    if (win->hwndCanvas) {
+                        HwndSetFocus(win->hwndCanvas);
+                    } else if (win->hwndFrame) {
+                        HwndSetFocus(win->hwndFrame);
+                    }
+                    ScheduleUiUpdate(win);
                 }
-                AIChatSyncPanelsToCurrentTab(win);
-                if (win->hwndCanvas) {
-                    HwndSetFocus(win->hwndCanvas);
-                } else if (win->hwndFrame) {
-                    HwndSetFocus(win->hwndFrame);
-                }
-                ScheduleUiUpdate(win);
             }
             return 0;
     }
@@ -383,6 +459,13 @@ static SearchPopupWindow* gSearchPopupWnd = nullptr;
 static LRESULT CALLBACK WndProcPopupBackBtn(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId, DWORD_PTR refData) {
     auto* popup = (SearchPopupWindow*)refData;
     switch (msg) {
+        case WM_NCHITTEST: {
+            POINT ptScreen = { GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
+            if (!IsPointOnVisualButton(hwnd, ptScreen)) {
+                return HTTRANSPARENT;
+            }
+            return HTCLIENT;
+        }
         case WM_MOUSEMOVE:
             if (!gBackState.isTracking) {
                 TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, hwnd, 0 };
@@ -396,17 +479,28 @@ static LRESULT CALLBACK WndProcPopupBackBtn(HWND hwnd, UINT msg, WPARAM wp, LPAR
             break;
         case WM_MOUSELEAVE:
             gBackState.isHovered = false;
+            gBackState.isPressed = false;
             gBackState.isTracking = false;
             InvalidateRect(hwnd, nullptr, FALSE);
             break;
+        case WM_LBUTTONDOWN:
+            gBackState.isPressed = true;
+            SetCapture(hwnd);
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return 0;
         case WM_ERASEBKGND:
             return 1;
         case WM_PAINT:
-            PaintOwnerDrawButton(hwnd, L"←", gBackState.isHovered, false);
+            PaintOwnerDrawButton(hwnd, L"←", gBackState.isHovered, gBackState.isPressed, false);
             return 0;
         case WM_LBUTTONUP:
-            if (popup && popup->webView && popup->webView->CanGoBack()) {
-                popup->webView->GoBack();
+            if (gBackState.isPressed) {
+                gBackState.isPressed = false;
+                ReleaseCapture();
+                InvalidateRect(hwnd, nullptr, FALSE);
+                if (popup && popup->webView && popup->webView->CanGoBack()) {
+                    popup->webView->GoBack();
+                }
             }
             return 0;
     }
@@ -416,6 +510,13 @@ static LRESULT CALLBACK WndProcPopupBackBtn(HWND hwnd, UINT msg, WPARAM wp, LPAR
 static LRESULT CALLBACK WndProcPopupForwardBtn(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId, DWORD_PTR refData) {
     auto* popup = (SearchPopupWindow*)refData;
     switch (msg) {
+        case WM_NCHITTEST: {
+            POINT ptScreen = { GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
+            if (!IsPointOnVisualButton(hwnd, ptScreen)) {
+                return HTTRANSPARENT;
+            }
+            return HTCLIENT;
+        }
         case WM_MOUSEMOVE:
             if (!gForwardState.isTracking) {
                 TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, hwnd, 0 };
@@ -429,17 +530,28 @@ static LRESULT CALLBACK WndProcPopupForwardBtn(HWND hwnd, UINT msg, WPARAM wp, L
             break;
         case WM_MOUSELEAVE:
             gForwardState.isHovered = false;
+            gForwardState.isPressed = false;
             gForwardState.isTracking = false;
             InvalidateRect(hwnd, nullptr, FALSE);
             break;
+        case WM_LBUTTONDOWN:
+            gForwardState.isPressed = true;
+            SetCapture(hwnd);
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return 0;
         case WM_ERASEBKGND:
             return 1;
         case WM_PAINT:
-            PaintOwnerDrawButton(hwnd, L"→", gForwardState.isHovered, false);
+            PaintOwnerDrawButton(hwnd, L"→", gForwardState.isHovered, gForwardState.isPressed, false);
             return 0;
         case WM_LBUTTONUP:
-            if (popup && popup->webView && popup->webView->CanGoForward()) {
-                popup->webView->GoForward();
+            if (gForwardState.isPressed) {
+                gForwardState.isPressed = false;
+                ReleaseCapture();
+                InvalidateRect(hwnd, nullptr, FALSE);
+                if (popup && popup->webView && popup->webView->CanGoForward()) {
+                    popup->webView->GoForward();
+                }
             }
             return 0;
     }
