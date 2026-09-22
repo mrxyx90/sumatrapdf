@@ -1852,6 +1852,13 @@ const globalPrefs: Field[] = [
     .ver("3.7"),
   emptyLine(),
   field(
+    "WebViewAdBlock",
+    Bool,
+    false,
+    "if true, block common advertising and tracking requests in embedded WebView2 pages",
+  ).ver("3.7"),
+  emptyLine(),
+  field(
     "TranslateToLang",
     Str,
     "",
