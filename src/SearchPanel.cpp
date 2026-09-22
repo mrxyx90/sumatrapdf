@@ -3,6 +3,9 @@
 
 #include "base/Base.h"
 #include <dwmapi.h>
+#include <shlobj.h>
+#include <propkey.h>
+#include <propvarutil.h>
 #include "base/CmdLineArgs.h"
 #include "base/File.h"
 #include "base/Win.h"
@@ -507,6 +510,53 @@ static LRESULT CALLBACK WndProcSearchPopup(HWND hwnd, UINT msg, WPARAM wp, LPARA
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
+static void SetWindowAppUserModelID(HWND hwnd, const WCHAR* appIID) {
+    IPropertyStore* pps = nullptr;
+    HRESULT hr = SHGetPropertyStoreForWindow(hwnd, IID_PPV_ARGS(&pps));
+    if (SUCCEEDED(hr) && pps) {
+        PROPVARIANT pv;
+        InitPropVariantFromString(appIID, &pv);
+        pps->SetValue(PKEY_AppUserModel_ID, pv);
+        PropVariantClear(&pv);
+        pps->Release();
+    }
+}
+
+static HICON CreateSearchIcon(int size) {
+    HDC hdc = GetDC(nullptr);
+    HDC memDC = CreateCompatibleDC(hdc);
+    HBITMAP hBmp = CreateCompatibleBitmap(hdc, size, size);
+    HBITMAP hOldBmp = (HBITMAP)SelectObject(memDC, hBmp);
+
+    RECT rc = { 0, 0, size, size };
+    HBRUSH brBg = CreateSolidBrush(ColorToCOLORREF(ThemeControlBackgroundColor()));
+    FillRect(memDC, &rc, brBg);
+    DeleteObject(brBg);
+
+    SetBkMode(memDC, TRANSPARENT);
+    SetTextColor(memDC, ColorToCOLORREF(ThemeWindowTextColor()));
+    HFONT font = CreateFontW(-size * 3 / 4, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+                             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                             CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+    HFONT oldFont = (HFONT)SelectObject(memDC, font);
+
+    DrawTextW(memDC, L"🔍", -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+    SelectObject(memDC, oldFont);
+    DeleteObject(font);
+    SelectObject(memDC, hOldBmp);
+    DeleteDC(memDC);
+    ReleaseDC(nullptr, hdc);
+
+    ICONINFO ii = { 0 };
+    ii.fIcon = TRUE;
+    ii.hbmColor = hBmp;
+    ii.hbmMask = hBmp;
+    HICON hIcon = CreateIconIndirect(&ii);
+    DeleteObject(hBmp);
+    return hIcon;
+}
+
 void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url) {
     int w = DpiScale(550);
     int h = DpiScale(1050);
@@ -535,6 +585,12 @@ void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url) {
         if (!hwnd) {
             return;
         }
+
+        SetWindowAppUserModelID(hwnd, L"SumatraPDF.SearchPopup");
+        HICON hIconSmall = CreateSearchIcon(DpiScale(16));
+        HICON hIconBig = CreateSearchIcon(DpiScale(32));
+        if (hIconSmall) SendMessageW(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)hIconSmall);
+        if (hIconBig) SendMessageW(hwnd, WM_SETICON, ICON_BIG, (LPARAM)hIconBig);
 
         SetPopupTitleBarThemeColor(hwnd);
 
@@ -581,8 +637,12 @@ void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url) {
             str::ReplaceWithCopy(&gSearchPopupWnd->engineName, engineName);
             SetWindowTextW(gSearchPopupWnd->hwnd, CWStrTemp(engineName));
         }
+        if (IsIconic(gSearchPopupWnd->hwnd)) {
+            ShowWindow(gSearchPopupWnd->hwnd, SW_RESTORE);
+        }
         gSearchPopupWnd->webView->Navigate(url);
         SetWindowPos(gSearchPopupWnd->hwnd, HWND_TOP, x, y, w, h, SWP_SHOWWINDOW);
+        SetForegroundWindow(gSearchPopupWnd->hwnd);
         RelayoutPopupWindow(gSearchPopupWnd);
     }
 }
