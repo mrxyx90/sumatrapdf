@@ -523,19 +523,17 @@ static void SetWindowAppUserModelID(HWND hwnd, const WCHAR* appIID) {
 }
 
 static HICON CreateSearchIcon(int size) {
-    using namespace Gdiplus;
-
     const WCHAR* candidates[] = {
         L"src\\gfx\\ic_search_modern.png",
         L"gfx\\ic_search_modern.png",
         L"ic_search_modern.png",
     };
 
-    Bitmap* srcBmp = nullptr;
+    Gdiplus::Bitmap* srcBmp = nullptr;
     for (const WCHAR* cand : candidates) {
-        if (FileExists(ToStrTemp(WStr(cand)))) {
-            srcBmp = Bitmap::FromFile(cand);
-            if (srcBmp && srcBmp->GetLastStatus() == Ok) {
+        if (file::Exists(ToStrTemp(cand))) {
+            srcBmp = Gdiplus::Bitmap::FromFile(cand);
+            if (srcBmp && srcBmp->GetLastStatus() == Gdiplus::Ok) {
                 break;
             }
             delete srcBmp;
@@ -551,9 +549,9 @@ static HICON CreateSearchIcon(int size) {
             path::JoinTemp(exeDir, StrL("..\\..\\src\\gfx\\ic_search_modern.png")),
         };
         for (Str p : paths) {
-            if (FileExists(p)) {
-                srcBmp = Bitmap::FromFile(ToWStrTemp(p));
-                if (srcBmp && srcBmp->GetLastStatus() == Ok) {
+            if (file::Exists(p)) {
+                srcBmp = Gdiplus::Bitmap::FromFile(CWStrTemp(p));
+                if (srcBmp && srcBmp->GetLastStatus() == Gdiplus::Ok) {
                     break;
                 }
                 delete srcBmp;
@@ -566,12 +564,12 @@ static HICON CreateSearchIcon(int size) {
         return nullptr;
     }
 
-    Bitmap bmp(size, size, PixelFormat32bppARGB);
-    Graphics g(&bmp);
-    g.SetSmoothingMode(SmoothingModeAntiAlias);
-    g.SetInterpolationMode(InterpolationModeHighQualityBicubic);
+    Gdiplus::Bitmap bmp(size, size, PixelFormat32bppARGB);
+    Gdiplus::Graphics g(&bmp);
+    g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
 
-    g.Clear(Color(0, 0, 0, 0));
+    g.Clear(Gdiplus::Color(0, 0, 0, 0));
     g.DrawImage(srcBmp, 0, 0, size, size);
     delete srcBmp;
 
