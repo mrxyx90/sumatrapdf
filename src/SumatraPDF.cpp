@@ -7940,7 +7940,7 @@ static bool RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
     if (aiChatVisible) {
         aiChatDx = win->aiChatDx;
         if (aiChatDx <= 0) {
-            aiChatDx = rc.dx * 3 / 8;
+            aiChatDx = rc.dx * 3 / 10;
         }
         int availDx = rc.dx - (sidebarVisible ? sidebarDxApplied + kSplitterDx : 0);
         aiChatDx = limitValue(aiChatDx, kSidebarMinDx, availDx / 2);
