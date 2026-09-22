@@ -35,7 +35,7 @@ void UpdateAIChatDpi(MainWindow* win, int dpi);
 void RelayoutAIChatPanel(MainWindow* win);
 
 // Open a URL in the embedded Search tab of the AI sidebar.
-void AIChatOpenSearch(MainWindow* win, Str url);
+bool AIChatOpenSearch(MainWindow* win, Str url);
 
 void AIChatHistoryAddUser(MainWindow* win, Str text);
 void AIChatHistoryAppendText(MainWindow* win, Str text);
