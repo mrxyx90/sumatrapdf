@@ -1089,8 +1089,6 @@ struct Settings {
     bool showMenubar;
     // if true, show the menu bar when using tabs (useTabs = true)
     bool showMenubarWithTabs;
-    // if true, show tips on the home page
-    bool showTips;
     // if true, show the current page as n/N after the file name on tabs
     bool showPageNumberInTabs;
     // if true, show reading progress (n/N, or chapter:page for ebooks) on
@@ -1102,6 +1100,8 @@ struct Settings {
     // number for the whole document. the saved position stays a chapter
     // bookmark either way, and next / previous page still cross chapters
     bool showChaptersInEbooks;
+    // if true, show tips on the home page
+    bool showTips;
     // legacy bool for toolbar; if Toolbar is empty, derived as show/hide
     // (internal; use Toolbar instead)
     bool showToolbar;
