@@ -253,6 +253,49 @@ static void UpdateAIChatPanelTitle(MainWindow* win, int labelDx) {
 
 // --- Layout ---
 
+static void OnSidebarTabAiClicked(MainWindow* win) {
+    if (!win) {
+        return;
+    }
+    win->activeSidebarTab = 0;
+    RelayoutAIChatPanel(win);
+}
+
+static void OnSidebarTabSearchClicked(MainWindow* win) {
+    if (!win) {
+        return;
+    }
+    win->activeSidebarTab = 1;
+    RelayoutAIChatPanel(win);
+}
+
+static void UpdateSidebarTabControlsVisibility(MainWindow* win) {
+    if (!win || !win->hwndAiChatBox) {
+        return;
+    }
+    bool isAi = (win->activeSidebarTab == 0);
+    int showCmd = isAi ? SW_SHOW : SW_HIDE;
+
+    if (win->aiChatSessionCombo && win->aiChatSessionCombo->hwnd) {
+        ShowWindow(win->aiChatSessionCombo->hwnd, showCmd);
+    }
+    if (win->aiChatModelCombo && win->aiChatModelCombo->hwnd) {
+        ShowWindow(win->aiChatModelCombo->hwnd, showCmd);
+    }
+    if (win->aiChatOptionCombo && win->aiChatOptionCombo->hwnd) {
+        ShowWindow(win->aiChatOptionCombo->hwnd, showCmd);
+    }
+    if (win->aiChatCheckbox && win->aiChatCheckbox->hwnd) {
+        ShowWindow(win->aiChatCheckbox->hwnd, showCmd);
+    }
+    if (win->aiChatInput && win->aiChatInput->hwnd) {
+        ShowWindow(win->aiChatInput->hwnd, showCmd);
+    }
+    if (win->aiChatStopBtn && win->aiChatStopBtn->hwnd) {
+        ShowWindow(win->aiChatStopBtn->hwnd, isAi && win->aiChatStopBtn->IsVisible() ? SW_SHOW : SW_HIDE);
+    }
+}
+
 static void LayoutAIChatBox(MainWindow* win) {
     if (!win->aiChatLayout) {
         return;
@@ -262,27 +305,42 @@ static void LayoutAIChatBox(MainWindow* win) {
         return;
     }
 
-    UpdateAIChatPanelTitle(win, rc.dx);
-    LayoutTreeToSize(win->hwndAiChatBox, win->aiChatLayout, {rc.dx, rc.dy}, &win->aiChatRoot);
+    UpdateSidebarTabControlsVisibility(win);
 
-    if (win->activeSidebarTab == 1 && win->webSearchWebView) {
-        RelayoutSearchPanel(win);
-        win->webSearchWebView->SetIsVisible(true);
-        if (win->aiChatWebView) {
-            win->aiChatWebView->SetIsVisible(false);
+    bool showUpperTabs = win->aiChatUsed && win->webSearchUsed;
+    if (win->sidebarTabAiBtn && win->sidebarTabSearchBtn) {
+        win->sidebarTabAiBtn->SetIsVisible(showUpperTabs);
+        win->sidebarTabSearchBtn->SetIsVisible(showUpperTabs);
+        if (showUpperTabs) {
+            if (len(win->webSearchEngineName) > 0) {
+                win->sidebarTabSearchBtn->SetText(win->webSearchEngineName);
+            }
+            int tabH = DpiScale(26);
+            int halfW = rc.dx / 2;
+            win->sidebarTabAiBtn->SetBounds(Rect(0, 0, halfW, tabH));
+            win->sidebarTabSearchBtn->SetBounds(Rect(halfW, 0, rc.dx - halfW, tabH));
         }
-    } else {
+    }
+
+    if (win->activeSidebarTab == 0) {
+        UpdateAIChatPanelTitle(win, rc.dx);
+        LayoutTreeToSize(win->hwndAiChatBox, win->aiChatLayout, {rc.dx, rc.dy}, &win->aiChatRoot);
         if (win->webSearchWebView) {
             win->webSearchWebView->SetIsVisible(false);
         }
         if (win->aiChatWebView) {
             Rect wr = win->aiChatWebViewSlot->lastBounds;
             MoveWindow(win->aiChatWebView->hwnd, wr.x, wr.y, wr.dx, wr.dy, TRUE);
-            // defer UpdateWebviewSize during rapid WM_SIZE to avoid WebView2 put_Bounds freeze
             KillTimer(win->hwndAiChatBox, kTimerWebViewSize);
             SetTimer(win->hwndAiChatBox, kTimerWebViewSize, 50, nullptr);
             win->aiChatWebView->SetIsVisible(true);
         }
+    } else if (win->activeSidebarTab == 1 && win->webSearchWebView) {
+        if (win->aiChatWebView) {
+            win->aiChatWebView->SetIsVisible(false);
+        }
+        RelayoutSearchPanel(win);
+        win->webSearchWebView->SetIsVisible(true);
     }
 }
 
@@ -1263,6 +1321,17 @@ void CreateAIChatPanel(MainWindow* win) {
     }
 
     PlatformFont* font = GetAppFont();
+
+    // upper tab buttons (shown only when both AI Chat and Web Search are active)
+    {
+        win->sidebarTabAiBtn = NewThemedButton(win->hwndAiChatBox, StrL("AI Chat"), font, false);
+        win->sidebarTabAiBtn->onClick = MkFunc0(OnSidebarTabAiClicked, win);
+        win->sidebarTabAiBtn->SetIsVisible(false);
+
+        win->sidebarTabSearchBtn = NewThemedButton(win->hwndAiChatBox, StrL("Web Search"), font, false);
+        win->sidebarTabSearchBtn->onClick = MkFunc0(OnSidebarTabSearchClicked, win);
+        win->sidebarTabSearchBtn->SetIsVisible(false);
+    }
 
     // label
     PlatformFont* labelFont = GetAppSidebarLabelFont();

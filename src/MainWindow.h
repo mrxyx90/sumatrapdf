@@ -338,6 +338,9 @@ struct MainWindow { // NOLINT(clang-analyzer-optin.performance.Padding)
     Str webSearchEngineName;
     WebviewWnd* webSearchWebView = nullptr;
     bool webSearchWebViewReady = false;
+    VirtButton* sidebarTabAiBtn = nullptr;
+    VirtButton* sidebarTabSearchBtn = nullptr;
+    HBox* sidebarTabHeader = nullptr;
 
     // width of the AI chat sidebar
     int aiChatDx = 0;

@@ -281,6 +281,7 @@ const sumatraFiles: FileGroup[] = [
       "AdvancedSettingsDialog.*",
       "AIChatCommon.*",
       "AIChatPanel.*",
+      "SearchPanel.*",
       "AIAntiGravity.*",
       "AICodexBuild.*",
       "AIGrokBuild.*",

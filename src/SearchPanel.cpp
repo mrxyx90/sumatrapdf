@@ -56,7 +56,15 @@ void RelayoutSearchPanel(MainWindow* win) {
     }
     Rect rc = HwndClientRect(win->hwndAiChatBox);
     if (rc.dx > 0 && rc.dy > 0) {
-        MoveWindow(win->webSearchWebView->hwnd, 0, 0, rc.dx, rc.dy, TRUE);
+        int topY = 0;
+        if (win->aiChatUsed && win->webSearchUsed) {
+            topY = DpiScale(28);
+        }
+        int height = rc.dy - topY;
+        if (height < 10) {
+            height = 10;
+        }
+        MoveWindow(win->webSearchWebView->hwnd, 0, topY, rc.dx, height, TRUE);
         win->webSearchWebView->UpdateWebviewSize();
     }
 }
