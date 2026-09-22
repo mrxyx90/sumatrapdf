@@ -10124,7 +10124,7 @@ static void NotifyUrlSelectionTruncated(WindowTab* tab) {
     ShowNotification(args);
 }
 
-static void LaunchBrowserWithSelection(WindowTab* tab, Str urlPattern) {
+static void LaunchBrowserWithSelection(WindowTab* tab, Str urlPattern, bool edgePopup = false) {
     if (!tab || !HasPermission(Perm::InternetAccess) || !HasPermission(Perm::CopySelection)) {
         return;
     }
@@ -10163,7 +10163,11 @@ static void LaunchBrowserWithSelection(WindowTab* tab, Str urlPattern) {
     TempStr uri = str::ReplaceNoCaseTemp(urlPattern, Str(kUserLangStr), contryCode);
     uri = str::ReplaceNoCaseTemp(uri, Str(kSelectionPositionStr), FormatSelectionPositionTemp(tab));
     uri = str::ReplaceNoCaseTemp(uri, Str(kSelectionStr), encodedSelection);
-    LaunchBrowser(uri);
+    if (edgePopup) {
+        LaunchBrowserInEdgePopup(uri);
+    } else {
+        LaunchBrowser(uri);
+    }
 }
 
 // Ctrl+C / Ctrl+X / Ctrl+Z are app accelerators, so they fire even while a text
@@ -13036,7 +13040,7 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             break;
 
         case CmdSearchSelectionWithGoogle:
-            LaunchBrowserWithSelection(tab, StrL("https://www.google.com/search?q=${selection}"));
+            LaunchBrowserWithSelection(tab, StrL("https://www.google.com/search?q=${selection}"), true);
             break;
 
         case CmdSearchGoogleLens:
