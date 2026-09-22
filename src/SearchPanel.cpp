@@ -655,7 +655,7 @@ static HICON CreateSearchIcon(int size) {
 
     for (const WCHAR* cand : icoCandidates) {
         if (file::Exists(ToUtf8Temp(cand))) {
-            HICON hIcon = (HICON)LoadImageW(nullptr, cand, IMAGE_ICON, size, size, LR_LOADFROMFILE);
+            hIcon = (HICON)LoadImageW(nullptr, cand, IMAGE_ICON, size, size, LR_LOADFROMFILE);
             if (hIcon) {
                 return hIcon;
             }
@@ -670,7 +670,7 @@ static HICON CreateSearchIcon(int size) {
     };
     for (Str p : icoPaths) {
         if (file::Exists(p)) {
-            HICON hIcon = (HICON)LoadImageW(nullptr, CWStrTemp(p), IMAGE_ICON, size, size, LR_LOADFROMFILE);
+            hIcon = (HICON)LoadImageW(nullptr, CWStrTemp(p), IMAGE_ICON, size, size, LR_LOADFROMFILE);
             if (hIcon) {
                 return hIcon;
             }
