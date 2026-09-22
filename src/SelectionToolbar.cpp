@@ -691,7 +691,8 @@ TempStr SelectionToolbarClickTemp(Str cmdName, int* exitCodeOut) {
 // nothing if the feature is disabled (Annotations.SelectionToolbar) or there
 // is no on-screen text selection in a fixed-page document.
 static void ShowSelectionToolbarNow(MainWindow* win) {
-    if (!win || !gSettings->selectionToolbar) {
+    if (!win || !gSettings->selectionToolbar || win->IsCurrentTabAbout()) {
+        HideSelectionToolbar(win);
         return;
     }
     // Do not check IsActivelySelecting here: OnSelectionStop schedules the show
@@ -781,7 +782,8 @@ void SelectionToolbarOnShowTimer(MainWindow* win) {
 // canvas paint routine). Hides it if the selection scrolled out of view or the
 // current tab changed; re-shows it after e.g. a repaint restored the selection.
 void UpdateSelectionToolbarPosition(MainWindow* win) {
-    if (!win) {
+    if (!win || win->IsCurrentTabAbout()) {
+        HideSelectionToolbar(win);
         return;
     }
     // Hide during drag so the bar does not chase the rubber-band selection.

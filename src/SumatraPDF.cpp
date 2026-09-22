@@ -2297,6 +2297,7 @@ static void UpdateUiForCurrentTab(MainWindow* win) {
             StartAnnotationPlacement(win, currentTab->annotPlacementCmdId);
         }
     }
+    HideSelectionToolbar(win);
     UpdateFloatingToolbarActiveState(win);
 
     // TODO: unify?
