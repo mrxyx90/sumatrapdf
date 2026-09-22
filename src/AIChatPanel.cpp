@@ -35,6 +35,7 @@
 
 #include "AIChatCommon.h"
 #include "AIChatPanel.h"
+#include "SearchPanel.h"
 
 // timer ids on hwndAiChatBox
 constexpr UINT_PTR kTimerAutoSelectSession = 42;
@@ -264,14 +265,24 @@ static void LayoutAIChatBox(MainWindow* win) {
     UpdateAIChatPanelTitle(win, rc.dx);
     LayoutTreeToSize(win->hwndAiChatBox, win->aiChatLayout, {rc.dx, rc.dy}, &win->aiChatRoot);
 
-    // the webview is created lazily so it's not part of the layout; a flex
-    // spacer reserves its area and we position it into the spacer's bounds
-    if (win->aiChatWebView) {
-        Rect wr = win->aiChatWebViewSlot->lastBounds;
-        MoveWindow(win->aiChatWebView->hwnd, wr.x, wr.y, wr.dx, wr.dy, TRUE);
-        // defer UpdateWebviewSize during rapid WM_SIZE to avoid WebView2 put_Bounds freeze
-        KillTimer(win->hwndAiChatBox, kTimerWebViewSize);
-        SetTimer(win->hwndAiChatBox, kTimerWebViewSize, 50, nullptr);
+    if (win->activeSidebarTab == 1 && win->webSearchWebView) {
+        RelayoutSearchPanel(win);
+        win->webSearchWebView->SetIsVisible(true);
+        if (win->aiChatWebView) {
+            win->aiChatWebView->SetIsVisible(false);
+        }
+    } else {
+        if (win->webSearchWebView) {
+            win->webSearchWebView->SetIsVisible(false);
+        }
+        if (win->aiChatWebView) {
+            Rect wr = win->aiChatWebViewSlot->lastBounds;
+            MoveWindow(win->aiChatWebView->hwnd, wr.x, wr.y, wr.dx, wr.dy, TRUE);
+            // defer UpdateWebviewSize during rapid WM_SIZE to avoid WebView2 put_Bounds freeze
+            KillTimer(win->hwndAiChatBox, kTimerWebViewSize);
+            SetTimer(win->hwndAiChatBox, kTimerWebViewSize, 50, nullptr);
+            win->aiChatWebView->SetIsVisible(true);
+        }
     }
 }
 
@@ -1365,6 +1376,7 @@ void CreateAIChatPanel(MainWindow* win) {
 
     AIChatApplySavedSidebarDx(win);
     UpdateAIChatTheme(win);
+    CreateSearchPanel(win);
 }
 
 void UpdateAIChatDpi(MainWindow* win, int dpi) {
@@ -1536,6 +1548,7 @@ void ShutdownAIChatForMainWindow(MainWindow* win) {
 }
 
 void DestroyAIChatPanel(MainWindow* win) {
+    DestroySearchPanel(win);
     win->aiChatWebViewReady = false;
 
     if (win->hwndAiChatBox) {

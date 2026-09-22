@@ -332,6 +332,13 @@ struct MainWindow { // NOLINT(clang-analyzer-optin.performance.Padding)
     // provider (AIChatBackend value) the panel content is configured for; -1 = none
     int aiChatProvider = -1;
 
+    bool aiChatUsed = false;
+    bool webSearchUsed = false;
+    int activeSidebarTab = 0; // 0 = AI Chat, 1 = Web Search
+    Str webSearchEngineName;
+    WebviewWnd* webSearchWebView = nullptr;
+    bool webSearchWebViewReady = false;
+
     // width of the AI chat sidebar
     int aiChatDx = 0;
 

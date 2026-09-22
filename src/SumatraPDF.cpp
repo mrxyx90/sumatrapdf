@@ -109,6 +109,7 @@
 #include "SumatraConfig.h"
 #include "AIChatCommon.h"
 #include "AIChatPanel.h"
+#include "SearchPanel.h"
 #include "SelectionTranslate.h"
 #include "SelectionHandlers.h"
 #include "GoogleLens.h"
