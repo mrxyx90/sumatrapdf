@@ -329,6 +329,19 @@ static void SetAIChatSidebarMode(MainWindow* win, bool searchMode) {
     }
     if (win->aiChatCheckbox) {
         win->aiChatCheckbox->SetIsVisible(!searchMode);
+        // Checkbox is a native HWND. Explicitly hide/show it as well because
+        // collapsing its virtual parent can otherwise leave the native child
+        // visible at the top-left of the sidebar.
+        ShowWindow(win->aiChatCheckbox->hwnd, searchMode ? SW_HIDE : SW_SHOW);
+    }
+    if (win->aiChatModelCombo) {
+        ShowWindow(win->aiChatModelCombo->hwnd, searchMode ? SW_HIDE : SW_SHOW);
+    }
+    if (win->aiChatOptionCombo) {
+        ShowWindow(win->aiChatOptionCombo->hwnd, searchMode ? SW_HIDE : SW_SHOW);
+    }
+    if (win->aiChatSessionCombo) {
+        ShowWindow(win->aiChatSessionCombo->hwnd, searchMode ? SW_HIDE : SW_SHOW);
     }
     if (win->aiChatInputRow) {
         win->aiChatInputRow->SetVisibility(searchMode ? Visibility::Collapse : Visibility::Visible);
