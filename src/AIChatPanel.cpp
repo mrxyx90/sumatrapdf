@@ -308,12 +308,6 @@ static void SetAIChatSidebarMode(MainWindow* win, bool searchMode) {
         return;
     }
     win->aiChatSearchMode = searchMode;
-    if (win->aiChatAiTabBtn) {
-        win->aiChatAiTabBtn->SetIsEnabled(searchMode);
-    }
-    if (win->aiChatSearchTabBtn) {
-        win->aiChatSearchTabBtn->SetIsEnabled(!searchMode);
-    }
     if (win->aiChatSessionCombo) {
         win->aiChatSessionCombo->SetIsVisible(!searchMode);
     }
@@ -1384,8 +1378,11 @@ void CreateAIChatPanel(MainWindow* win) {
         win->aiChatSearchTabBtn = NewThemedButton(win->hwndAiChatBox, StrL("Google Search"), font, false);
         win->aiChatAiTabBtn->onClick = MkFunc0(OnAIChatAiTab, win);
         win->aiChatSearchTabBtn->onClick = MkFunc0(OnAIChatSearchTab, win);
+        win->aiChatAiTabBtn->textPadding = Insets{4, 12, 4, 12};
+        win->aiChatSearchTabBtn->textPadding = Insets{4, 12, 4, 12};
         tabs->AddChild(win->aiChatAiTabBtn, 1);
         tabs->AddChild(win->aiChatSearchTabBtn, 1);
+        tabs->SetIsVisible(false);
         win->aiChatTabs = tabs;
     }
 
