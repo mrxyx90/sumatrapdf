@@ -3510,6 +3510,7 @@ void ShowMainWindow(MainWindow* win, int windowState) {
         ShowWindow(win->hwndFrame, SW_SHOW);
     }
 
+    // The frame remains hidden through the document restore and final relayout.
     // a hidden frame's GetDpiForWindow() can still be the primary-monitor
     // DPI; after ShowWindow the monitor of the window rect is reliable
     {
