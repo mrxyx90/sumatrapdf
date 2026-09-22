@@ -804,15 +804,7 @@ RenderedBitmap* RenderSelectionsAsRenderedBitmap(DisplayModel* dm, const Vec<Sel
         float zoom = dm->GetZoomReal(selection.pageNo);
         RectF rect = selection.rect;
         RenderPageArgs args(selection.pageNo, zoom, dm->GetRotation(), &rect, RenderTarget::Export);
-        Pixmap* pixmap = dm->GetEngine()->RenderPage(args);
-        if (!pixmap) {
-            continue;
-        }
-        RenderedBitmap* rendered = RenderedBitmapFromPixmap(pixmap);
-        if (!rendered) {
-            continue;
-        }
-        Pixmap* dib = PixmapFromRenderedBitmap(rendered);
+        Pixmap* dib = PixmapToBgra(dm->GetEngine()->RenderPage(args));
         if (!dib) {
             continue;
         }
