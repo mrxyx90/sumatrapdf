@@ -531,7 +531,7 @@ static HICON CreateSearchIcon(int size) {
 
     Gdiplus::Bitmap* srcBmp = nullptr;
     for (const WCHAR* cand : candidates) {
-        if (file::Exists(ToStrTemp(cand))) {
+        if (file::Exists(ToUtf8Temp(cand))) {
             srcBmp = Gdiplus::Bitmap::FromFile(cand);
             if (srcBmp && srcBmp->GetLastStatus() == Gdiplus::Ok) {
                 break;
