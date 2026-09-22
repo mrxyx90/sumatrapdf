@@ -523,59 +523,37 @@ static void SetWindowAppUserModelID(HWND hwnd, const WCHAR* appIID) {
 }
 
 static HICON CreateSearchIcon(int size) {
-    const WCHAR* candidates[] = {
-        L"src\\gfx\\ic_search_modern.png",
-        L"gfx\\ic_search_modern.png",
-        L"ic_search_modern.png",
+    const WCHAR* icoCandidates[] = {
+        L"src\\gfx\\ic_search_modern.ico",
+        L"gfx\\ic_search_modern.ico",
+        L"ic_search_modern.ico",
     };
 
-    Gdiplus::Bitmap* srcBmp = nullptr;
-    for (const WCHAR* cand : candidates) {
+    for (const WCHAR* cand : icoCandidates) {
         if (file::Exists(ToUtf8Temp(cand))) {
-            srcBmp = Gdiplus::Bitmap::FromFile(cand);
-            if (srcBmp && srcBmp->GetLastStatus() == Gdiplus::Ok) {
-                break;
-            }
-            delete srcBmp;
-            srcBmp = nullptr;
-        }
-    }
-
-    if (!srcBmp) {
-        TempStr exeDir = GetSelfExeDirTemp();
-        const Str paths[] = {
-            path::JoinTemp(exeDir, StrL("src\\gfx\\ic_search_modern.png")),
-            path::JoinTemp(exeDir, StrL("..\\src\\gfx\\ic_search_modern.png")),
-            path::JoinTemp(exeDir, StrL("..\\..\\src\\gfx\\ic_search_modern.png")),
-        };
-        for (Str p : paths) {
-            if (file::Exists(p)) {
-                srcBmp = Gdiplus::Bitmap::FromFile(CWStrTemp(p));
-                if (srcBmp && srcBmp->GetLastStatus() == Gdiplus::Ok) {
-                    break;
-                }
-                delete srcBmp;
-                srcBmp = nullptr;
+            HICON hIcon = (HICON)LoadImageW(nullptr, cand, IMAGE_ICON, size, size, LR_LOADFROMFILE);
+            if (hIcon) {
+                return hIcon;
             }
         }
     }
 
-    if (!srcBmp) {
-        return nullptr;
+    TempStr exeDir = GetSelfExeDirTemp();
+    const Str icoPaths[] = {
+        path::JoinTemp(exeDir, StrL("src\\gfx\\ic_search_modern.ico")),
+        path::JoinTemp(exeDir, StrL("..\\src\\gfx\\ic_search_modern.ico")),
+        path::JoinTemp(exeDir, StrL("..\\..\\src\\gfx\\ic_search_modern.ico")),
+    };
+    for (Str p : icoPaths) {
+        if (file::Exists(p)) {
+            HICON hIcon = (HICON)LoadImageW(nullptr, CWStrTemp(p), IMAGE_ICON, size, size, LR_LOADFROMFILE);
+            if (hIcon) {
+                return hIcon;
+            }
+        }
     }
 
-    Gdiplus::Bitmap bmp(size, size, PixelFormat32bppARGB);
-    Gdiplus::Graphics g(&bmp);
-    g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-    g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
-
-    g.Clear(Gdiplus::Color(0, 0, 0, 0));
-    g.DrawImage(srcBmp, 0, 0, size, size);
-    delete srcBmp;
-
-    HICON hIcon = nullptr;
-    bmp.GetHICON(&hIcon);
-    return hIcon;
+    return nullptr;
 }
 
 void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url) {
