@@ -10172,45 +10172,7 @@ static void NotifyUrlSelectionTruncated(WindowTab* tab) {
 }
 
 static void LaunchBrowserWithSelection(WindowTab* tab, Str urlPattern) {
-    if (!tab || !HasPermission(Perm::InternetAccess) || !HasPermission(Perm::CopySelection)) {
-        return;
-    }
-
-#if 0 // TODO: get selection from Chm
-    if (tab->AsChm()) {
-        tab->AsChm()->CopySelection();
-    } else if (tab->AsMarkdown()) {
-        tab->AsMarkdown()->CopySelection();
-        return;
-    }
-#endif
-
-    bool isTextOnlySelectionOut; // if false, a rectangular selection
-    TempStr selText = GetSelectedTextTemp(tab, StrL("\n"), isTextOnlySelectionOut);
-    if (len(selText) == 0) {
-        return;
-    }
-    // The budget is for the whole URL, so subtract the pattern around the
-    // selection. (There used to be a second, 1024-*byte* cut applied to the raw
-    // utf-8 before this, which both shortened the text far more than necessary
-    // and could slice a multi-byte character in half.)
-    int budget = kMaxUrlEncodedLen - len(urlPattern);
-    bool didTruncate = false;
-    TempStr encodedSelection = URLEncodeMayTruncateTemp(selText, budget, &didTruncate);
-    if (didTruncate) {
-        NotifyUrlSelectionTruncated(tab);
-    }
-    // ${userLang} and and ${selectin} are typed by user in settings file
-    // to be shomewhat resilient against typos, we'll accept a different case
-    Str lang = trans::GetCurrentLangCode();
-    if (str::Eq(lang, StrL("kr"))) {
-        lang = StrL("ko");
-    }
-    TempStr contryCode = GetISO639LangCodeFromLangTemp(lang);
-    TempStr uri = str::ReplaceNoCaseTemp(urlPattern, Str(kUserLangStr), contryCode);
-    uri = str::ReplaceNoCaseTemp(uri, Str(kSelectionPositionStr), FormatSelectionPositionTemp(tab));
-    uri = str::ReplaceNoCaseTemp(uri, Str(kSelectionStr), encodedSelection);
-    LaunchBrowser(uri);
+    OpenSearchSelectionWithPattern(tab, StrL("Search"), urlPattern);
 }
 
 static void OpenSearchSelectionWithPattern(WindowTab* tab, Str engineName, Str urlPattern) {
