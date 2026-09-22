@@ -3485,7 +3485,21 @@ static MainWindow* CreateMainWindow() {
 }
 
 void ShowMainWindow(MainWindow* win, int windowState) {
-    if (WIN_STATE_FULLSCREEN == windowState || WIN_STATE_MAXIMIZED == windowState) {
+    // If this window was hidden during startup/session restore, complete all
+    // final geometry/layout work before exposing it. Showing the frame first
+    // lets DWM present its default background before the restored document is
+    // ready, which appears as a white flash when reopening a previous PDF.
+    bool wasVisible = HwndIsVisible(win->hwndFrame);
+
+    if (!wasVisible) {
+        if (WIN_STATE_FULLSCREEN == windowState || WIN_STATE_MAXIMIZED == windowState) {
+            ShowWindow(win->hwndFrame, SW_MAXIMIZE);
+        } else {
+            // Establish the final non-maximized frame state while it is still hidden.
+            ShowWindow(win->hwndFrame, SW_SHOWNOACTIVATE);
+            ShowWindow(win->hwndFrame, SW_HIDE);
+        }
+    } else if (WIN_STATE_FULLSCREEN == windowState || WIN_STATE_MAXIMIZED == windowState) {
         ShowWindow(win->hwndFrame, SW_MAXIMIZE);
     } else {
         ShowWindow(win->hwndFrame, SW_SHOW);
