@@ -4005,7 +4005,7 @@ static bool DrawDocument(MainWindow* win, HDC hdc, Rect rcArea) {
     // when all-match painting was on (issue #5737).
     PaintAllFindMatches(win, &gfx);
     if (win->showSelection) {
-        PaintSelection(win, &gfx);
+        PaintSelection(win, &gfx, hdc);
     }
     // keep the floating selection toolbar aligned with the selection while
     // scrolling/zooming; hides itself when the selection is gone or off-screen

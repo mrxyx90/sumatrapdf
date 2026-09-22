@@ -317,6 +317,7 @@ function sumatrapdf_files()
     "Flags.*",
     "FindBar.*",
     "FindWindow.*",
+    "FloatingToolbar.*",
     "FormFields.*",
     "ImageReader.h",
     "ImageReader.cpp",

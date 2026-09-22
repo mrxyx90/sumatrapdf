@@ -819,7 +819,7 @@ const annotations: Field[] = [
   field(
     "HighlightColor",
     Color,
-    rgb(0xff, 0xff, 0x0),
+    rgba(0xff, 0xff, 0x0, 200),
     "color of newly created highlight annotations. Use an #aarrggbb value to set " +
       "default opacity (00 = transparent, FF = opaque); #rrggbb is fully opaque",
   ),
@@ -903,18 +903,18 @@ const annotations: Field[] = [
   field(
     "InkColor",
     Color,
-    rgba(0xff, 0xff, 0x0, 0x66),
+    rgb(0x00, 0x00, 0xff),
     "color of newly created ink annotations, as #aarrggbb: the alpha is how translucent the stroke is " +
       "(00 = transparent, FF = opaque), so the color is exactly what ends up on the page",
   ).ver("3.7"),
   field(
     "InkColors",
     Str,
-    "#66ffff00 #668bf05d #6699defa #66f199d2 #66e24745",
+    "#0000ff #8bf05d #99defa #f199d2 #e24745",
     "colors offered by the ink button's drop-down, separated by space. Use #aarrggbb values: " +
       "the alpha is the stroke's opacity. The color ink currently draws in is added when it is missing",
   ).ver("3.7"),
-  field("InkBorderWidth", Int, 16, "width of the stroke of new ink annotations, in points").ver("3.7"),
+  field("InkBorderWidth", Int, 2, "width of the stroke of new ink annotations, in points").ver("3.7"),
   field(
     "StampColor",
     Color,
@@ -1765,6 +1765,14 @@ const globalPrefs: Field[] = [
       "out to hide it. Empty (the default) is the standard set. SelectionHandlers with " +
       "SelectToolbarNameOrSvg still come last",
   ).ver("3.7"),
+  compactStruct(
+    "FloatingToolbarPosition",
+    pointPos,
+    "last screen position of the main floating toolbar; x/y of 0 means use the default position",
+  )
+    .structName("Point")
+    .internal()
+    .ver("3.7"),
   field(
     "TabsMru",
     Bool,

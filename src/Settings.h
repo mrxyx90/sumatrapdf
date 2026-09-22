@@ -909,6 +909,8 @@ struct Settings {
     // default) is the standard set. SelectionHandlers with
     // SelectToolbarNameOrSvg still come last
     Str selectionToolbarLayout;
+    // last screen position of the main floating toolbar; x/y of 0 means use the default position
+    Point floatingToolbarPosition;
     // remembered destination language for selection translation; empty
     // uses OS UI language
     Str translateToLang;
@@ -1315,7 +1317,7 @@ static const FieldInfo gFixedPageUIFields[] = {
     {offsetof(FixedPageUI, grayscale), SettingType::Bool, false},
     {offsetof(FixedPageUI, textColor), SettingType::Color, (intptr_t)"#000000"},
     {offsetof(FixedPageUI, backgroundColor), SettingType::Color, (intptr_t)"#ffffff"},
-    {offsetof(FixedPageUI, selectionColor), SettingType::Color, (intptr_t)"#ffff00"},
+    {offsetof(FixedPageUI, selectionColor), SettingType::Color, (intptr_t)"#603399ff"},
     {offsetof(FixedPageUI, windowMargin), SettingType::Compact, (intptr_t)&gWindowMarginInfo},
     {offsetof(FixedPageUI, pageSpacing), SettingType::Compact, (intptr_t)&gSizeInfo},
     {offsetof(FixedPageUI, gradientColors), SettingType::ColorArray, 0},
@@ -1564,7 +1566,7 @@ static const StructInfo gAntiGravityInfo = {
     false};
 
 static const FieldInfo gAnnotationsFields[] = {
-    {offsetof(Annotations, highlightColor), SettingType::Color, (intptr_t)"#ffff00"},
+    {offsetof(Annotations, highlightColor), SettingType::Color, (intptr_t)"#c8ffff00"},
     {offsetof(Annotations, underlineColor), SettingType::Color, (intptr_t)"#8bf05d"},
     {offsetof(Annotations, squigglyColor), SettingType::Color, (intptr_t)"#f199d2"},
     {offsetof(Annotations, strikeOutColor), SettingType::Color, (intptr_t)"#e24745"},
@@ -1582,10 +1584,10 @@ static const FieldInfo gAnnotationsFields[] = {
     {offsetof(Annotations, squareColor), SettingType::Color, (intptr_t)""},
     {offsetof(Annotations, circleColor), SettingType::Color, (intptr_t)""},
     {offsetof(Annotations, polygonColor), SettingType::Color, (intptr_t)""},
-    {offsetof(Annotations, inkColor), SettingType::Color, (intptr_t)"#66ffff00"},
+    {offsetof(Annotations, inkColor), SettingType::Color, (intptr_t)"#0000ff"},
     {offsetof(Annotations, inkColors), SettingType::String,
-     (intptr_t)"#66ffff00 #668bf05d #6699defa #66f199d2 #66e24745"},
-    {offsetof(Annotations, inkBorderWidth), SettingType::Int, 16},
+     (intptr_t)"#0000ff #8bf05d #99defa #f199d2 #e24745"},
+    {offsetof(Annotations, inkBorderWidth), SettingType::Int, 2},
     {offsetof(Annotations, stampColor), SettingType::Color, (intptr_t)""},
     {offsetof(Annotations, caretColor), SettingType::Color, (intptr_t)""},
     {offsetof(Annotations, fileAttachmentColor), SettingType::Color, (intptr_t)""},
@@ -2176,6 +2178,7 @@ static const FieldInfo gSettingsFields[] = {
     {offsetof(Settings, useTabs), SettingType::Bool, true},
     {offsetof(Settings, selectionToolbar), SettingType::Bool, true},
     {offsetof(Settings, selectionToolbarLayout), SettingType::String, (intptr_t)""},
+    {offsetof(Settings, floatingToolbarPosition), SettingType::Compact, (intptr_t)&gPointInfo, true},
     {offsetof(Settings, tabsMru), SettingType::Bool, false},
     {offsetof(Settings, ctrlTabSimple), SettingType::Bool, false},
     {offsetof(Settings, zoomLevels), SettingType::FloatArray, (intptr_t)""},

@@ -246,6 +246,9 @@
     <ClInclude Include="..\src\FindWindow.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\FloatingToolbar.h">
+      <Filter>src</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\Flags.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -783,6 +786,9 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\FindWindow.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\FloatingToolbar.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\Flags.cpp">
