@@ -341,8 +341,8 @@ void RelayoutSearchPanel(MainWindow* win) {
 
         bool isSearchTab = (win->activeSidebarTab == 1);
         int btnSize = DpiScale(36);
-        int pad = DpiScale(8);
-        int bottomY = rc.dy - btnSize - pad;
+        int pad = DpiScale(4);
+        int bottomY = rc.dy - btnSize;
 
         bool canBack = win->webSearchWebView->CanGoBack();
         bool canFwd = win->webSearchWebView->CanGoForward();
@@ -366,7 +366,7 @@ void RelayoutSearchPanel(MainWindow* win) {
         }
 
         if (win->hwndSearchClose) {
-            SetWindowPos(win->hwndSearchClose, HWND_TOP, rc.dx - btnSize, rc.dy - btnSize, btnSize, btnSize,
+            SetWindowPos(win->hwndSearchClose, HWND_TOP, rc.dx - btnSize, bottomY, btnSize, btnSize,
                          SWP_NOACTIVATE | (isSearchTab ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
             InvalidateRect(win->hwndSearchClose, nullptr, FALSE);
         }
