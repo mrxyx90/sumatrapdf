@@ -6,6 +6,8 @@
 #include "base/JsonParser.h"
 
 #include "gui/UIModels.h"
+#include "AppSettings.h"
+#include "Settings.h"
 
 #include "gui/Layout.h"
 #include "gui/win/WinGui.h"
@@ -917,6 +919,122 @@ class webview2_resource_handler : public ICoreWebView2WebResourceRequestedEventH
     ULONG m_refCount = 1;
 };
 
+// This is intentionally a small built-in host blocklist rather than a full
+// EasyList/uBlock rule engine. WebView2 exposes request interception, which is
+// enough to stop the most common third-party ad/auction endpoints without
+// pulling a large filter database into the executable.
+static bool IsWebViewAdBlockHost(WStr uri) {
+    static const WCHAR* const blockedDomains[] = {
+        L"doubleclick.net", L"googlesyndication.com", L"googleadservices.com",
+        L"googletagservices.com", L"googleads.com", L"2mdn.net", L"adnxs.com",
+        L"adsrvr.org", L"criteo.com", L"criteo.net", L"rubiconproject.com",
+        L"pubmatic.com", L"openx.net", L"amazon-adsystem.com", L"advertising.com",
+        L"outbrain.com", L"taboola.com", L"scorecardresearch.com", L"quantserve.com",
+        L"moatads.com", L"doubleverify.com", L"flashtalking.com", L"casalemedia.com",
+        L"mathtag.com", L"smartadserver.com", L"demdex.net", L"bluekai.com",
+        L"bidswitch.net", L"teads.tv", L"imrworldwide.com",
+    };
+
+    int hostStart = -1;
+    for (int i = 0; i + 2 < uri.len; i++) {
+        if (uri.s[i] == L':' && uri.s[i + 1] == L'/' && uri.s[i + 2] == L'/') {
+            hostStart = i + 3;
+            break;
+        }
+    }
+    if (hostStart < 0 || hostStart >= uri.len) {
+        return false;
+    }
+
+    int hostEnd = hostStart;
+    while (hostEnd < uri.len) {
+        WCHAR ch = uri.s[hostEnd];
+        if (ch == L'/' || ch == L'?' || ch == L'#' || ch == L':') {
+            break;
+        }
+        hostEnd++;
+    }
+    int hostLen = hostEnd - hostStart;
+    if (hostLen <= 0) {
+        return false;
+    }
+
+    for (const WCHAR* domain : blockedDomains) {
+        int domainLen = (int)wcslen(domain);
+        if (hostLen == domainLen && _wcsnicmp(uri.s + hostStart, domain, domainLen) == 0) {
+            return true;
+        }
+        if (hostLen > domainLen && uri.s[hostEnd - domainLen - 1] == L'.' &&
+            _wcsnicmp(uri.s + hostEnd - domainLen, domain, domainLen) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+class webview2_ad_block_handler : public ICoreWebView2WebResourceRequestedEventHandler {
+  public:
+    explicit webview2_ad_block_handler(WebviewWnd* wnd) : m_wnd(wnd) {}
+
+    ULONG STDMETHODCALLTYPE AddRef() { return ++m_refCount; }
+    ULONG STDMETHODCALLTYPE Release() {
+        ULONG n = --m_refCount;
+        if (n == 0) {
+            delete this;
+        }
+        return n;
+    }
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, LPVOID* ppv) {
+        if (!ppv) {
+            return E_POINTER;
+        }
+        *ppv = nullptr;
+        if (riid == IID_IUnknown || riid == __uuidof(ICoreWebView2WebResourceRequestedEventHandler)) {
+            *ppv = static_cast<ICoreWebView2WebResourceRequestedEventHandler*>(this);
+            AddRef();
+            return S_OK;
+        }
+        return E_NOINTERFACE;
+    }
+
+    HRESULT STDMETHODCALLTYPE Invoke(ICoreWebView2* /*sender*/, ICoreWebView2WebResourceRequestedEventArgs* args) {
+        if (!args || !m_wnd || !gSettings || !gSettings->webViewAdBlock || !gSharedEnvironment) {
+            return S_OK;
+        }
+
+        ICoreWebView2WebResourceRequest* request = nullptr;
+        HRESULT hr = args->get_Request(&request);
+        if (FAILED(hr) || !request) {
+            return S_OK;
+        }
+
+        WCHAR* uri = nullptr;
+        hr = request->get_Uri(&uri);
+        request->Release();
+        if (FAILED(hr) || !uri) {
+            return S_OK;
+        }
+
+        bool blocked = IsWebViewAdBlockHost(WStr(uri));
+        CoTaskMemFree(uri);
+        if (!blocked) {
+            return S_OK;
+        }
+
+        ICoreWebView2WebResourceResponse* response = nullptr;
+        hr = gSharedEnvironment->CreateWebResourceResponse(nullptr, 403, L"Blocked", L"", &response);
+        if (SUCCEEDED(hr) && response) {
+            args->put_Response(response);
+            response->Release();
+        }
+        return S_OK;
+    }
+
+  private:
+    WebviewWnd* m_wnd = nullptr;
+    ULONG m_refCount = 1;
+};
+
 class webview2_try_suspend_handler : public ICoreWebView2TrySuspendCompletedHandler {
   public:
     ULONG STDMETHODCALLTYPE AddRef() { return ++m_refCount; }
@@ -1300,6 +1418,26 @@ void WebviewWnd::OnControllerReady(ICoreWebView2Controller* controller) {
         ::EventRegistrationToken token = {};
         controller->add_AcceleratorKeyPressed(accelHandler, &token);
         accelHandler->Release();
+    }
+
+    if (gSettings && gSettings->webViewAdBlock) {
+        ICoreWebView2_22* wv22 = nullptr;
+        if (SUCCEEDED(webview->QueryInterface(IID_PPV_ARGS(&wv22))) && wv22) {
+            wv22->AddWebResourceRequestedFilterWithRequestSourceKinds(
+                L"http://*/*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL,
+                COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_ALL);
+            wv22->AddWebResourceRequestedFilterWithRequestSourceKinds(
+                L"https://*/*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL,
+                COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_ALL);
+            wv22->Release();
+        } else {
+            webview->AddWebResourceRequestedFilter(L"http://*/*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL);
+            webview->AddWebResourceRequestedFilter(L"https://*/*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL);
+        }
+        auto* adBlockHandler = new webview2_ad_block_handler(this);
+        ::EventRegistrationToken adBlockToken = {};
+        webview->add_WebResourceRequested(adBlockHandler, &adBlockToken);
+        adBlockHandler->Release();
     }
 
     if (resourceProvider.getResource && resourceUriPrefix) {
