@@ -268,12 +268,10 @@ static void LayoutAIChatBox(MainWindow* win) {
     // tabs preserves both pages. Only the active webview is visible.
     WebviewWnd* active = win->aiChatSearchMode ? win->aiChatSearchWebView : win->aiChatWebView;
     if (win->aiChatWebView) {
-        SetWindowPos(win->aiChatWebView->hwnd, nullptr, 0, 0, 0, 0,
-                     SWP_NOMOVE | SWP_NOSIZE | (win->aiChatSearchMode ? SWP_HIDEWINDOW : SWP_SHOWWINDOW));
+        win->aiChatWebView->SetIsVisible(!win->aiChatSearchMode);
     }
     if (win->aiChatSearchWebView) {
-        SetWindowPos(win->aiChatSearchWebView->hwnd, nullptr, 0, 0, 0, 0,
-                     SWP_NOMOVE | SWP_NOSIZE | (win->aiChatSearchMode ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
+        win->aiChatSearchWebView->SetIsVisible(win->aiChatSearchMode);
     }
     if (active) {
         Rect wr = win->aiChatWebViewSlot->lastBounds;
@@ -303,10 +301,10 @@ static void SetAIChatSidebarMode(MainWindow* win, bool searchMode) {
         win->aiChatSessionCombo->SetIsVisible(!searchMode);
     }
     if (win->aiChatInputRow) {
-        win->aiChatInputRow->SetIsVisible(!searchMode);
+        win->aiChatInputRow->SetVisibility(searchMode ? Visibility::Collapse : Visibility::Visible);
     }
     if (win->aiChatOptionsRow) {
-        win->aiChatOptionsRow->SetIsVisible(!searchMode);
+        win->aiChatOptionsRow->SetVisibility(searchMode ? Visibility::Collapse : Visibility::Visible);
     }
     if (win->hwndAiChatBox) {
         LayoutAIChatBox(win);
