@@ -320,6 +320,7 @@ void OpenSearchSelectionInSidebar(MainWindow* win, Str engineName, Str url) {
 
     if (!win->webSearchWebView) {
         auto* webView = new WebviewWnd();
+        webView->useMobileUserAgent = true;
         webView->events.ctx = win;
         webView->events.navigationCompleted = OnWebSearchWebViewNavigated;
         webView->events.historyChanged = OnWebSearchHistoryChanged;
@@ -548,6 +549,7 @@ void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url) {
         SetWindowSubclass(popup->hwndForward, WndProcPopupForwardBtn, NextSubclassId(), (DWORD_PTR)popup);
 
         auto* webView = new WebviewWnd();
+        webView->useMobileUserAgent = true;
         webView->events.ctx = popup;
         webView->events.historyChanged = OnPopupHistoryChanged;
         TempStr localAppData = GetSpecialFolderTemp(CSIDL_LOCAL_APPDATA);

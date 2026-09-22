@@ -13178,7 +13178,7 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             break;
 
         case CmdSearchSelectionWithBing:
-            OpenSearchSelectionWithPattern(tab, StrL("Bing"), StrL("https://www.bing.com/search?q=${selection}"));
+            OpenSearchSelectionWithPattern(tab, StrL("Bing"), StrL("https://m.bing.com/search?q=${selection}"));
             break;
 
         case CmdSearchSelectionWithWikipedia:

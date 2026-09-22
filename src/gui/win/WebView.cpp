@@ -1283,6 +1283,15 @@ void WebviewWnd::OnControllerReady(ICoreWebView2Controller* controller) {
         settings->put_AreDefaultScriptDialogsEnabled(FALSE);
         settings->put_IsStatusBarEnabled(FALSE);
         settings->put_IsZoomControlEnabled(FALSE);
+
+        if (useMobileUserAgent) {
+            ICoreWebView2Settings2* settings2 = nullptr;
+            if (SUCCEEDED(settings->QueryInterface(IID_PPV_ARGS(&settings2))) && settings2) {
+                settings2->put_UserAgent(L"Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1");
+                settings2->Release();
+            }
+        }
+
         settings->Release();
     }
 
