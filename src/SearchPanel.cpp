@@ -68,26 +68,21 @@ static void PaintOwnerDrawButton(HWND hwnd, const WCHAR* label, bool isHovered, 
     }
 
     HBRUSH brBg = CreateSolidBrush(bgCol);
-    HPEN penBg = CreatePen(PS_SOLID, 1, bgCol);
-    HBRUSH oldBr = (HBRUSH)SelectObject(hdc, brBg);
-    HPEN oldPen = (HPEN)SelectObject(hdc, penBg);
-
-    int cornerRadius = DpiScale(8);
-    RoundRect(hdc, rc.left, rc.top, rc.right, rc.bottom, cornerRadius, cornerRadius);
-
-    SelectObject(hdc, oldBr);
-    SelectObject(hdc, oldPen);
+    FillRect(hdc, &rc, brBg);
     DeleteObject(brBg);
-    DeleteObject(penBg);
 
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, txtCol);
-    HFONT font = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+
+    HFONT font = CreateFontW(-DpiScale(18), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+                             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                             CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
     HFONT oldFont = (HFONT)SelectObject(hdc, font);
 
     DrawTextW(hdc, label, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 
     SelectObject(hdc, oldFont);
+    DeleteObject(font);
     EndPaint(hwnd, &ps);
 }
 
@@ -260,7 +255,7 @@ void RelayoutSearchPanel(MainWindow* win) {
         win->webSearchWebView->UpdateWebviewSize();
 
         bool isSearchTab = (win->activeSidebarTab == 1);
-        int btnSize = DpiScale(28);
+        int btnSize = DpiScale(36);
         int pad = DpiScale(8);
         int bottomY = rc.dy - btnSize - pad;
 
@@ -286,7 +281,7 @@ void RelayoutSearchPanel(MainWindow* win) {
         }
 
         if (win->hwndSearchClose) {
-            SetWindowPos(win->hwndSearchClose, HWND_TOP, rc.dx - btnSize - pad, bottomY, btnSize, btnSize,
+            SetWindowPos(win->hwndSearchClose, HWND_TOP, rc.dx - btnSize, rc.dy - btnSize, btnSize, btnSize,
                          SWP_NOACTIVATE | (isSearchTab ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
             InvalidateRect(win->hwndSearchClose, nullptr, FALSE);
         }
