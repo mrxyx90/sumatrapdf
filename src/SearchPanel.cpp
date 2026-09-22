@@ -2,6 +2,7 @@
    License: GPLv3 */
 
 #include "base/Base.h"
+#include <dwmapi.h>
 #include "base/CmdLineArgs.h"
 #include "base/File.h"
 #include "base/Win.h"
@@ -350,22 +351,163 @@ void OpenSearchSelectionInSidebar(MainWindow* win, Str engineName, Str url) {
     ScheduleUiUpdate(win);
 }
 
+#ifndef DWMWA_CAPTION_COLOR
+#define DWMWA_CAPTION_COLOR 35
+#endif
+#ifndef DWMWA_TEXT_COLOR
+#define DWMWA_TEXT_COLOR 36
+#endif
+
+static void SetPopupTitleBarThemeColor(HWND hwnd) {
+    COLORREF capCol = ColorToCOLORREF(ThemeControlBackgroundColor());
+    DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, &capCol, sizeof(capCol));
+    COLORREF txtCol = ColorToCOLORREF(ThemeWindowTextColor());
+    DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, &txtCol, sizeof(txtCol));
+    DarkModeApplyToTitleBar(hwnd);
+}
+
 struct SearchPopupWindow {
     HWND hwnd = nullptr;
+    HWND hwndBack = nullptr;
+    HWND hwndForward = nullptr;
     WebviewWnd* webView = nullptr;
     Str engineName;
 };
 
 static SearchPopupWindow* gSearchPopupWnd = nullptr;
 
+static LRESULT CALLBACK WndProcPopupBackBtn(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId, DWORD_PTR refData) {
+    auto* popup = (SearchPopupWindow*)refData;
+    switch (msg) {
+        case WM_MOUSEMOVE:
+            if (!gBackState.isTracking) {
+                TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, hwnd, 0 };
+                TrackMouseEvent(&tme);
+                gBackState.isTracking = true;
+            }
+            if (!gBackState.isHovered) {
+                gBackState.isHovered = true;
+                InvalidateRect(hwnd, nullptr, FALSE);
+            }
+            break;
+        case WM_MOUSELEAVE:
+            gBackState.isHovered = false;
+            gBackState.isTracking = false;
+            InvalidateRect(hwnd, nullptr, FALSE);
+            break;
+        case WM_ERASEBKGND:
+            return 1;
+        case WM_PAINT:
+            PaintOwnerDrawButton(hwnd, L"←", gBackState.isHovered, false);
+            return 0;
+        case WM_LBUTTONUP:
+            if (popup && popup->webView && popup->webView->CanGoBack()) {
+                popup->webView->GoBack();
+            }
+            return 0;
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
+static LRESULT CALLBACK WndProcPopupForwardBtn(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId, DWORD_PTR refData) {
+    auto* popup = (SearchPopupWindow*)refData;
+    switch (msg) {
+        case WM_MOUSEMOVE:
+            if (!gForwardState.isTracking) {
+                TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, hwnd, 0 };
+                TrackMouseEvent(&tme);
+                gForwardState.isTracking = true;
+            }
+            if (!gForwardState.isHovered) {
+                gForwardState.isHovered = true;
+                InvalidateRect(hwnd, nullptr, FALSE);
+            }
+            break;
+        case WM_MOUSELEAVE:
+            gForwardState.isHovered = false;
+            gForwardState.isTracking = false;
+            InvalidateRect(hwnd, nullptr, FALSE);
+            break;
+        case WM_ERASEBKGND:
+            return 1;
+        case WM_PAINT:
+            PaintOwnerDrawButton(hwnd, L"→", gForwardState.isHovered, false);
+            return 0;
+        case WM_LBUTTONUP:
+            if (popup && popup->webView && popup->webView->CanGoForward()) {
+                popup->webView->GoForward();
+            }
+            return 0;
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
+static void RelayoutPopupWindow(SearchPopupWindow* popup) {
+    if (!popup || !popup->hwnd || !popup->webView) {
+        return;
+    }
+    Rect rc = HwndClientRect(popup->hwnd);
+    bool canBack = popup->webView->CanGoBack();
+    bool canFwd = popup->webView->CanGoForward();
+
+    int btnSize = DpiScale(24);
+    int padX = DpiScale(6);
+    int padY = DpiScale(3);
+
+    if (popup->hwndBack) {
+        SetWindowPos(popup->hwndBack, HWND_TOP, padX, padY, btnSize, btnSize,
+                     SWP_NOACTIVATE | (canBack ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
+        EnableWindow(popup->hwndBack, canBack);
+        InvalidateRect(popup->hwndBack, nullptr, FALSE);
+    }
+
+    int fwdX = padX;
+    if (canBack) {
+        fwdX += btnSize + DpiScale(4);
+    }
+    if (popup->hwndForward) {
+        SetWindowPos(popup->hwndForward, HWND_TOP, fwdX, padY, btnSize, btnSize,
+                     SWP_NOACTIVATE | (canFwd ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
+        EnableWindow(popup->hwndForward, canFwd);
+        InvalidateRect(popup->hwndForward, nullptr, FALSE);
+    }
+
+    TempStr title;
+    if (canBack && canFwd) {
+        title = fmt("       %s", popup->engineName);
+    } else if (canBack || canFwd) {
+        title = fmt("    %s", popup->engineName);
+    } else {
+        title = fmt("%s", popup->engineName);
+    }
+    SetWindowTextW(popup->hwnd, CWStrTemp(title));
+
+    int topY = (canBack || canFwd) ? DpiScale(30) : 0;
+    MoveWindow(popup->webView->hwnd, 0, topY, rc.dx, std::max(10, rc.dy - topY), TRUE);
+    popup->webView->UpdateWebviewSize();
+}
+
+static void OnPopupHistoryChanged(void* ctx, bool, bool) {
+    auto* popup = (SearchPopupWindow*)ctx;
+    if (popup) {
+        RelayoutPopupWindow(popup);
+    }
+}
+
 static LRESULT CALLBACK WndProcSearchPopup(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
-    if (msg == WM_SIZE && gSearchPopupWnd && gSearchPopupWnd->webView) {
-        Rect rc = HwndClientRect(hwnd);
-        MoveWindow(gSearchPopupWnd->webView->hwnd, 0, 0, rc.dx, rc.dy, TRUE);
-        gSearchPopupWnd->webView->UpdateWebviewSize();
+    if (msg == WM_SIZE && gSearchPopupWnd) {
+        RelayoutPopupWindow(gSearchPopupWnd);
         return 0;
     }
     if (msg == WM_DESTROY && gSearchPopupWnd) {
+        if (gSearchPopupWnd->hwndBack) {
+            DestroyWindow(gSearchPopupWnd->hwndBack);
+            gSearchPopupWnd->hwndBack = nullptr;
+        }
+        if (gSearchPopupWnd->hwndForward) {
+            DestroyWindow(gSearchPopupWnd->hwndForward);
+            gSearchPopupWnd->hwndForward = nullptr;
+        }
         delete gSearchPopupWnd->webView;
         gSearchPopupWnd->webView = nullptr;
         delete gSearchPopupWnd;
@@ -404,12 +546,21 @@ void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url) {
             return;
         }
 
+        SetPopupTitleBarThemeColor(hwnd);
+
         auto* popup = new SearchPopupWindow();
         popup->hwnd = hwnd;
         str::ReplaceWithCopy(&popup->engineName, engineName);
 
+        popup->hwndBack = CreateWindowExW(0, WC_BUTTONW, L"←", WS_CHILD | BS_PUSHBUTTON, 0, 0, 0, 0, hwnd, nullptr, hinst, nullptr);
+        SetWindowSubclass(popup->hwndBack, WndProcPopupBackBtn, NextSubclassId(), (DWORD_PTR)popup);
+
+        popup->hwndForward = CreateWindowExW(0, WC_BUTTONW, L"→", WS_CHILD | BS_PUSHBUTTON, 0, 0, 0, 0, hwnd, nullptr, hinst, nullptr);
+        SetWindowSubclass(popup->hwndForward, WndProcPopupForwardBtn, NextSubclassId(), (DWORD_PTR)popup);
+
         auto* webView = new WebviewWnd();
         webView->events.ctx = popup;
+        webView->events.historyChanged = OnPopupHistoryChanged;
         TempStr localAppData = GetSpecialFolderTemp(CSIDL_LOCAL_APPDATA);
         TempStr safeName = str::ReplaceTemp(engineName, StrL(" "), StrL("_"));
         webView->dataDir = str::Dup(fmt("%s\\SumatraPDF\\Search_%s", localAppData, safeName));
@@ -426,6 +577,7 @@ void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url) {
             webView->SetIsVisible(true);
             popup->webView = webView;
             gSearchPopupWnd = popup;
+            RelayoutPopupWindow(popup);
         } else {
             delete webView;
             delete popup;
@@ -433,12 +585,14 @@ void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url) {
             return;
         }
     } else {
+        SetPopupTitleBarThemeColor(gSearchPopupWnd->hwnd);
         if (!str::EqI(gSearchPopupWnd->engineName, engineName)) {
             str::ReplaceWithCopy(&gSearchPopupWnd->engineName, engineName);
             SetWindowTextW(gSearchPopupWnd->hwnd, CWStrTemp(engineName));
         }
         gSearchPopupWnd->webView->Navigate(url);
         SetWindowPos(gSearchPopupWnd->hwnd, HWND_TOP, x, y, w, h, SWP_SHOWWINDOW);
+        RelayoutPopupWindow(gSearchPopupWnd);
     }
 }
 

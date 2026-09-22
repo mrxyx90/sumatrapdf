@@ -15020,9 +15020,11 @@ static LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPAR
                 // topmost popups and must be dismissed on minimize or they
                 // stick on the desktop (issue #5928).
                 win->DeleteToolTip();
+                OnSearchPopupFrameSize(win, (int)wp);
                 break;
             }
             if (win) {
+                OnSearchPopupFrameSize(win, (int)wp);
                 RememberDefaultWindowPosition(win);
                 // UIState.layout.rc remembers the last laid-out client size;
                 // the scheduled update relayouts only when the size actually
