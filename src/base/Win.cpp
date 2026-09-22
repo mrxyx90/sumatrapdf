@@ -2280,7 +2280,7 @@ static BOOL CALLBACK EnumEdgeWindowsProc(HWND hwnd, LPARAM lParam) {
 }
 
 static void CollectEdgeWindows(EdgeWindowSnapshot* snapshot) {
-    snapshot->windows.Reset();
+    snapshot->windows = {};
     EnumWindows(EnumEdgeWindowsProc, (LPARAM)snapshot);
 }
 
