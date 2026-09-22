@@ -10209,7 +10209,9 @@ static void LaunchBrowserWithSelection(WindowTab* tab, Str urlPattern) {
     TempStr uri = str::ReplaceNoCaseTemp(urlPattern, Str(kUserLangStr), contryCode);
     uri = str::ReplaceNoCaseTemp(uri, Str(kSelectionPositionStr), FormatSelectionPositionTemp(tab));
     uri = str::ReplaceNoCaseTemp(uri, Str(kSelectionStr), encodedSelection);
-    LaunchBrowser(uri);
+    if (!AIChatOpenSearch(tab->win, uri)) {
+        LaunchBrowser(uri);
+    }
 }
 
 // Ctrl+C / Ctrl+X / Ctrl+Z are app accelerators, so they fire even while a text
