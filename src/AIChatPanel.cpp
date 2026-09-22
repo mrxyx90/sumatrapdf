@@ -291,8 +291,8 @@ static void UpdateSidebarTabControlsVisibility(MainWindow* win) {
     if (win->aiChatInput && win->aiChatInput->hwnd) {
         ShowWindow(win->aiChatInput->hwnd, showCmd);
     }
-    if (win->aiChatStopBtn && win->aiChatStopBtn->hwnd) {
-        ShowWindow(win->aiChatStopBtn->hwnd, isAi && win->aiChatStopBtn->IsVisible() ? SW_SHOW : SW_HIDE);
+    if (win->aiChatStopBtn) {
+        win->aiChatStopBtn->SetIsVisible(isAi);
     }
 }
 
