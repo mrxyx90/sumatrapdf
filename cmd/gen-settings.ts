@@ -1352,6 +1352,12 @@ const globalPrefs: Field[] = [
       "(SessionData) are reopened at startup",
   ),
   field(
+    "ActiveSessionTabs",
+    Str,
+    "",
+    "maximum number of active tabs to keep open/restore when reopening the app if RestoreSession is true (blank or all means all open tabs)",
+  ),
+  field(
     "ReuseInstance",
     Bool,
     true,

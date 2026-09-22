@@ -174,6 +174,21 @@ static bool SettingsRestoreSession() {
     return gSettings->restoreSession && !gMyWindowWasEmbedded && !gForTesting;
 }
 
+static int MaxSessionTabsToRestore() {
+    if (!SettingsRestoreSession()) {
+        return 0;
+    }
+    const char* s = gSettings->activeSessionTabs;
+    if (!s || len(s) == 0 || str::EqI(Str(s), StrL("all")) || str::EqI(Str(s), StrL("true"))) {
+        return 999999;
+    }
+    if (str::EqI(Str(s), StrL("0")) || str::EqI(Str(s), StrL("false"))) {
+        return 0;
+    }
+    int val = atoi(s);
+    return val > 0 ? val : 999999;
+}
+
 bool SettingsRememberOpenedFiles() {
     return gSettings->rememberOpenedFiles && !gMyWindowWasEmbedded;
 }
@@ -18653,13 +18668,19 @@ ContinueOpenWindow:
     }
 
     if (restoreSession) {
+        int maxToRestore = MaxSessionTabsToRestore();
         for (SessionData* data : *gInitialSessionData) {
             // create window hidden to avoid flashing the about page
             win = CreateAndShowMainWindow(data, false);
             int nRestore = 0;
+            int count = 0;
             for (TabState* state : *data->tabStates) {
                 if (len(state->filePath) != 0) {
+                    if (count >= maxToRestore) {
+                        break;
+                    }
                     nRestore++;
+                    count++;
                 }
             }
             int restored = 0;
@@ -18667,6 +18688,9 @@ ContinueOpenWindow:
                 if (len(state->filePath) == 0) {
                     logf("WinMain: skipping RestoreTabOnStartup() because state->filePath is empty\n");
                     continue;
+                }
+                if (restored >= maxToRestore) {
+                    break;
                 }
                 restored++;
                 RestoreTabOnStartup(win, state, gSettings->lazyLoading, restored != nRestore);

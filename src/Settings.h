@@ -1080,6 +1080,7 @@ struct Settings {
     // if true, documents that were still open when the last window was
     // closed (SessionData) are reopened at startup
     bool restoreSession;
+    char* activeSessionTabs;
     // if true, open documents in the already running SumatraPDF instead of
     // starting a new one
     bool reuseInstance;
@@ -2113,6 +2114,7 @@ static const FieldInfo gSettingsFields[] = {
     {offsetof(Settings, rememberOpenedFiles), SettingType::Bool, true},
     {offsetof(Settings, rememberStatePerDocument), SettingType::Bool, true},
     {offsetof(Settings, restoreSession), SettingType::Bool, true},
+    {offsetof(Settings, activeSessionTabs), SettingType::String, (intptr_t)""},
     {offsetof(Settings, reuseInstance), SettingType::Bool, true},
     {offsetof(Settings, showMenubar), SettingType::Bool, true},
     {offsetof(Settings, showMenubarWithTabs), SettingType::Bool, false},
@@ -2469,7 +2471,4 @@ static const StructInfo gTheme_1_Info = {
 static const FieldInfo gThemesFields[] = {
     {offsetof(Themes, themes), SettingType::Array, (intptr_t)&gTheme_1_Info},
 };
-static const StructInfo gThemesInfo = {sizeof(Themes), 1, gThemesFields, "Themes", "color themes", false};
-
-// NOLINTEND(modernize-use-designated-initializers)
-#endif
+static const StructInfo gThemesInfo = {sizeof(Themes), 1, gThemesFields, "Themes", "col
