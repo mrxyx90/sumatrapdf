@@ -7937,9 +7937,13 @@ static bool RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
 
     int aiChatDx = 0;
     if (aiChatVisible) {
-        aiChatDx = win->aiChatDx;
-        if (aiChatDx <= 0) {
-            aiChatDx = rc.dx * 3 / 8;
+        // Default to 27% of the available frame width. Once the user moves
+        // the AI splitter, aiChatSidebarDx is persisted and that width is
+        // reused instead of falling back to the default.
+        if (gSettings->aiChatSidebarDx > 0) {
+            aiChatDx = win->aiChatDx;
+        } else {
+            aiChatDx = rc.dx * 27 / 100;
         }
         int availDx = rc.dx - (sidebarVisible ? sidebarDxApplied + kSplitterDx : 0);
         aiChatDx = limitValue(aiChatDx, kSidebarMinDx, availDx / 2);
