@@ -1384,7 +1384,6 @@ void CreateAIChatPanel(MainWindow* win) {
         win->aiChatSearchTabBtn->textPadding = Insets{4, 12, 4, 12};
         tabs->AddChild(win->aiChatAiTabBtn, 1);
         tabs->AddChild(win->aiChatSearchTabBtn, 1);
-        tabs->SetIsVisible(false);
         win->aiChatTabs = tabs;
     }
 
