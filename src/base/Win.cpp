@@ -2261,6 +2261,28 @@ bool LaunchBrowser(Str url) {
     return LaunchFileShell(url, Str(), StrL("open"));
 }
 
+bool LaunchBrowserInEdgePopup(Str url) {
+    constexpr int kPopupWidth = 900;
+    constexpr int kPopupHeight = 400;
+
+    // Position the popup against the right edge of the primary work area.
+    Rect work = GetWorkAreaRect({}, nullptr);
+    int x = work.x + std::max(0, work.dx - kPopupWidth);
+    int y = work.y + std::max(0, (work.dy - kPopupHeight) / 2);
+
+    TempStr args = fmt("--new-window --window-position=%d,%d --window-size=%d,%d \"%s\"",
+                       x, y, kPopupWidth, kPopupHeight, url);
+
+    // msedge.exe is resolved through the normal Windows application search
+    // path, so this reuses the currently configured Edge profile.
+    if (LaunchProcessWithCmdLine(StrL("msedge.exe"), args)) {
+        return true;
+    }
+
+    // Keep the normal default-browser behavior if Edge cannot be launched.
+    return LaunchBrowser(url);
+}
+
 void OpenPathInDefaultFileManager(Str path) {
     if (len(path) == 0) {
         return;
