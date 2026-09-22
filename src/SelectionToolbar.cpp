@@ -729,26 +729,37 @@ static void ShowSelectionToolbarNow(MainWindow* win) {
     tb->host->Invalidate(false);
 }
 
-// The toolbar pops up over the document, right where the user is reading, so
-// showing it the instant a selection exists makes it flash in and out while
-// selecting word by word or nudging the selection with the keyboard. Wait for
-// the selection to settle first. Repeated requests during the wait keep the
-// original deadline instead of pushing it back, so a stream of canvas repaints
-// (UpdateSelectionToolbarPosition asks on every one) can't starve the timer.
-void ShowSelectionToolbar(MainWindow* win) {
+// cancel a pending debounced show (the selection went away or is being redone)
+static void CancelPendingShow(MainWindow* win) {
+    if (!win || !win->selectionToolbarShowPending) {
+        return;
+    }
+    win->selectionToolbarShowPending = false;
+    if (win->hwndCanvas) {
+        KillTimer(win->hwndCanvas, kSelectionToolbarShowTimerID);
+    }
+}
+
+// A released mouse button is a finished selection: show at once (#6239). The
+// toolbar pops up over the document, right where the user is reading, so for
+// a selection still changing (keyboard nudges, repaints) wait for it to settle
+// first. Repeated requests during the wait keep the original deadline instead
+// of pushing it back, so a stream of canvas repaints (UpdateSelectionToolbarPosition
+// asks on every one) can't starve the timer.
+void ShowSelectionToolbar(MainWindow* win, SelToolbarShow when) {
     if (!win || !win->hwndCanvas || !gSettings->selectionToolbar) {
         return;
     }
     if (win->selectionToolbar && win->selectionToolbar->dismissed) {
         return;
     }
-
-    // Show immediately once the selection exists. The old debounce timer made
-    // the toolbar visibly lag behind the user's selection.
-    win->selectionToolbarShowPending = false;
-    KillTimer(win->hwndCanvas, kSelectionToolbarShowTimerID);
-    if (!IsActivelySelecting(win)) {
+    if (when == SelToolbarShow::Now) {
+        CancelPendingShow(win);
         ShowSelectionToolbarNow(win);
+        return;
+    }
+    if (win->selectionToolbarShowPending) {
+        return;
     }
 }
 
@@ -764,17 +775,6 @@ void SelectionToolbarOnShowTimer(MainWindow* win) {
         return;
     }
     ShowSelectionToolbarNow(win);
-}
-
-// cancel a pending debounced show (the selection went away or is being redone)
-static void CancelPendingShow(MainWindow* win) {
-    if (!win || !win->selectionToolbarShowPending) {
-        return;
-    }
-    win->selectionToolbarShowPending = false;
-    if (win->hwndCanvas) {
-        KillTimer(win->hwndCanvas, kSelectionToolbarShowTimerID);
-    }
 }
 
 // Reposition the toolbar so it keeps following the selection (called from the
@@ -795,14 +795,14 @@ void UpdateSelectionToolbarPosition(MainWindow* win) {
     SelectionToolbar* tb = win->selectionToolbar;
     if (!tb || !tb->host || !tb->host->IsVisible()) {
         if (win->showSelection) {
-            ShowSelectionToolbar(win);
+            ShowSelectionToolbar(win, SelToolbarShow::Settled);
         }
         return;
     }
     if (win->CurrentTab() != tb->tab) {
         HideSelectionToolbar(win);
         if (win->showSelection) {
-            ShowSelectionToolbar(win);
+            ShowSelectionToolbar(win, SelToolbarShow::Settled);
         }
         return;
     }

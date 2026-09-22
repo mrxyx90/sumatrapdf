@@ -182,6 +182,7 @@ import { testit as issue6236 } from "./issue-6236.ts";
 import { testit as issue6238 } from "./issue-6238.ts";
 import { testit as issue1841 } from "./issue-1841.ts";
 import { testit as renderSelections8bpp } from "./render-selections-8bpp.ts";
+import { testit as epubNoUnclosedDevice } from "./epub-no-unclosed-device.ts";
 import { testit as issue6224 } from "./issue-6224.ts";
 import { testit as issue6062 } from "./issue-6062.ts";
 import { testit as issue5969 } from "./issue-5969.ts";
@@ -308,6 +309,8 @@ import { testit as issue6205 } from "./issue-6205.ts";
 import { testit as advSettingsFreshDefaults } from "./adv-settings-fresh-defaults.ts";
 import { testit as issue6137AdvSettings } from "./issue-6137-adv-settings.ts";
 import { testit as advSettingsHomeReload } from "./adv-settings-home-reload.ts";
+import { testit as advSettingsExternalReload } from "./adv-settings-external-reload.ts";
+import { testit as commandPaletteExternalReload } from "./command-palette-external-reload.ts";
 import { testit as tocTitleFallback } from "./toc-title-fallback.ts";
 import { testit as tocShowOnOpen } from "./toc-show-on-open.ts";
 import { testit as tocTreeSentClick } from "./toc-tree-sent-click.ts";
@@ -323,6 +326,9 @@ import { testit as toolbarTabSwitchPos } from "./toolbar-tab-switch-pos.ts";
 import { testit as mdMissingFile } from "./ad-hoc-md-missing-file.ts";
 import { testit as issue6148 } from "./issue-6148.ts";
 import { testit as issue6184 } from "./issue-6184.ts";
+import { testit as issue6220 } from "./issue-6220.ts";
+import { testit as sessionRestoreTabState } from "./session-restore-tab-state.ts";
+import { testit as issue6239 } from "./issue-6239.ts";
 
 async function annotationClipboardTests(): Promise<void> {
   beginSharedControlledSession();
@@ -582,6 +588,7 @@ export const tests: NamedTest[] = [
   ["issue-6238", issue6238],
   ["issue-1841", issue1841],
   ["render-selections-8bpp", renderSelections8bpp],
+  ["epub-no-unclosed-device", epubNoUnclosedDevice],
   ["issue-6224", issue6224],
   ["issue-5969", issue5969],
   ["issue-5867", issue5867],
@@ -636,12 +643,17 @@ export const tests: NamedTest[] = [
   ["adv-settings-fresh-defaults", advSettingsFreshDefaults],
   ["issue-6137-adv-settings", issue6137AdvSettings],
   ["adv-settings-home-reload", advSettingsHomeReload],
+  ["adv-settings-external-reload", advSettingsExternalReload],
+  ["command-palette-external-reload", commandPaletteExternalReload],
   ["toc-title-fallback", tocTitleFallback],
   ["toc-show-on-open", tocShowOnOpen],
   ["issue-6132", issue6132],
   ["toolbar-tab-switch-pos", toolbarTabSwitchPos],
   ["issue-trim-margins", issueTrimMargins],
   ["trim-empty-margins-restore", trimEmptyMarginsRestore],
+  ["issue-6220", issue6220],
+  ["session-restore-tab-state", sessionRestoreTabState],
+  ["issue-6239", issue6239],
 ];
 
 export async function testit(opts?: SuiteOptions): Promise<void> {
