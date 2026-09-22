@@ -10170,6 +10170,95 @@ static void NotifyUrlSelectionTruncated(WindowTab* tab) {
     ShowNotification(args);
 }
 
+static SimpleBrowserWindow* gSelectionSearchBrowserWindow = nullptr;
+static HWND gSelectionSearchParentHwnd = nullptr;
+
+static Rect SelectionSearchBrowserRect(HWND parent) {
+    int dpi = parent ? DpiGetForHwnd(parent) : DpiGet();
+    Size size{DpiScaleByDpi(dpi, 600), DpiScaleByDpi(dpi, 1000)};
+
+    Rect frame;
+    if (parent) {
+        frame = HwndWindowRect(parent);
+    }
+    Rect work = GetWorkAreaRect(frame.IsEmpty() ? Rect{} : frame, parent);
+    if (work.IsEmpty()) {
+        work = {0, 0, std::max(size.dx, 1920), std::max(size.dy, 1080)};
+    }
+
+    size.dx = std::min(size.dx, work.dx);
+    size.dy = std::min(size.dy, work.dy);
+
+    if (frame.IsEmpty()) {
+        int x = work.x + ((work.dx - size.dx) / 2);
+        int y = work.y + ((work.dy - size.dy) / 2);
+        return ShiftRectToWorkArea({x, y, size.dx, size.dy}, parent, true);
+    }
+
+    // Put the search window beside the PDF window. Prefer the right side, but
+    // use the left side when there is more room there.
+    int rightSpace = work.Right() - frame.Right();
+    int leftSpace = frame.x - work.x;
+    int x = (rightSpace >= leftSpace) ? frame.Right() : frame.x - size.dx;
+    return ShiftRectToWorkArea({x, frame.y, size.dx, size.dy}, parent, true);
+}
+
+static void OnDestroySelectionSearchBrowser(WindowBase::DestroyEvent* /*ev*/) {
+    gSelectionSearchBrowserWindow = nullptr;
+    gSelectionSearchParentHwnd = nullptr;
+}
+
+static void DiscardSelectionSearchBrowserIfClosed() {
+    if (!gSelectionSearchBrowserWindow) {
+        return;
+    }
+    if (!gSelectionSearchBrowserWindow->hwnd || !IsWindow(gSelectionSearchBrowserWindow->hwnd)) {
+        delete gSelectionSearchBrowserWindow;
+        gSelectionSearchBrowserWindow = nullptr;
+    }
+}
+
+static bool LaunchSelectionSearchInApp(WindowTab* tab, Str url) {
+    if (!tab || !tab->win || len(url) == 0 || !HasWebView()) {
+        return false;
+    }
+
+    MainWindow* win = tab->win;
+    HWND parent = win->hwndFrame;
+    DiscardSelectionSearchBrowserIfClosed();
+
+    Rect pos = SelectionSearchBrowserRect(parent);
+    if (gSelectionSearchBrowserWindow && gSelectionSearchBrowserWindow->hwnd) {
+        gSelectionSearchParentHwnd = parent;
+        SetWindowPos(gSelectionSearchBrowserWindow->hwnd, HWND_TOP, pos.x, pos.y, pos.dx, pos.dy,
+                     SWP_NOACTIVATE);
+        gSelectionSearchBrowserWindow->webView->Navigate(url);
+        ShowWindow(gSelectionSearchBrowserWindow->hwnd, SW_SHOW);
+        if (IsIconic(gSelectionSearchBrowserWindow->hwnd)) {
+            ShowWindow(gSelectionSearchBrowserWindow->hwnd, SW_RESTORE);
+        }
+        SetForegroundWindow(gSelectionSearchBrowserWindow->hwnd);
+        return true;
+    }
+
+    SimpleBrowserCreateArgs args;
+    args.title = StrL("Web Search");
+    args.url = url;
+    args.pos = pos;
+    args.backgroundColor = ThemeWindowBackgroundColor();
+
+    gSelectionSearchParentHwnd = parent;
+    gSelectionSearchBrowserWindow = SimpleBrowserWindowCreate(args);
+    if (!gSelectionSearchBrowserWindow) {
+        gSelectionSearchParentHwnd = nullptr;
+        return false;
+    }
+
+    gSelectionSearchBrowserWindow->onDestroy = MkFunc1Void<WindowBase::DestroyEvent*>(
+        OnDestroySelectionSearchBrowser);
+    return true;
+}
+
 static void LaunchBrowserWithSelection(WindowTab* tab, Str urlPattern) {
     if (!tab || !HasPermission(Perm::InternetAccess) || !HasPermission(Perm::CopySelection)) {
         return;
@@ -10209,7 +10298,9 @@ static void LaunchBrowserWithSelection(WindowTab* tab, Str urlPattern) {
     TempStr uri = str::ReplaceNoCaseTemp(urlPattern, Str(kUserLangStr), contryCode);
     uri = str::ReplaceNoCaseTemp(uri, Str(kSelectionPositionStr), FormatSelectionPositionTemp(tab));
     uri = str::ReplaceNoCaseTemp(uri, Str(kSelectionStr), encodedSelection);
-    LaunchBrowser(uri);
+    if (!LaunchSelectionSearchInApp(tab, uri)) {
+        LaunchBrowser(uri);
+    }
 }
 
 // Ctrl+C / Ctrl+X / Ctrl+Z are app accelerators, so they fire even while a text
