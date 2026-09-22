@@ -353,13 +353,14 @@ static void EnsureSearchWebViewReady(MainWindow* win, Str url) {
     RelayoutAIChatPanel(win);
 }
 
-void AIChatOpenSearch(MainWindow* win, Str url) {
+bool AIChatOpenSearch(MainWindow* win, Str url) {
     if (!win || len(url) == 0 || !HasWebView() || !win->hwndAiChatBox) {
-        return;
+        return false;
     }
     win->uiState.aiChatVisible = true;
     EnsureSearchWebViewReady(win, url);
     ScheduleUiUpdate(win);
+    return win->aiChatSearchWebView != nullptr;
 }
 
 // --- Session combo ---
