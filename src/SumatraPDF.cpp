@@ -3493,10 +3493,9 @@ void ShowMainWindow(MainWindow* win, int windowState) {
 
     if (!wasVisible) {
         if (WIN_STATE_FULLSCREEN == windowState || WIN_STATE_MAXIMIZED == windowState) {
+            // Apply maximize while hidden, then explicitly hide again. This
+            // updates the final window placement without presenting it.
             ShowWindow(win->hwndFrame, SW_MAXIMIZE);
-        } else {
-            // Establish the final non-maximized frame state while it is still hidden.
-            ShowWindow(win->hwndFrame, SW_SHOWNOACTIVATE);
             ShowWindow(win->hwndFrame, SW_HIDE);
         }
     } else if (WIN_STATE_FULLSCREEN == windowState || WIN_STATE_MAXIMIZED == windowState) {
