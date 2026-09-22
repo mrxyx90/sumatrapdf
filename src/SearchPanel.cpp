@@ -84,13 +84,17 @@ static void PaintOwnerDrawButton(HWND hwnd, const WCHAR* label, bool isHovered, 
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, txtCol);
 
-    int fontHeight = (rc.bottom - rc.top) * 80 / 100;
+    int fontHeight = (rc.bottom - rc.top) * 85 / 100;
     HFONT font = CreateFontW(-fontHeight, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                              DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                              CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
     HFONT oldFont = (HFONT)SelectObject(hdc, font);
 
     RECT rcText = rc;
+    int fontLeadingOffset = fontHeight / 10;
+    rcText.top -= fontLeadingOffset;
+    rcText.bottom -= fontLeadingOffset;
+
     if (isPressed) {
         OffsetRect(&rcText, DpiScale(1), DpiScale(1)); // Shift text 1px down and right on click!
     }
