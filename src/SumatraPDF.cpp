@@ -10197,10 +10197,6 @@ static void OpenSearchSelectionWithPattern(WindowTab* tab, Str engineName, Str u
     OpenSearchSelectionInSidebar(tab->win, engineName, uri);
 }
 
-static void LaunchBrowserWithSelection(WindowTab* tab, Str urlPattern) {
-    OpenSearchSelectionWithPattern(tab, StrL("Search"), urlPattern);
-}
-
 // Ctrl+C / Ctrl+X / Ctrl+Z are app accelerators, so they fire even while a text
 // box has the focus. Hand the message to the edit control instead of taking it.
 // The focused window if it is a text box: the page-number box, the annotation
