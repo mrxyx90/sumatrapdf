@@ -1866,7 +1866,7 @@ static void UpdatePageInfoHelper(DocController* ctrl, NotificationWnd* wnd, int 
     }
     int nPages = ctrl->PageCount();
     TempStr pageInfo;
-    if (ctrl->HasChapters()) {
+    if (ShowChapterUi(ctrl)) {
         Location loc = ctrl->LocationFromPageNo(pageNo);
         int chapterPages = ctrl->ChapterPageCount(loc.chapter);
         pageInfo = fmt("%s %d / %d, %s %d / %d", Tr("Chapter:"), loc.chapter, ctrl->ChapterCount(), Tr("Page:"),
@@ -2016,7 +2016,7 @@ void ControllerCallbackHandler::PageNoChanged(DocController* ctrl, int pageNo) {
 
     if (pageChanged && kInvalidPageNo != pageNo) {
         // HwndSetText is a no-op when the text is unchanged
-        if (win->ctrl->HasChapters()) {
+        if (ShowChapterUi(win->ctrl)) {
             Location cur = win->ctrl->CurrentLocation();
             if (win->chapterEdit) {
                 win->chapterEdit->SetText(fmt("%d", cur.chapter));
@@ -2029,7 +2029,7 @@ void ControllerCallbackHandler::PageNoChanged(DocController* ctrl, int pageNo) {
             win->pageEdit->SetText(label);
         }
         ToolbarUpdateStateForWindow(win, false);
-        if (win->ctrl->HasPageLabels() || win->ctrl->HasChapters()) {
+        if (win->ctrl->HasPageLabels() || ShowChapterUi(win->ctrl)) {
             // page-in-chapter total changes with every chapter
             UpdateToolbarPageText(win, win->ctrl->PageCount(), true);
         }
@@ -2314,7 +2314,7 @@ static void UpdateUiForCurrentTab(MainWindow* win) {
     HwndSetText(win->hwndFrame, win->CurrentTab()->frameTitle);
 
     bool onlyNumbers = !win->ctrl || !win->ctrl->HasPageLabels();
-    bool hasChapters = win->ctrl && win->ctrl->HasChapters();
+    bool hasChapters = ShowChapterUi(win->ctrl);
     if (win->pageEdit) {
         EditSetNumbersOnly(win->pageEdit, onlyNumbers);
         // a tab without a document (home page, failed load) has no page to go
@@ -2439,6 +2439,9 @@ static void FinishPendingDocumentRelayout(MainWindow* win) {
         dm->pauseRendering = false;
         dm->RenderVisibleParts();
         dm->RepaintDisplay();
+    }
+    if (dm->GetEngine()) {
+        dm->GetEngine()->StartBackgroundChapterLayout();
     }
 }
 
@@ -2616,6 +2619,24 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
                 ss.page = PageNoFromStoredPagePos(win->ctrl, fs->pageNo);
                 if (pos.bookmark) {
                     ss.loc = win->ctrl->LocationFromPageNo(ss.page);
+                }
+            }
+            // one chapter before the first paint: the one the file was closed
+            // on, or chapter 1. the rest are counted after the view is up
+            EngineBase* chapterEngine = dm->GetEngine();
+            if (chapterEngine && chapterEngine->HasChapters()) {
+                int chapter = 1;
+                if (fs) {
+                    Location hint = BookmarkLocationHint(ParseStoredPagePos(fs->pageNo).bookmark);
+                    if (hint.IsValid()) {
+                        chapter = hint.chapter;
+                    }
+                }
+                if (chapter > chapterEngine->ChapterCount()) {
+                    chapter = 1;
+                }
+                if (!chapterEngine->IsChapterLaidOut(chapter)) {
+                    chapterEngine->ChapterPageCount(chapter);
                 }
             }
             dm->SetInitialViewSettings(displayMode, ss.page, win->GetViewPortSize(), dpi);
@@ -2809,6 +2830,11 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
             // restore scroll state after the canvas size has been restored
             if (args->showWin || ss.page != 1) {
                 dm->SetScrollState(ss);
+            }
+            // after the remembered page is on screen. the pending-relayout
+            // path starts the same count from FinishPendingDocumentRelayout
+            if (dm->GetEngine()) {
+                dm->GetEngine()->StartBackgroundChapterLayout();
             }
         }
     }
@@ -3376,15 +3402,14 @@ static MainWindow* CreateMainWindow() {
     // if tabsInTitlebar, we use a rebar menu bar; otherwise native SetMenu
     win->brControlBgColor = CreateSolidBrush(ThemeControlBackgroundColor());
 
-    // Note: don't send WM_SETREDRAW to hwndFrame here. The frame is hidden
-    // (shown later by ShowMainWindow / LoadDocument) so nothing paints anyway,
-    // and DefWindowProc's WM_SETREDRAW TRUE handling *shows* the window, which
-    // would flash a normal-size standard-caption window before the custom
-    // caption / maximized / fullscreen state is applied (the old fix for the
-    // dark-theme startup flash, #5421, predates creating the frame hidden).
-    ShowWindow(win->hwndCanvas, SW_SHOW);
-    // frame is still hidden; a sync paint here draws the empty/home canvas
-    // that session restore is about to replace
+    // Keep the entire window hierarchy hidden until startup layout and the
+    // initial document/home-page state are ready. Showing the child canvas here
+    // can cause Windows to paint the default background before ShowMainWindow()
+    // reveals the frame, producing the launch-time white flash.
+    //
+    // Do not use WM_SETREDRAW here either: DefWindowProc's handling of enabling
+    // redraw can show the hidden frame before the custom caption / maximized /
+    // fullscreen state is applied.
 
     Tooltip::CreateArgs args;
     args.parent = win->hwndCanvas;
@@ -3460,12 +3485,18 @@ static MainWindow* CreateMainWindow() {
 }
 
 void ShowMainWindow(MainWindow* win, int windowState) {
-    if (WIN_STATE_FULLSCREEN == windowState || WIN_STATE_MAXIMIZED == windowState) {
-        ShowWindow(win->hwndFrame, SW_MAXIMIZE);
-    } else {
-        ShowWindow(win->hwndFrame, SW_SHOW);
-    }
+    // If this window was hidden during startup/session restore, complete all
+    // final geometry/layout work before exposing it. Showing the frame first
+    // lets DWM present its default background before the restored document is
+    // ready, which appears as a white flash when reopening a previous PDF.
+    bool wasVisible = HwndIsVisible(win->hwndFrame);
 
+    if (!wasVisible && (WIN_STATE_FULLSCREEN == windowState || WIN_STATE_MAXIMIZED == windowState)) {
+        // Apply maximize while hidden, then explicitly hide again. This updates
+        // the final placement without presenting an intermediate frame.
+        ShowWindow(win->hwndFrame, SW_MAXIMIZE);
+        ShowWindow(win->hwndFrame, SW_HIDE);
+    }
     // a hidden frame's GetDpiForWindow() can still be the primary-monitor
     // DPI; after ShowWindow the monitor of the window rect is reliable
     {
@@ -3483,20 +3514,27 @@ void ShowMainWindow(MainWindow* win, int windowState) {
         SetWindowPos(win->hwndFrame, nullptr, 0, 0, 0, 0, flags);
     }
 
-    // go fullscreen before the first paint so the user doesn't see the
-    // intermediate maximized window (EnterFullScreen requires a visible
-    // window, so it can't happen before ShowWindow above)
-    if (WIN_STATE_FULLSCREEN == windowState) {
-        EnterFullScreen(win);
-    }
-
-    // Hidden startup windows can miss the final titlebar/menu-bar geometry
+    // Hidden startup windows can miss the final titlebar/menu-bar geometry.
     // until they become visible. Force one relayout before the first paint.
     RelayoutFrame(win);
     RefreshTocTreeIfNeeded(win);
     UpdateWindow(win->hwndFrame);
     UpdateToolbarFindText(win);
     HwndEnsureOnScreen(win->hwndFrame);
+
+    if (!wasVisible) {
+        // Only expose a startup/session-restored window after its final chrome
+        // and document layout have been prepared. This prevents DWM from
+        // presenting the frame background before the restored PDF is painted.
+        if (WIN_STATE_FULLSCREEN == windowState) {
+            ShowWindow(win->hwndFrame, SW_SHOW);
+            EnterFullScreen(win);
+        } else if (WIN_STATE_MAXIMIZED == windowState) {
+            ShowWindow(win->hwndFrame, SW_MAXIMIZE);
+        } else {
+            ShowWindow(win->hwndFrame, SW_SHOW);
+        }
+    }
 
     if (IsRunningOnWine()) {
         Rect wr = HwndWindowRect(win->hwndFrame);
@@ -4081,6 +4119,10 @@ MainWindow* LoadDocumentFinish(LoadArgs* args) {
     } else if (currTab->tabState) {
         SetTabState(currTab, currTab->tabState);
         currTab->tabState = nullptr;
+    } else if (currTab->ctrl && args->tabState) {
+        // a session tab loaded right away (StartLoadDocument finishes here
+        // asynchronously, so RestoreTabOnStartup can't do it after the load)
+        SetTabState(currTab, args->tabState);
     }
     // forceReuse / targetTab loads skip CloseDocumentInCurrentTab, so the
     // previous document's watcher can still be set (e.g. open next file in
@@ -5059,7 +5101,7 @@ void LoadModelIntoTab(WindowTab* tab) {
     win->showSelection = tab->selectionOnPage != nullptr;
     ResetSelectionToolbarDismissed(win);
     if (win->showSelection) {
-        ShowSelectionToolbar(win);
+        ShowSelectionToolbar(win, SelToolbarShow::Settled);
     }
     if (win->uiaProvider) {
         win->uiaProvider->OnSelectionChanged();
@@ -5241,6 +5283,9 @@ void UpdateDocumentColors() {
                 gRenderCache->AbortRendering(dm);
                 EngineMupdfInvalidateDarkMode(dm->GetEngine());
                 dm->SyncWithEngineLayout();
+                if (dm->GetEngine()) {
+                    dm->GetEngine()->StartBackgroundChapterLayout();
+                }
                 continue;
             }
             MarkdownModel* mm = tab->AsMarkdown();
@@ -8945,7 +8990,7 @@ static void OnMenuGoToPage(MainWindow* win) {
     // In overlay mode the toolbar is only visible while revealed, so reveal it
     // first; focusing the hidden page box did nothing at all (#5916).
     // chaptered docs start at the chapter box, the natural first field
-    bool hasChapters = win->ctrl && win->ctrl->HasChapters();
+    bool hasChapters = ShowChapterUi(win->ctrl);
     Edit* target = (hasChapters && win->chapterEdit) ? win->chapterEdit : win->pageEdit;
     if (target && !win->presentation) {
         if (win->isToolbarOverlay) {
@@ -9258,7 +9303,7 @@ void AdvanceFocus(MainWindow* win) {
     constexpr int kMaxWindows = 6;
     HWND tabOrder[kMaxWindows] = {win->hwndFrame};
     int nWindows = 1;
-    if (hasToolbar && win->ctrl && win->ctrl->HasChapters() && win->chapterEdit) {
+    if (hasToolbar && ShowChapterUi(win->ctrl) && win->chapterEdit) {
         tabOrder[nWindows++] = win->chapterEdit->hwnd;
     }
     if (hasToolbar && win->pageEdit) {
@@ -10536,6 +10581,77 @@ static void ApplyMenuBarVisibility(MainWindow* win) {
     }
 }
 
+static void AppendLayoutFloats(str::Builder& b, Vec<float>* vals) {
+    if (!vals) {
+        return;
+    }
+    for (float v : *vals) {
+        b.Append(fmt("%g,", v));
+    }
+}
+
+// font, page size, spacing and CSS: what a reload has to re-paginate
+static Str EbookLayoutSnapshot() {
+    str::Builder b;
+    if (!gSettings) {
+        return b.TakeStr();
+    }
+    b.Append(fmt("dpi=%d\n", gSettings->customScreenDPI));
+    EBookUI* g = &gSettings->eBookUI;
+    b.Append(fmt("g|%s|%g|%g|%g|%d|%g|", g->fontName, g->fontSize, g->layoutDx, g->layoutDy,
+                 g->ignoreDocumentCSS ? 1 : 0, g->lineSpacing));
+    AppendLayoutFloats(b, g->margin);
+    b.Append(fmt("|%s\n", g->customCSS));
+    if (gSettings->fileStates) {
+        for (FileState* fs : *gSettings->fileStates) {
+            FileEBookUI* f = fs->eBookUI;
+            if (!f) {
+                continue;
+            }
+            b.Append(fmt("f|%s|%s|%g|%g|%g|%s|%g|", fs->filePath, f->fontName, f->fontSize, f->layoutDx, f->layoutDy,
+                         f->ignoreDocumentCSS, f->lineSpacing));
+            AppendLayoutFloats(b, f->margin);
+            b.Append(fmt("|%s\n", f->customCSS));
+        }
+    }
+    return b.TakeStr();
+}
+
+// reflowable docs, and anything with chapters (MOBI): their page count follows
+// the ebook font / page size / CSS
+static bool LayoutFollowsEbookSettings(EngineBase* engine) {
+    if (!engine) {
+        return false;
+    }
+    if (engine->isReflowable || engine->HasChapters()) {
+        return true;
+    }
+    Kind k = engine->kind;
+    return k == kindEngineMobi || k == kindEngineFb2 || k == kindEnginePdb || k == kindEngineHtml ||
+           k == kindEngineTxt || k == kindEngineEpub;
+}
+
+static void ReloadEbookLayoutDocs() {
+    for (MainWindow* w : gWindows) {
+        Vec<WindowTab*> tabs;
+        for (WindowTab* tab : w->Tabs()) {
+            VecAppend(tabs, tab);
+        }
+        for (WindowTab* tab : tabs) {
+            DisplayModel* dm = tab->AsFixed();
+            EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+            if (!LayoutFollowsEbookSettings(engine)) {
+                continue;
+            }
+            if (tab == w->CurrentTab()) {
+                ReloadDocument(w, false);
+            } else {
+                tab->reloadOnFocus = true;
+            }
+        }
+    }
+}
+
 SettingsApplyState GetSettingsApplyState() {
     Settings* p = gSettings;
     SettingsApplyState s;
@@ -10546,6 +10662,7 @@ SettingsApplyState GetSettingsApplyState() {
     s.chmUseFixedPageUI = p->chmUI.useFixedPageUI;
     s.markdownUseFixedPageUI = p->markdownUI.useFixedPageUI;
     s.explorerQuickLook = p->explorerQuickLook;
+    s.ebookLayout = EbookLayoutSnapshot();
     return s;
 }
 
@@ -10593,6 +10710,15 @@ void ApplyChangedSettingsAndRelayout(const SettingsApplyState& before) {
 
     // re-layout so toolbar / menu / findbox changes take effect
     ApplySettingsToOpenWindows();
+
+    Str prevLayout = before.ebookLayout;
+    Str nowLayout = EbookLayoutSnapshot();
+    bool ebookLayoutChanged = !str::Eq(prevLayout, nowLayout);
+    str::Free(prevLayout);
+    str::Free(nowLayout);
+    if (ebookLayoutChanged) {
+        ReloadEbookLayoutDocs();
+    }
 
     // UseTabs converts existing windows <-> tabs (closes and reopens windows);
     // post it so it runs after the settings dialog has been torn down
@@ -15835,11 +15961,6 @@ static void RestoreTabOnStartup(MainWindow* win, TabState* state, bool lazyLoad,
     args.lazyLoad = lazyLoad;
     if (!LoadDocument(&args)) {
         RestoreMissingTabOnStartup(win, state, deferTabUpdate);
-        return;
-    }
-    WindowTab* tab = win->CurrentTab();
-    if (!lazyLoad) {
-        SetTabState(tab, state);
     }
 }
 

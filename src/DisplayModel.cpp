@@ -540,7 +540,10 @@ void DisplayModel::GetDisplayState(FileState* fs) {
     ZoomToString(&fs->zoom, savedZoom, fs);
 
     ScrollState ss = GetScrollState();
-    str::ReplaceWithCopy(&fs->pageNo, StoredPagePosFromCtrlTemp(this));
+    // ss.page, not CurrentPageNo(): scrollPos is relative to the scroll state's
+    // page (the first visible one); saving the most visible page with it
+    // restored a page further whenever the next page showed more (#6220)
+    str::ReplaceWithCopy(&fs->pageNo, StoredPagePosForPageTemp(this, ss.page));
     fs->pageCount = PageCount();
     fs->scrollPos = PointF();
     if (!inPresentation) {
@@ -795,6 +798,8 @@ static void RememberStableNavPointCandidateAfterViewChange(DisplayModel* dm, con
     nav.hasPending = true;
 }
 
+static void OnChapterLayoutProgress(DisplayModel* dm, ChapterLayoutProgress* p);
+
 // must call SetInitialViewSettings() after creation
 DisplayModel::DisplayModel(EngineBase* engine, DocControllerCallback* cb) : DocController(cb) {
     this->engine = engine;
@@ -807,6 +812,7 @@ DisplayModel::DisplayModel(EngineBase* engine, DocControllerCallback* cb) : DocC
     textSearch = new TextSearch(engine);
 
     engine->SetOnLayoutChanged(MkFunc0(OnEngineLayoutChanged, this));
+    engine->SetOnChapterLayoutProgress(MkFunc1(OnChapterLayoutProgress, this));
 
     StartHeadingToc(HeadingTocStart::IfEnabled);
 }
@@ -860,6 +866,8 @@ DisplayModel::~DisplayModel() {
     delete textSearch;
     delete textSelection;
     if (engine) {
+        engine->CancelBackgroundChapterLayout();
+        engine->SetOnChapterLayoutProgress({});
         engine->SetOnLayoutChanged(Func0{});
     }
     SafeEngineRelease(&engine);
@@ -1761,6 +1769,14 @@ void DisplayModel::Relayout(float newZoomVirtual, int newRotation) {
 // same place: pages before the first visible one may have grown or shrunk, so
 // the scroll position has to move with it.
 void DisplayModel::RelayoutKeepingView() {
+    // a restored view goes back to its exact page units: keeping the pixel
+    // across a zoom change (a measured page) and re-deriving them drifts
+    if (AtExactScroll()) {
+        Relayout(zoomVirtual, rotation);
+        SetScrollState(exactScroll, exactScrollPan);
+        return;
+    }
+
     int anchorPageNo = FirstVisiblePageNo();
     if (!ValidPageNo(anchorPageNo)) {
         anchorPageNo = CurrentPageNo();
@@ -1781,6 +1797,90 @@ void DisplayModel::RelayoutKeepingView() {
     RenderVisibleParts();
     cb->UpdateScrollbars(this, canvasSize);
     RepaintDisplay();
+}
+
+struct ChapterLayoutProgressMsg {
+    DisplayModel* dm = nullptr;
+    int done = 0;
+    int total = 0;
+    bool finished = false;
+};
+
+// debug build: bottom-left tip updated after each chapter of a background layout
+static void ShowChapterLayoutProgress(ChapterLayoutProgressMsg* msg) {
+    AutoDelete delMsg(msg);
+    if (!msg->dm || !IsDisplayModelValid(msg->dm)) {
+        return;
+    }
+    // publish even in release builds: this is what updates the page total
+    if (msg->finished) {
+        EngineBase* engine = msg->dm->GetEngine();
+        if (engine) {
+            engine->PublishWarmedChapters();
+            msg->dm->SyncWithEngineLayout();
+        }
+    }
+    if (!gIsDebugBuild) {
+        return;
+    }
+    MainWindow* found = nullptr;
+    WindowTab* tab = nullptr;
+    for (MainWindow* win : gWindows) {
+        for (WindowTab* t : win->Tabs()) {
+            if (t->AsFixed() == msg->dm) {
+                found = win;
+                tab = t;
+                break;
+            }
+        }
+        if (found) {
+            break;
+        }
+    }
+    if (!found) {
+        return;
+    }
+    EngineBase* engine = msg->dm->GetEngine();
+    int pages = engine ? engine->PageCount() : msg->dm->PageCount();
+    TempStr text;
+    int timeout = kNotifNoTimeout;
+    if (msg->finished) {
+        text = fmt("Chapters laid out: %d, %d pages", msg->total, pages);
+        timeout = kNotif5SecsTimeOut;
+    } else {
+        text = fmt("Laying out chapters: %d / %d", msg->done, msg->total);
+    }
+    NotificationWnd* wnd = GetNotificationForGroup(found->hwndCanvas, kNotifChapterLayout);
+    if (wnd) {
+        NotificationUpdateMessage(wnd, text, timeout);
+        return;
+    }
+    NotificationCreateArgs args;
+    args.hwndParent = found->hwndCanvas;
+    args.groupId = kNotifChapterLayout;
+    args.timeoutMs = timeout;
+    args.corner = NotifCorner::BottomLeft;
+    args.msg = text;
+    args.plainText = true;
+    args.tab = tab;
+    ShowNotification(args);
+}
+
+static void OnChapterLayoutProgress(DisplayModel* dm, ChapterLayoutProgress* p) {
+    if (!p) {
+        return;
+    }
+    // per-chapter tips are debug-only; the finished message publishes the
+    // page total in every build
+    if (!p->finished && !gIsDebugBuild) {
+        return;
+    }
+    auto* msg = new ChapterLayoutProgressMsg();
+    msg->dm = dm;
+    msg->done = p->done;
+    msg->total = p->total;
+    msg->finished = p->finished;
+    uitask::Post(MkFunc0(ShowChapterLayoutProgress, msg), "ChapterLayoutProgress");
 }
 
 static void NotifyMediaBoxRelayout(DisplayModel* dm, Str msg) {
@@ -2252,8 +2352,10 @@ void DisplayModel::SetViewPortSize(Size newViewPortSize) {
     ScrollState ss;
 
     bool hadLayout = zoomReal >= 0.01f;
+    bool atExact = false;
     if (hadLayout) {
         ss = GetScrollState();
+        atExact = AtExactScroll();
     }
 
     totalViewPortSize = newViewPortSize;
@@ -2273,10 +2375,14 @@ void DisplayModel::SetViewPortSize(Size newViewPortSize) {
         SetScrollState(pendingScroll);
     } else if (hadLayout) {
         // when fitting to content, let GoToPage do the necessary scrolling
-        if (zoomVirtual != kZoomFitContent) {
-            SetScrollState(ss);
-        } else {
+        if (zoomVirtual == kZoomFitContent) {
             GoToPage(ss.page, 0);
+        } else if (atExact) {
+            // not from ss: that's the pixel the restore truncated to at the
+            // zoom before the window had its final size, a pixel off per start
+            SetScrollState(exactScroll, exactScrollPan);
+        } else {
+            SetScrollState(ss);
         }
     } else {
         RecalcVisibleParts();
@@ -3325,6 +3431,7 @@ void DisplayModel::SetScrollState(const ScrollState& state, RestorePan pan) {
             logf("  exit because not scrolled\n");
         }
         stableNavPoint.suppress = false;
+        RememberExactScroll(state, pan, st.page);
         return;
     }
 
@@ -3368,6 +3475,33 @@ void DisplayModel::SetScrollState(const ScrollState& state, RestorePan pan) {
     }
     GoToPage(st.page, newPt.y, false, newPt.x);
     stableNavPoint.suppress = false;
+    RememberExactScroll(state, pan, st.page);
+}
+
+void DisplayModel::RememberExactScroll(const ScrollState& state, RestorePan pan, int pageNo) {
+    PageInfo* pi = GetPageInfo(pageNo);
+    hasExactScroll = pi != nullptr;
+    if (!pi) {
+        return;
+    }
+    exactScroll = state;
+    exactScrollPan = pan;
+    exactScrollPageNo = pageNo;
+    exactScrollOffset = Point(viewPort.x - pi->pos.x, viewPort.y - pi->pos.y);
+}
+
+// true while nothing moved the viewport since SetScrollState() placed it. An
+// offset into the page, so a relayout shifting the pages above doesn't count
+bool DisplayModel::AtExactScroll() const {
+    if (!hasExactScroll) {
+        return false;
+    }
+    PageInfo* pi = GetPageInfo(exactScrollPageNo);
+    if (!pi) {
+        return false;
+    }
+    Point off(viewPort.x - pi->pos.x, viewPort.y - pi->pos.y);
+    return off == exactScrollOffset;
 }
 
 // don't remember more than "enough" history entries (same number as Firefox uses)

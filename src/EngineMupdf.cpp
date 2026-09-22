@@ -4797,7 +4797,16 @@ static void FinishNonPDFLoading(EngineMupdf* e) {
     AutoUnlockRecursiveMutex scope(&e->docLock);
 
     auto* ctx = e->Ctx();
-    if (e->isReflowable) {
+    if (e->isReflowable && e->HasChapters()) {
+        // don't fz_load_chapter_page here: that lays out chapter 1, and the
+        // chapter the user is reopening may be a different one. every reflow
+        // page shares the size passed to fz_layout_document
+        float dx = e->ebookLayoutW > 1 ? e->ebookLayoutW : 612;
+        float dy = e->ebookLayoutH > 1 ? e->ebookLayoutH : 792;
+        RectF mediabox(0, 0, dx, dy);
+        e->reflowMediabox = mediabox;
+        ForEachPageInfo(e, [mediabox](FzPageInfo* pi) { pi->mediabox = mediabox; });
+    } else if (e->isReflowable) {
         // every page of a reflow layout shares one mediabox; load only page
         // {1,1} to learn it instead of fz_load_page-ing (and laying out) every
         // page, which for a chaptered doc would lay out every chapter
@@ -4945,22 +4954,12 @@ bool EngineMupdf::FinishLoading() {
     pageCount = 0;
     fz_var(pageCount);
     bool lazyChapters = nCh > 1;
-    int n1 = 1;
     if (lazyChapters) {
+        // placeholders only. the open path lays out the chapter being read;
+        // the rest are counted on a background thread
         chapters.Init(nCh);
-        fz_try(ctx) {
-            n1 = fz_count_chapter_pages(ctx, _doc, 0);
-        }
-        fz_catch(ctx) {
-            fz_report_error(ctx);
-            n1 = 1;
-        }
-        if (n1 < 1) {
-            n1 = 1;
-        }
-        chapters.SetPageCount(1, n1);
         SetPageCountFromChapters();
-        logf("EngineMupdf::FinishLoading: %d chapters, chapter 1 has %d pages\n", nCh, n1);
+        logf("EngineMupdf::FinishLoading: %d chapters, layout deferred\n", nCh);
     } else {
         fz_try(ctx) {
             // this call might throw the first time
@@ -4995,7 +4994,7 @@ bool EngineMupdf::FinishLoading() {
     allowsCopyingText = fz_has_permission(ctx, _doc, FZ_PERMISSION_COPY);
 
     if (lazyChapters) {
-        InitChapterPagesLazy(this, nCh, n1);
+        InitChapterPagesLazy(this, nCh, 1);
     } else {
         InitChapterPagesFlat(this);
     }
@@ -5150,6 +5149,22 @@ bool EngineMupdf::FinishLoading() {
     return true;
 }
 
+// Paginate one chapter inside MuPDF without touching our chapter table.
+// The background thread does this; the UI thread's LayOutChapter publishes.
+void EngineMupdf::WarmChapter(int chapter) {
+    if (chapters.IsLaidOut(chapter) || chapter < 1) {
+        return;
+    }
+    auto* ctx = Ctx();
+    AutoUnlockRecursiveMutex docScope(&docLock);
+    fz_try(ctx) {
+        fz_count_chapter_pages(ctx, _doc, chapter - 1);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
+}
+
 // Lays out one EPUB chapter on demand; single-chapter docs are laid out at
 // FinishLoading. IsLaidOut() makes repeat/racing calls and a post-reset
 // re-layout idempotent, trusting the freshly counted page total each time.
@@ -5157,6 +5172,9 @@ int EngineMupdf::LayOutChapter(int chapter) {
     if (chapters.IsLaidOut(chapter)) {
         return chapters.PageCount(chapter);
     }
+    // captured before the count. ApplyReflowThemeCss resets under pagesLock,
+    // so a count started against the previous layout is dropped below
+    int gen = chapters.Generation();
 
     auto* ctx = Ctx();
     int n = 1;
@@ -5177,6 +5195,9 @@ int EngineMupdf::LayOutChapter(int chapter) {
 
     {
         AutoUnlockRecursiveMutex pagesScope(&pagesLock);
+        if (chapters.Generation() != gen) {
+            return chapters.PageCount(chapter);
+        }
         if (chapter >= 1 && chapter <= len(chapterPages)) {
             Vec<FzPageInfo*>* v = chapterPages[chapter - 1];
             RectF mbox = len(*v) > 0 ? (*v)[0]->mediabox : RectF{};
@@ -7166,6 +7187,18 @@ static bool RenderAborted(fz_cookie* cookie) {
     return cookie && cookie->abort;
 }
 
+// An aborted run stops between a clip push and its pop, so the draw device
+// can't be closed ("items left on stack"). Unhook close on it and on the
+// wrappers that forward to it, so dropping them doesn't warn either.
+static void UnhookAbortedDevices(fz_device* drawDev, fz_device* darkDev, fz_device* outer) {
+    fz_device* devs[] = {drawDev, darkDev, outer};
+    for (fz_device* d : devs) {
+        if (d) {
+            d->close_device = nullptr;
+        }
+    }
+}
+
 Pixmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
     auto* ctx = Ctx();
     auto pageNo = args.pageNo;
@@ -7257,6 +7290,8 @@ Pixmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
             bool objectLevelDark = args.darkProfile && DarkModeProfileUsesObjectLevel(args.darkProfile);
             ClearRenderedPagePixmap(ctx, pix, args, objectLevelDark);
             dev = fz_new_draw_device(ctx, ctm, pix);
+            fz_device* drawDev = dev;
+            fz_device* darkDev = nullptr;
             if (disableAntiAlias) {
                 fz_enable_device_hints(ctx, dev, FZ_DONT_INTERPOLATE_IMAGES);
             }
@@ -7268,13 +7303,16 @@ Pixmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
                     dev = PdfDarkModeWrapDevice(ctx, dev, analysis, &args.darkProfile->palette, &replayState,
                                                 darkModeEngineCache, args.darkProfile->hash,
                                                 args.darkProfile->debugOverlay);
+                    darkDev = dev;
                 }
             }
             if (CadEnhanceActive()) {
                 dev = PdfCadEnhanceWrapDevice(ctx, dev);
             }
             fz_run_display_list(ctx, keptList, dev, fz_identity, pRect, fzcookie);
-            if (!RenderAborted(fzcookie)) {
+            if (RenderAborted(fzcookie)) {
+                UnhookAbortedDevices(drawDev, darkDev, dev);
+            } else {
                 fz_close_device(ctx, dev);
                 if (CadEnhanceActive() && cadRasterDominant) {
                     PdfCadEnhancePixmap(ctx, pix, zoom, true);
@@ -7330,7 +7368,9 @@ Pixmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
             } else {
                 pdf_run_page_with_usage(ctx, pdfpage, dev, fz_identity, usageZ, fzcookie);
             }
-            if (!RenderAborted(fzcookie)) {
+            if (RenderAborted(fzcookie)) {
+                UnhookAbortedDevices(dev, nullptr, nullptr);
+            } else {
                 fz_close_device(ctx, dev);
                 if (CadEnhanceActive() && cadRasterDominant) {
                     PdfCadEnhancePixmap(ctx, pix, zoom, true);
@@ -9671,12 +9711,14 @@ bool EngineMupdfSupportsAnnotations(EngineBase* engine) {
 
 // Restyle a reflowable document with the current theme page colors and drop
 // cached page display lists so the next render uses the new HTML. A chaptered
-// doc re-lays-out lazily (chapter 1 only, like at open); a single-chapter doc
-// resizes its page-info vector to match the new count.
+// doc lays chapter 1 out again and counts the rest in the background; a
+// single-chapter doc resizes its page-info vector to match the new count.
 void EngineMupdf::ApplyReflowThemeCss() {
     if (!isReflowable || !_doc || ebookLayoutW <= 0 || ebookLayoutH <= 0) {
         return;
     }
+    // drop a count started against the layout we're about to throw away
+    CancelBackgroundChapterLayout();
     TempStr themeCss = ReflowDocumentThemeCssTemp();
     TempStr fullCss = ebookUserCss;
     if (themeCss) {
@@ -9690,6 +9732,7 @@ void EngineMupdf::ApplyReflowThemeCss() {
 
     fz_context* ctx = Ctx();
     if (!ctx) {
+        StartBackgroundChapterLayout();
         return;
     }
     ForEachPageInfo(this, [this, ctx](FzPageInfo* pi) {
@@ -9711,6 +9754,7 @@ void EngineMupdf::ApplyReflowThemeCss() {
         fz_report_error(ctx);
     }
     if (!ok) {
+        StartBackgroundChapterLayout();
         return;
     }
 
@@ -9719,6 +9763,8 @@ void EngineMupdf::ApplyReflowThemeCss() {
         LayOutChapter(1);
         SetPageCountFromChapters();
         logf("ApplyReflowThemeCss: chapters reset, chapter 1 -> %d pages\n", chapters.PageCount(1));
+        // caller syncs the view, then starts the background count. starting
+        // here races that sync: flat page numbers move under SetScrollState
         return;
     }
 
