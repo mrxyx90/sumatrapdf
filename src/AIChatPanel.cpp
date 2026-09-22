@@ -300,6 +300,27 @@ static void LayoutAIChatBox(MainWindow* win) {
         KillTimer(win->hwndAiChatBox, kTimerWebViewSize);
         SetTimer(win->hwndAiChatBox, kTimerWebViewSize, 50, nullptr);
     }
+
+    // LayoutTreeToSize can re-show native child HWNDs after virtual visibility
+    // changes. Enforce Search-only mode after layout as the final visibility
+    // pass so no AI control can remain at the top-left of the WebView.
+    if (win->aiChatSearchMode) {
+        if (win->aiChatHeader) {
+            win->aiChatHeader->SetVisibility(Visibility::Collapse);
+        }
+        if (win->aiChatSessionCombo) {
+            ShowWindow(win->aiChatSessionCombo->hwnd, SW_HIDE);
+        }
+        if (win->aiChatModelCombo) {
+            ShowWindow(win->aiChatModelCombo->hwnd, SW_HIDE);
+        }
+        if (win->aiChatOptionCombo) {
+            ShowWindow(win->aiChatOptionCombo->hwnd, SW_HIDE);
+        }
+        if (win->aiChatCheckbox) {
+            ShowWindow(win->aiChatCheckbox->hwnd, SW_HIDE);
+        }
+    }
 }
 
 static void EnsureWebViewReady(MainWindow* win);
