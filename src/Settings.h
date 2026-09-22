@@ -1017,6 +1017,9 @@ struct Settings {
     // width of the AI chat sidebar (0 = use default); shared by Claude
     // Code, Grok Build, and OpenAI Codex (internal)
     int aiChatSidebarDx;
+    // if true, block common advertising and tracking requests in embedded
+    // WebView2 pages
+    bool webViewAdBlock;
     // actual resolution of the main screen in DPI, used to show documents
     // at their physical size; if 0 or negative, the resolution reported by
     // Windows is used
@@ -2210,6 +2213,8 @@ static const FieldInfo gSettingsFields[] = {
     {(size_t)-1, SettingType::Comment, 0},
     {offsetof(Settings, aiChatSidebarDx), SettingType::Int, 0, true},
     {(size_t)-1, SettingType::Comment, 0},
+    {offsetof(Settings, webViewAdBlock), SettingType::Bool, false},
+    {(size_t)-1, SettingType::Comment, 0},
     {offsetof(Settings, translateToLang), SettingType::String, (intptr_t)"", true},
     {offsetof(Settings, translateFromLang), SettingType::String, (intptr_t)"", true},
     {offsetof(Settings, translateEngine), SettingType::String, (intptr_t)"", true},
@@ -2255,7 +2260,7 @@ static const FieldInfo gSettingsFields[] = {
 };
 static const StructInfo gSettingsInfo = {
     sizeof(Settings),
-    159,
+    160,
     gSettingsFields,
     "\0\0DefaultDisplayMode\0DefaultZoom\0DisableJavaScript\0AllowExternalImages\0EnableTeXEnhancements\0EscToExit\0Ful"
     "lPathInTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0Ho"
@@ -2272,7 +2277,7 @@ static const StructInfo gSettingsInfo = {
     "out\0ToolbarShowReadAloud\0ToolbarSize\0TreeFontName\0TreeFontSize\0UIFontSize\0DisableAntiAlias\0EngineeringDrawi"
     "ngEnhance\0DisableAutoLinks\0UseSysColors\0UseTabs\0SelectionToolbar\0SelectionToolbarLayout\0TabsMru\0CtrlTabSimp"
     "le\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0MarkdownUI\0\0HtmlUI"
-    "\0\0ClaudeCode\0\0GrokBuild\0\0CodexBuild\0\0AntiGravity\0\0AIChatSidebarDx\0\0TranslateToLang\0TranslateFromLang"
+    "\0\0ClaudeCode\0\0GrokBuild\0\0CodexBuild\0\0AntiGravity\0\0AIChatSidebarDx\0WebViewAdBlock\0\0TranslateToLang\0TranslateFromLang"
     "\0TranslateEngine\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0Selection"
     "Handlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0CustomScreenDPI\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip\0"
     "WindowState\0WindowPos\0SearchUIWindowPos\0HelpWindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateChe"
@@ -2399,7 +2404,8 @@ static const StructInfo gSettingsInfo = {
     "true, MuPDF is used; otherwise WebView2 browser view is used when available\0\0settings for the Claude Code chat "
     "sidebar\0\0settings for the Grok Build chat sidebar\0\0settings for the OpenAI Codex chat sidebar\0\0settings for "
     "the Antigravity chat sidebar\0\0width of the AI chat sidebar (0 = use default); shared by Claude Code, Grok "
-    "Build, and OpenAI Codex (internal)\0\0remembered destination language for selection translation; empty uses OS UI "
+    "Build, and OpenAI Codex (internal)\0\0if true, block common advertising and tracking requests in embedded "
+    "WebView2 pages\0\0remembered destination language for selection translation; empty uses OS UI "
     "language\0remembered source language for selection translation; empty means Auto\0remembered engine for Translate "
     "Selection: Google, DeepL, Grok Build, Claude Code, OpenAI Codex or Antigravity\0\0default values for annotations "
     "in PDF documents\0\0list of additional external viewers for various file types. See [docs for more "
