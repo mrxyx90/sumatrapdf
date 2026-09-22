@@ -312,8 +312,23 @@ static void SetAIChatSidebarMode(MainWindow* win, bool searchMode) {
         return;
     }
     win->aiChatSearchMode = searchMode;
+    // Search mode is a pure browser view: hide every AI-only control,
+    // including the native model/permissions controls that live outside
+    // the WebView. Restore them when returning to AI Chat.
+    if (win->aiChatHeader) {
+        win->aiChatHeader->SetVisibility(searchMode ? Visibility::Collapse : Visibility::Visible);
+    }
     if (win->aiChatSessionCombo) {
         win->aiChatSessionCombo->SetIsVisible(!searchMode);
+    }
+    if (win->aiChatModelCombo) {
+        win->aiChatModelCombo->SetIsVisible(!searchMode);
+    }
+    if (win->aiChatOptionCombo) {
+        win->aiChatOptionCombo->SetIsVisible(!searchMode);
+    }
+    if (win->aiChatCheckbox) {
+        win->aiChatCheckbox->SetIsVisible(!searchMode);
     }
     if (win->aiChatInputRow) {
         win->aiChatInputRow->SetVisibility(searchMode ? Visibility::Collapse : Visibility::Visible);
