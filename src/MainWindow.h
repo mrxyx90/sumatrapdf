@@ -323,6 +323,16 @@ struct MainWindow { // NOLINT(clang-analyzer-optin.performance.Padding)
     Edit* aiChatInput = nullptr;
     WebviewWnd* aiChatWebView = nullptr;
     bool aiChatWebViewReady = false;
+    // Separate WebView2 instance for the Google/web search tab, so switching
+    // tabs preserves both the AI conversation and the current search page.
+    WebviewWnd* aiChatSearchWebView = nullptr;
+    bool aiChatSearchWebViewReady = false;
+    bool aiChatSearchMode = false;
+    VirtButton* aiChatAiTabBtn = nullptr;
+    VirtButton* aiChatSearchTabBtn = nullptr;
+    HBox* aiChatTabs = nullptr;
+    HBox* aiChatInputRow = nullptr;
+    HBox* aiChatOptionsRow = nullptr;
     VirtSplitter* aiChatSplitter = nullptr;
     // VBox(label, session combo, webview slot, input row, options row);
     // owns those controls and lays them out in hwndAiChatBox
