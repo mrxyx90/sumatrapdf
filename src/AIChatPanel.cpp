@@ -1471,8 +1471,11 @@ void CreateAIChatPanel(MainWindow* win) {
         auto* vbox = new VBox();
         vbox->alignCross = CrossAxisAlign::Stretch;
         vbox->AddChild(win->aiChatHeader);
-        vbox->AddChild(win->aiChatTabs);
         vbox->AddChild(win->aiChatSessionCombo);
+        // The tab row is inserted only when both AI Chat and Search exist.
+        // It is hosted immediately above the active content so a single
+        // Google Search view has no redundant tab chrome.
+        vbox->AddChild(win->aiChatTabs);
         win->aiChatWebViewSlot = new Spacer(0, 0);
         vbox->AddChild(win->aiChatWebViewSlot, 1);
         vbox->AddChild(inputRow);
