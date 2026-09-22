@@ -283,6 +283,9 @@ static void LayoutAIChatBox(MainWindow* win) {
     }
 }
 
+static void EnsureWebViewReady(MainWindow* win);
+static void UpdateAIChatPanelForCurrentTab(MainWindow* win);
+
 // --- Sidebar tabs / Search WebView ---
 
 static void SetAIChatSidebarMode(MainWindow* win, bool searchMode) {
