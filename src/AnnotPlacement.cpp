@@ -58,9 +58,9 @@ constexpr float kFileAttachmentAnnotDefaultDy = 16.f;
 
 constexpr int kInkEraserRadiusPx = 10;
 
-// 40% yellow, when Annotations.InkColor is not a color. How translucent a
+// Deep blue, when Annotations.InkColor is not a color. How translucent a
 // stroke is comes from its color's alpha.
-constexpr Color kInkDefaultColor = 0x6600ffff;
+constexpr Color kInkDefaultColor = 0xff0000ff;
 
 // Free text is placed like a stamp: a preview box the size of the annotation
 // follows the cursor and a click creates it there. MuPDF lays free text out
