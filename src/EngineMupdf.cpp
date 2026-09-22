@@ -311,7 +311,7 @@ static void DestFromFzLinkDest(const fz_link_dest& ldest, RectF* rectOut, float*
             break;
         case FZ_LINK_DEST_FIT_BH:
             // Fit content width; optional top (y)
-            zoom = kZoomFitContent;
+            zoom = kZoomFitVisible;
             x = w = h = kDestUseDefault;
             break;
         case FZ_LINK_DEST_FIT_BV:
@@ -10015,6 +10015,23 @@ static bool FormFieldValueIsEmpty(int wt, const char* val) {
         return str::Eq(Str(val), StrL("Off"));
     }
     return str::IsEmptyOrWhiteSpace(Str(val));
+}
+
+// Form-field widgets of pageNo, in page order. Loads the page if needed.
+void EngineMupdfGetPageWidgets(EngineBase* engine, int pageNo, Vec<Annotation*>& out) {
+    VecClear(out);
+    EngineMupdf* epdf = AsEngineMupdf(engine);
+    if (!epdf || !epdf->pdfdoc) {
+        return;
+    }
+    FzPageInfo* pi = epdf->GetFzPageInfoCanFail(pageNo);
+    if (!pi) {
+        return;
+    }
+    AutoUnlockRecursiveMutex cs(&epdf->docLock);
+    for (Annotation* w : pi->widgets) {
+        VecAppend(out, w);
+    }
 }
 
 // Page-space rects of empty fillable fields on pageNo (issue #5966). skip is

@@ -41,6 +41,8 @@ import { testit as issue3744 } from "./issue-3744.ts";
 import { testit as issue4986 } from "./issue-4986.ts";
 import { testit as issue4973 } from "./issue-4973.ts";
 import { testit as issue2083 } from "./issue-2083.ts";
+import { testit as issue6240 } from "./issue-6240.ts";
+import { testit as issue6241 } from "./issue-6241.ts";
 import { testit as issue5329 } from "./issue-5329.ts";
 import { testit as issue5718 } from "./issue-5718.ts";
 import { testit as issue5734 } from "./issue-5734.ts";
@@ -145,6 +147,8 @@ import { testit as ttsEngineCrashRecovery } from "./tts-engine-crash-recovery.ts
 import { testit as readAloudCloseDuringSpeak } from "./read-aloud-close-during-speak.ts";
 import { testit as lazyTabStateAfterSave } from "./lazy-tab-state-after-save.ts";
 import { testit as lazyTabSelectPaint } from "./lazy-tab-select-paint.ts";
+import { testit as pendingTabFreedSessionState } from "./pending-tab-freed-session-state.ts";
+import { testit as closeTabDuringPlacement } from "./close-tab-during-placement.ts";
 import { testit as restoreChmMissingTab } from "./restore-chm-missing-tab.ts";
 import { testit as issue5943 } from "./issue-5943.ts";
 import { testit as issue6117 } from "./issue-6117.ts";
@@ -383,6 +387,8 @@ export const tests: NamedTest[] = [
   ["read-aloud-close-during-speak", readAloudCloseDuringSpeak],
   ["lazy-tab-state-after-save", lazyTabStateAfterSave],
   ["lazy-tab-select-paint", lazyTabSelectPaint],
+  ["pending-tab-freed-session-state", pendingTabFreedSessionState],
+  ["close-tab-during-placement", closeTabDuringPlacement],
   ["restore-chm-missing-tab", restoreChmMissingTab],
   ["issue-4705", issue4705],
   ["toc-tree-sent-click", tocTreeSentClick],
@@ -458,6 +464,8 @@ export const tests: NamedTest[] = [
   ["issue-6163", issue6163],
   ["issue-4973", issue4973],
   ["issue-2083", issue2083],
+  ["issue-6240", issue6240],
+  ["issue-6241", issue6241],
   ["issue-5329", issue5329],
   ["issue-5718", issue5718],
   ["issue-5734", issue5734],

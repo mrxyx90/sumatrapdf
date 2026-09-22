@@ -1,19 +1,21 @@
 # Advanced settings
 
-SumatraPDF has many [advanced settings](https://www.sumatrapdfreader.org/settings/settings) to customize look and behavior.
+You can cusotmize SumatraPDF using [advanced settings](https://www.sumatrapdfreader.org/settings/settings), stored in `SumatraPDF-settings.txt` file.
 
 To edit advanced settings:
 
-- menu `Settings` / `Advanced Settings...` opens a dialog for viewing and editing them
-- or with Command Palette: `Ctrl + K`, type `adv` to narrow down to command, press `Enter` to select `Advanced Settings...` command
+- menu `Settings` / `Advanced Settings...` opens setting editor
+- or `Ctrl + K` `Advanced Settings...` command in [Command Palette](Command-Palette.md)
+- or directly in `Ctrl + K` Command Palette: type `=` for settings editor
 
-The dialog edits single values (booleans, numbers, strings, colors, enums, compact ones like `WindowMargin`). Lists (`Shortcuts`, `Themes`, `ExternalViewers`, `SelectionHandlers`, ...) are edited in the settings file.
+Some settings, like keyboard shortcuts, can only be set by editing settings file:
+-  menu `Settings` / `Open Advanced Settings File...`
+-  or with Command Palette: `Ctrl + K`, type `open settings`, press `Enter`
+- or the **Open Settings File** button in the Advanced Settings dialog
 
-To edit the settings file directly, use menu `Settings` / `Open Settings File...` (or the same command in Command Palette: `Ctrl + K`, type `open settings`, press `Enter`; or the **Open Settings File** button in the Advanced Settings dialog). This opens the settings text file in default .txt editor. Make changes and save the file.
+This opens `SumatraPDF-settings.txt` file in default .txt editor.  Make changes and save the file.
 
 To reset to default settings, delete settings file. SumatraPDF will re-create it with default values.
-
-Most settings take effect immediately after saving the settings file. Some settings (e.g. `UseTabs`) require closing and re-starting SumatraPDF.
 
 Documentation for all settings is at [https://www.sumatrapdfreader.org/settings/settings](https://www.sumatrapdfreader.org/settings/settings)
 
@@ -24,7 +26,7 @@ Here are some things you can customize:
 - window background color with `FixedPageUI.BackgroundColor`
 - color used to highlight text with `FixedPageUI.SelectionColor`
 - control scrollbar mode with `FixedPageUI.Scrollbars` (values: `windows`, `smart`, `overlay`, `hidden`)
-- CAD / engineering-drawing line rendering with `EngineeringDrawingEnhance` — [CAD / Engineering Drawings](CAD-Engineering-Drawings.md)
+- CAD / engineering-drawing line rendering enhancements `EngineeringDrawingEnhance` — [CAD / Engineering Drawings](CAD-Engineering-Drawings.md)
 
 Advanced settings file also stores the history and state of opened files so that we can e.g. re-open on the page
 
@@ -42,8 +44,8 @@ If you add or remove lines with square brackets, **make sure to always add/remov
 ; fit page; a remembered FileState still wins
 DefaultDisplayMode = automatic
 
-; default zoom. valid values: fit page, fit width, fit height, fit content or
-; percent like 100%
+; default zoom. valid values: fit page, fit width, fit height, fit content, fit
+; visible or percent like 100%
 DefaultZoom = fit page
 
 ; if true, JavaScript in PDF documents is disabled (e.g. form-field calculations
@@ -626,8 +628,8 @@ ComicBookUI [
     DefaultDisplayMode = 
 
     ; default zoom for comic books; empty uses fit page. valid values: fit page,
-    ; fit width, fit height, fit content, shrink to fit or percent like 100%
-    ; (introduced in version 3.7)
+    ; fit width, fit height, fit content, fit visible, shrink to fit or percent
+    ; like 100% (introduced in version 3.7)
     DefaultZoom = 
 
     ; if true, in facing and book view a landscape page (wider than tall)
@@ -644,8 +646,8 @@ ImageUI [
     WindowBgCol = 
 
     ; default zoom for image files. valid values: fit page, fit width, fit
-    ; height, fit content, shrink to fit or percent like 100% (introduced in
-    ; version 3.7)
+    ; height, fit content, fit visible, shrink to fit or percent like 100%
+    ; (introduced in version 3.7)
     DefaultZoom = shrink to fit
 
     ; if true, absolute zoom never makes a page wider than the window (each page
@@ -1267,7 +1269,7 @@ FileStates [
     DisplayMode = automatic
 
     ; zoom (in %) or one of those values: fit page, fit width, fit height, fit
-    ; content
+    ; content, fit visible
     Zoom = fit page
 
     ; if given, overrides the background color for this document (introduced in
@@ -1358,7 +1360,7 @@ SessionData [
         PageNo = 1
 
         ; zoom (in %) or one of those values: fit page, fit width, fit height,
-        ; fit content
+        ; fit content, fit visible
         Zoom = fit page
 
         ; how far pages have been rotated as a multiple of 90 degrees

@@ -262,6 +262,9 @@ static TempStr DisplayModeResultTemp(Str action, int* exitCodeOut) {
     }
 
     bool reportR2L = str::EqI(action, StrL("r2l"));
+    if (str::EqI(action, StrL("zoom-real"))) {
+        return finish(fmt("OK zoomReal=%g", win->ctrl->GetZoomVirtual(true)), 0);
+    }
     if (len(action) == 0 || str::EqI(action, StrL("get")) || reportR2L) {
         // report only
     } else if (str::EqI(action, StrL("presentation"))) {
@@ -909,6 +912,8 @@ enum class ControlCmd : u16 {
     TestImageOrientation = 106,
     TestTtsPumpOnSpeak = 107,
     TestRenderSelections = 108,
+    TestToggleFormButton = 109,
+    ResolveUnsavedChanges = 110,
 };
 
 enum class ControlArgType : u16 {
@@ -1166,11 +1171,23 @@ static void ExecuteControlRequest(ControlRequest* req) {
             AppendArgEnd(req->results);
             break;
 
+        // Quit never waits on the "Unsaved changes" prompt: a test that wants
+        // its changes kept saves them first (ResolveUnsavedChanges).
         case ControlCmd::Quit:
+            DiscardUnsavedChangesInAllTabs();
             AppendArgInt(req->results, 0);
             AppendArgEnd(req->results);
             PostAppExit();
             break;
+
+        case ControlCmd::ResolveUnsavedChanges: {
+            Str action = StringArg(req, 0);
+            Str path = StringArg(req, 1);
+            int exitCode = 0;
+            Str res = ResolveUnsavedChangesResultTemp(action, path, &exitCode);
+            AppendTestResult(req, exitCode, res);
+            break;
+        }
 
         // A notification covers part of the document for a couple of seconds,
         // so a test that reads pixels either waits it out or turns them off.
@@ -2234,6 +2251,19 @@ static void ExecuteControlRequest(ControlRequest* req) {
         case ControlCmd::TestRenderSelections: {
             int exitCode = 0;
             Str res = RenderSelectionsResultTemp(&exitCode);
+            AppendTestResult(req, exitCode, res);
+            break;
+        }
+
+        case ControlCmd::TestToggleFormButton: {
+            i32 pageNo = 1;
+            i32 idx = 0;
+            if (!IntArg(req, 0, pageNo) || !IntArg(req, 1, idx)) {
+                AppendError(req, StrL("TestToggleFormButton expects int pageNo (1-based), int idx (0-based)"));
+                break;
+            }
+            int exitCode = 0;
+            Str res = ToggleFormButtonResultTemp(pageNo, idx, &exitCode);
             AppendTestResult(req, exitCode, res);
             break;
         }

@@ -316,6 +316,9 @@ LoadArgs::LoadArgs(Str origPath, MainWindow* win) {
 }
 
 LoadArgs::~LoadArgs() {
+    if (ownsTabState) {
+        DeleteTabState(tabState);
+    }
     // async load may leave an engine if the finish path never ran (e.g. tab
     // destroyed with pendingLoadArgs); never leave a leaked EngineBase
     SafeEngineRelease(&engine);
@@ -343,7 +346,10 @@ void LoadArgs::SetDisplayName(Str name) {
 LoadArgs* LoadArgs::Clone() {
     LoadArgs* res = new LoadArgs(fileName, win);
     res->SetDisplayName(displayName);
-    res->tabState = this->tabState;
+    if (tabState) {
+        res->tabState = CloneTabState(tabState);
+        res->ownsTabState = true;
+    }
     res->targetTab = this->targetTab;
     res->forceReuse = this->forceReuse;
     res->forceNewWindow = this->forceNewWindow;
@@ -2703,7 +2709,7 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
         ReportIf(!win->IsDocLoaded());
         zoomVirtual = ZoomFromString(fs->zoom, kZoomFitPage);
         if (win->ctrl->ValidPageNo(ss.page)) {
-            if (kZoomFitContent != zoomVirtual) {
+            if (kZoomFitContent != zoomVirtual && kZoomFitVisible != zoomVirtual) {
                 ss.x = fs->scrollPos.x;
                 ss.y = fs->scrollPos.y;
             }
@@ -5909,6 +5915,26 @@ bool MaybeSaveAnnotations(WindowTab* tab) {
     return true;
 }
 
+// Answer the "Unsaved changes" prompt for tab without showing it (tests).
+// Discard leaves the changes in memory but lets the tab close silently.
+bool ResolveUnsavedChanges(WindowTab* tab, UnsavedChangesAction action, Str newPath) {
+    EngineBase* engine = tab ? tab->GetEngine() : nullptr;
+    if (!engine || !EngineHasUnsavedAnnotations(engine)) {
+        return true;
+    }
+    switch (action) {
+        case UnsavedChangesAction::Discard:
+            tab->askedToSaveAnnotations = true;
+            return true;
+        case UnsavedChangesAction::SaveExisting:
+            tab->ignoreNextAutoReload = true;
+            return EngineMupdfSaveUpdated(engine, {}, {});
+        case UnsavedChangesAction::SaveNew:
+            return EngineMupdfSaveUpdated(engine, newPath, {});
+    }
+    return false;
+}
+
 // After a message pump, a nested DDE CloseAllTabs / CloseWindow may have
 // already removed this tab. GetTabIdx does not dereference `tab`, so a freed
 // pointer just comes back as -1. Do not delete it again.
@@ -5940,6 +5966,10 @@ void CloseTab(WindowTab* tab, bool quitIfLast) {
         HideFindBar(win);
         HideSelectionToolbar(win);
         HideAnnotationHoverOverlay(win);
+        // cancel now, while win->ctrl still matches this tab: RemoveTab nulls
+        // win->ctrl before LoadModelIntoTab cancels it, and the toolbar update
+        // would then see the newly selected tab loaded but no win->ctrl
+        CancelAnnotationPlacement(win);
         if (!TabStillInWindow(win, tab)) {
             return;
         }
@@ -6457,7 +6487,7 @@ static bool FilePickerIsSumatraPDF() {
     return gSettings && str::EqI(gSettings->filePicker, StrL("sumatrapdf"));
 }
 
-// Show in folder: Explorer (and select the file) unless File / Use SumatraPDF
+// Show in folder: Explorer (and select the file) unless File / Open / Use SumatraPDF
 // file picker is on, in which case open Navigate Files in Folder on that dir.
 void ShowFileInFolder(MainWindow* win, Str path) {
     if (!win || len(path) == 0) {
@@ -6762,6 +6792,8 @@ static void CreateLnkShortcut(MainWindow* win) {
         zoomVirtual = StrL("fitheight");
     } else if (kZoomFitContent == ctrl->GetZoomVirtual()) {
         zoomVirtual = StrL("fitcontent");
+    } else if (kZoomFitVisible == ctrl->GetZoomVirtual()) {
+        zoomVirtual = StrL("fitvisible");
     }
 
     TempStr args = fmt("\"%s\" -page %d -view \"%s\" -zoom %s -scroll %d,%d", path, ss.page, viewMode, zoomVirtual,
@@ -10777,6 +10809,9 @@ static TempStr ZoomArgTemp(DocController* ctrl) {
     if (kZoomFitContent == zoom) {
         return StrL("fit content");
     }
+    if (kZoomFitVisible == zoom) {
+        return StrL("fit visible");
+    }
     return fmt("%g%%", ctrl->GetZoomVirtual(true));
 }
 
@@ -11238,7 +11273,6 @@ static void ManualOnJsNotify(void*, Str method, Str paramsJson) {
 static Str ManualInjectThemeCss(Str html) {
     TempStr bg = SerializeColorTemp(ThemeWindowBackgroundColor());
     TempStr fg = SerializeColorTemp(ThemeWindowTextColor());
-    TempStr link = SerializeColorTemp(ThemeWindowLinkColor());
     Str scheme = IsLightColor(ThemeWindowBackgroundColor()) ? StrL("light") : StrL("dark");
     // theme.js calls the follow-the-app option "system"
     Str pref = HelpThemePref();
@@ -11251,7 +11285,7 @@ static Str ManualInjectThemeCss(Str html) {
         fmt("<style id=\"sumatra-manual-theme\">"
             "html[data-theme-pref=\"system\"]{--bg-primary:%s;--bg-elevated:%s;--text-primary:%s;--link-color:%s}"
             "</style>",
-            bg, bg, fg, link);
+            bg, bg, fg, fg);
 
     int scriptAt = str::IndexOfI(html, StrL("<head>"));
     scriptAt = scriptAt < 0 ? 0 : scriptAt + len(StrL("<head>"));
@@ -12105,6 +12139,12 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
 
         case CmdOpenFileWithOSFilePicker:
             OpenFileWithOSFilePicker(win);
+            break;
+
+        case CmdOpenFileWithSumatraFilePicker:
+            if (CanAccessDisk() && !gPluginMode) {
+                ShowNavFilesInFolder(win);
+            }
             break;
 
         case CmdToggleFilePicker:
@@ -13224,6 +13264,10 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
                 return 0;
             }
             OnSelectAll(win);
+            break;
+
+        case CmdSelectCurrentPage:
+            OnSelectCurrentPage(win);
             break;
 
         // no default shortcut: Ctrl+Shift+Left / Right and friends are taken, so

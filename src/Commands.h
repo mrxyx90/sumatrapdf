@@ -326,8 +326,11 @@ enum {
     CmdPrintSelection = 520,
     CmdAutoGenerateTOC = 521,
     CmdOpenSettingsFile = 522,
+    CmdOpenFileWithSumatraFilePicker = 523,
+    CmdSelectCurrentPage = 524,
+    CmdZoomFitVisible = 525,
 
-    CmdLast = 522,
+    CmdLast = 525,
     CmdFirstCustom = CmdLast + 100,
 
     // aliases, at the end to not mess ordering
