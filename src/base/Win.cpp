@@ -2261,27 +2261,84 @@ bool LaunchBrowser(Str url) {
     return LaunchFileShell(url, Str(), StrL("open"));
 }
 
+static bool IsEdgeWindow(HWND hwnd) {
+    WCHAR className[128]{};
+    int n = GetClassNameW(hwnd, className, dimof(className));
+    return n > 0 && wstr::EqI(className, L"Chrome_WidgetWin_1");
+}
+
+struct EdgeWindowSnapshot {
+    Vec<HWND> windows;
+};
+
+static BOOL CALLBACK EnumEdgeWindowsProc(HWND hwnd, LPARAM lParam) {
+    auto* snapshot = (EdgeWindowSnapshot*)lParam;
+    if (IsWindowVisible(hwnd) && IsEdgeWindow(hwnd) && GetWindow(hwnd, GW_OWNER) == nullptr) {
+        VecAppend(snapshot->windows, hwnd);
+    }
+    return TRUE;
+}
+
+static void CollectEdgeWindows(EdgeWindowSnapshot* snapshot) {
+    snapshot->windows.Reset();
+    EnumWindows(EnumEdgeWindowsProc, (LPARAM)snapshot);
+}
+
+static HWND FindNewEdgeWindow(const EdgeWindowSnapshot& before) {
+    EdgeWindowSnapshot after;
+    CollectEdgeWindows(&after);
+    for (HWND hwnd : after.windows) {
+        bool existed = false;
+        for (HWND old : before.windows) {
+            if (old == hwnd) {
+                existed = true;
+                break;
+            }
+        }
+        if (!existed) {
+            return hwnd;
+        }
+    }
+    // Edge can reuse an existing top-level HWND while changing its content.
+    // In that case use the foreground Edge window.
+    HWND fg = GetForegroundWindow();
+    return (fg && IsEdgeWindow(fg)) ? fg : nullptr;
+}
+
 bool LaunchBrowserInEdgePopup(Str url) {
     constexpr int kPopupWidth = 900;
     constexpr int kPopupHeight = 400;
 
-    // Position the popup against the right edge of the primary work area.
     Rect work = GetWorkAreaRect({}, nullptr);
     int x = work.x + std::max(0, work.dx - kPopupWidth);
     int y = work.y + std::max(0, (work.dy - kPopupHeight) / 2);
 
-    TempStr args = fmt("--new-window --window-position=%d,%d --window-size=%d,%d \"%s\"",
-                       x, y, kPopupWidth, kPopupHeight, url);
+    EdgeWindowSnapshot before;
+    CollectEdgeWindows(&before);
 
-    // msedge.exe is resolved through the normal Windows application search
-    // path, so this reuses the currently configured Edge profile.
-    if (LaunchProcessWithCmdLine(StrL("msedge.exe"), args)) {
-        return true;
+    // Do not use --window-size here. When Edge is already running, its broker
+    // may forward the command to the existing process and ignore startup geometry.
+    TempStr args = fmt("--new-window \"%s\"", url);
+    if (!LaunchProcessWithCmdLine(StrL("msedge.exe"), args)) {
+        return LaunchBrowser(url);
     }
 
-    // Keep the normal default-browser behavior if Edge cannot be launched.
-    return LaunchBrowser(url);
+    HWND hwnd = nullptr;
+    DWORD deadline = GetTickCount() + 2000;
+    while (GetTickCount() < deadline) {
+        hwnd = FindNewEdgeWindow(before);
+        if (hwnd) {
+            break;
+        }
+        Sleep(10);
+    }
+
+    if (hwnd) {
+        SetWindowPos(hwnd, HWND_TOP, x, y, kPopupWidth, kPopupHeight, SWP_NOACTIVATE);
+    }
+    return true;
 }
+
 
 void OpenPathInDefaultFileManager(Str path) {
     if (len(path) == 0) {
