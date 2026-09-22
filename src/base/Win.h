@@ -356,6 +356,7 @@ HANDLE LaunchProcessInDir(Str cmdLine, Str currDir = Str(), DWORD flags = 0);
 bool CreateProcessHelper(Str exe, Str args);
 bool LaunchFileShell(Str path, Str params = Str(), Str verb = Str(), bool hidden = false);
 bool LaunchBrowser(Str url);
+bool LaunchBrowserInEdgePopup(Str url);
 void OpenPathInDefaultFileManager(Str path);
 void RunNonElevated(Str exePath);
 bool LaunchElevated(Str path, Str cmdline);
