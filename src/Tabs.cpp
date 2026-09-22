@@ -481,6 +481,14 @@ void CloseCollectedTabs(MainWindow* win, const Vec<WindowTab*>& toClose) {
         }
         CloseTab(t, false);
     }
+    if (IsMainWindowValid(win)) {
+        if (win->tabsInTitlebar) {
+            RelayoutCaption(win);
+        } else if (win->tabsCtrl) {
+            win->tabsCtrl->LayoutTabs();
+            HwndRepaintNow(win->tabsCtrl->hwnd);
+        }
+    }
 }
 
 void CloseAllTabs(MainWindow* win) {

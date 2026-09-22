@@ -1155,12 +1155,13 @@ UINT_PTR TabsCtrl::RemoveTab(int idx) {
         } else if (idx == selectedTab) {
             selectedTab = 0;
         }
-        SetSelected(selectedTab);
     } else {
-        selectedIdx = -1;
+        selectedTab = -1;
     }
     LayoutTabs();
+    SetSelected(selectedTab);
     TabsCtrlUpdateAfterChangingTabsCount(this);
+    HwndRepaintNow(hwnd);
     return userData;
 }
 
