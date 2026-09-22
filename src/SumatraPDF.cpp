@@ -3491,6 +3491,7 @@ void ShowMainWindow(MainWindow* win, int windowState) {
     // ready, which appears as a white flash when reopening a previous PDF.
     bool wasVisible = HwndIsVisible(win->hwndFrame);
 
+    bool showWindow = true;
     if (!wasVisible) {
         if (WIN_STATE_FULLSCREEN == windowState || WIN_STATE_MAXIMIZED == windowState) {
             // Apply maximize while hidden, then explicitly hide again. This
@@ -3498,9 +3499,14 @@ void ShowMainWindow(MainWindow* win, int windowState) {
             ShowWindow(win->hwndFrame, SW_MAXIMIZE);
             ShowWindow(win->hwndFrame, SW_HIDE);
         }
-    } else if (WIN_STATE_FULLSCREEN == windowState || WIN_STATE_MAXIMIZED == windowState) {
-        ShowWindow(win->hwndFrame, SW_MAXIMIZE);
-    } else {
+        showWindow = false;
+    }
+
+    if (WIN_STATE_FULLSCREEN == windowState || WIN_STATE_MAXIMIZED == windowState) {
+        if (showWindow) {
+            ShowWindow(win->hwndFrame, SW_MAXIMIZE);
+        }
+    } else if (showWindow) {
         ShowWindow(win->hwndFrame, SW_SHOW);
     }
 
