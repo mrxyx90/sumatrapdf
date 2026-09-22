@@ -18672,25 +18672,21 @@ ContinueOpenWindow:
         for (SessionData* data : *gInitialSessionData) {
             // create window hidden to avoid flashing the about page
             win = CreateAndShowMainWindow(data, false);
+            int totalTabStates = (int)len(*data->tabStates);
+            int startIdx = std::max(0, totalTabStates - maxToRestore);
             int nRestore = 0;
-            int count = 0;
-            for (TabState* state : *data->tabStates) {
-                if (len(state->filePath) != 0) {
-                    if (count >= maxToRestore) {
-                        break;
-                    }
+            for (int i = startIdx; i < totalTabStates; i++) {
+                TabState* state = (*data->tabStates)[i];
+                if (state && len(state->filePath) != 0) {
                     nRestore++;
-                    count++;
                 }
             }
             int restored = 0;
-            for (TabState* state : *data->tabStates) {
-                if (len(state->filePath) == 0) {
+            for (int i = startIdx; i < totalTabStates; i++) {
+                TabState* state = (*data->tabStates)[i];
+                if (!state || len(state->filePath) == 0) {
                     logf("WinMain: skipping RestoreTabOnStartup() because state->filePath is empty\n");
                     continue;
-                }
-                if (restored >= maxToRestore) {
-                    break;
                 }
                 restored++;
                 RestoreTabOnStartup(win, state, gSettings->lazyLoading, restored != nRestore);
