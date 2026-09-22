@@ -3376,15 +3376,14 @@ static MainWindow* CreateMainWindow() {
     // if tabsInTitlebar, we use a rebar menu bar; otherwise native SetMenu
     win->brControlBgColor = CreateSolidBrush(ThemeControlBackgroundColor());
 
-    // Note: don't send WM_SETREDRAW to hwndFrame here. The frame is hidden
-    // (shown later by ShowMainWindow / LoadDocument) so nothing paints anyway,
-    // and DefWindowProc's WM_SETREDRAW TRUE handling *shows* the window, which
-    // would flash a normal-size standard-caption window before the custom
-    // caption / maximized / fullscreen state is applied (the old fix for the
-    // dark-theme startup flash, #5421, predates creating the frame hidden).
-    ShowWindow(win->hwndCanvas, SW_SHOW);
-    // frame is still hidden; a sync paint here draws the empty/home canvas
-    // that session restore is about to replace
+    // Keep the entire window hierarchy hidden until startup layout and the
+    // initial document/home-page state are ready. Showing the child canvas here
+    // can cause Windows to paint the default background before ShowMainWindow()
+    // reveals the frame, producing the launch-time white flash.
+    //
+    // Do not use WM_SETREDRAW here either: DefWindowProc's handling of enabling
+    // redraw can show the hidden frame before the custom caption / maximized /
+    // fullscreen state is applied.
 
     Tooltip::CreateArgs args;
     args.parent = win->hwndCanvas;
