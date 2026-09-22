@@ -10213,6 +10213,32 @@ static void LaunchBrowserWithSelection(WindowTab* tab, Str urlPattern) {
     LaunchBrowser(uri);
 }
 
+static void OpenSearchSelectionWithPattern(WindowTab* tab, Str engineName, Str urlPattern) {
+    if (!tab || !HasPermission(Perm::InternetAccess) || !HasPermission(Perm::CopySelection)) {
+        return;
+    }
+    bool isTextOnlySelectionOut;
+    TempStr selText = GetSelectedTextTemp(tab, StrL("\n"), isTextOnlySelectionOut);
+    if (len(selText) == 0) {
+        return;
+    }
+    int budget = kMaxUrlEncodedLen - len(urlPattern);
+    bool didTruncate = false;
+    TempStr encodedSelection = URLEncodeMayTruncateTemp(selText, budget, &didTruncate);
+    if (didTruncate) {
+        NotifyUrlSelectionTruncated(tab);
+    }
+    Str lang = trans::GetCurrentLangCode();
+    if (str::Eq(lang, StrL("kr"))) {
+        lang = StrL("ko");
+    }
+    TempStr contryCode = GetISO639LangCodeFromLangTemp(lang);
+    TempStr uri = str::ReplaceNoCaseTemp(urlPattern, Str(kUserLangStr), contryCode);
+    uri = str::ReplaceNoCaseTemp(uri, Str(kSelectionPositionStr), FormatSelectionPositionTemp(tab));
+    uri = str::ReplaceNoCaseTemp(uri, Str(kSelectionStr), encodedSelection);
+    OpenSearchSelectionInSidebar(tab->win, engineName, uri);
+}
+
 // Ctrl+C / Ctrl+X / Ctrl+Z are app accelerators, so they fire even while a text
 // box has the focus. Hand the message to the edit control instead of taking it.
 // The focused window if it is a text box: the page-number box, the annotation
@@ -12058,7 +12084,7 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             }
             auto method = ParseSelectionSendMethod(GetCommandStringArg(cmd, kCmdArgMethod, {}));
             if (method == SelectionSendMethod::Get) {
-                LaunchBrowserWithSelection(tab, url);
+                OpenSearchSelectionWithPattern(tab, StrL("Search"), url);
                 return 0;
             }
             if (!HasPermission(Perm::InternetAccess) || !HasPermission(Perm::CopySelection)) {
@@ -13164,7 +13190,7 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             break;
 
         case CmdSearchSelectionWithGoogle:
-            LaunchBrowserWithSelection(tab, StrL("https://www.google.com/search?q=${selection}"));
+            OpenSearchSelectionWithPattern(tab, StrL("Google"), StrL("https://www.google.com/search?q=${selection}"));
             break;
 
         case CmdSearchGoogleLens:
@@ -13194,15 +13220,15 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             break;
 
         case CmdSearchSelectionWithBing:
-            LaunchBrowserWithSelection(tab, StrL("https://www.bing.com/search?q=${selection}"));
+            OpenSearchSelectionWithPattern(tab, StrL("Bing"), StrL("https://www.bing.com/search?q=${selection}"));
             break;
 
         case CmdSearchSelectionWithWikipedia:
-            LaunchBrowserWithSelection(tab, StrL("https://wikipedia.org/w/index.php?search=${selection}"));
+            OpenSearchSelectionWithPattern(tab, StrL("Wikipedia"), StrL("https://wikipedia.org/w/index.php?search=${selection}"));
             break;
 
         case CmdSearchSelectionWithGoogleScholar:
-            LaunchBrowserWithSelection(tab, StrL("https://scholar.google.com/scholar?q=${selection}"));
+            OpenSearchSelectionWithPattern(tab, StrL("Google Scholar"), StrL("https://scholar.google.com/scholar?q=${selection}"));
             break;
 
         case CmdCopySelection:
