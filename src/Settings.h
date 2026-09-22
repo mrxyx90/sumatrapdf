@@ -2471,4 +2471,6 @@ static const StructInfo gTheme_1_Info = {
 static const FieldInfo gThemesFields[] = {
     {offsetof(Themes, themes), SettingType::Array, (intptr_t)&gTheme_1_Info},
 };
-static const StructInfo gThemesInfo = {sizeof(Themes), 1, gThemesFields, "Themes", "col
+static const StructInfo gThemesInfo = {sizeof(Themes), 1, gThemesFields, "Themes", "color themes for the UI", false};
+
+#endif
