@@ -373,9 +373,7 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
     }
 
     if (isAnnotTool) {
-        // switching from a floating-revealed Edit PDF to a tool hides the
-        // toolbar again: it was only revealed for the Edit PDF row, and a
-        // hidden toolbar must not be shown by picking a tool
+        // picking an annotation tool from floating toolbar will not show system edit toolbar
         if (tb->win->floatingEditPdfRevealedToolbar) {
             tb->win->floatingEditPdfRevealedToolbar = false;
             tb->win->isToolbarVisible = false;
@@ -384,7 +382,9 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
             }
             ScheduleUiUpdate(tb->win, kUiForceRelayout | kUiRelayout);
         }
-        EnablePdfAnnotationsToolbar(tb->win);
+        if (tb->win->pdfAnnotationsToolbarEnabled) {
+            SetPdfAnnotationsToolbarEnabled(tb->win, false);
+        }
         ToolbarUpdateStateForWindow(tb->win, false);
         HwndSendCommand(tb->win->hwndFrame, cmd, 0);
 
