@@ -257,16 +257,13 @@ static void UpdateAIChatTabVisibility(MainWindow* win) {
         return;
     }
     bool showTabs = win->aiChatWebView != nullptr && win->aiChatSearchWebView != nullptr;
-    win->aiChatTabs->SetIsVisible(showTabs);
     if (win->aiChatAiTabBtn) {
         win->aiChatAiTabBtn->SetIsVisible(showTabs);
         win->aiChatAiTabBtn->textPadding = Insets{4, 12, 4, 12};
-        win->aiChatAiTabBtn->roundCorners = showTabs;
     }
     if (win->aiChatSearchTabBtn) {
         win->aiChatSearchTabBtn->SetIsVisible(showTabs);
         win->aiChatSearchTabBtn->textPadding = Insets{4, 12, 4, 12};
-        win->aiChatSearchTabBtn->roundCorners = showTabs;
     }
 }
 
