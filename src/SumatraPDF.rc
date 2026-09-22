@@ -88,6 +88,7 @@ IDI_SUMATRAPDF          ICON "gfx\\SumatraPDF-smaller.ico"
 7                       ICON "gfx\\img-32bit.ico"
 8                       ICON "gfx\\pdf-32bit.ico"
 9                       ICON "gfx\\mobi-32bit.ico"
+10                      ICON "gfx\\ic_search_modern.ico"
 
     /////////////////////////////////////////////////////////////////////////////
 

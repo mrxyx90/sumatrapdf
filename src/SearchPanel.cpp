@@ -30,6 +30,7 @@
 #include "Translations.h"
 #include "Theme.h"
 #include "DarkMode.h"
+#include "resource.h"
 #include "SearchPanel.h"
 #include "AIChatCommon.h"
 #include "AIChatPanel.h"
@@ -640,6 +641,12 @@ static void SetWindowAppUserModelID(HWND hwnd, const WCHAR* appIID) {
 }
 
 static HICON CreateSearchIcon(int size) {
+    HINSTANCE hinst = GetModuleHandle(nullptr);
+    HICON hIcon = (HICON)LoadImageW(hinst, MAKEINTRESOURCEW(IDI_SEARCH_MODERN), IMAGE_ICON, size, size, LR_DEFAULTCOLOR);
+    if (hIcon) {
+        return hIcon;
+    }
+
     const WCHAR* icoCandidates[] = {
         L"src\\gfx\\ic_search_modern.ico",
         L"gfx\\ic_search_modern.ico",
