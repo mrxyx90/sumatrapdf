@@ -27,6 +27,41 @@
 #include "Theme.h"
 #include "DarkMode.h"
 #include "SearchPanel.h"
+#include "AIChatPanel.h"
+
+static LRESULT CALLBACK WndProcSearchBackBtn(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId, DWORD_PTR refData) {
+    auto* win = (MainWindow*)refData;
+    if (msg == WM_LBUTTONUP) {
+        if (win && win->webSearchWebView && win->webSearchWebView->CanGoBack()) {
+            win->webSearchWebView->GoBack();
+        }
+        return 0;
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
+static LRESULT CALLBACK WndProcSearchForwardBtn(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId, DWORD_PTR refData) {
+    auto* win = (MainWindow*)refData;
+    if (msg == WM_LBUTTONUP) {
+        if (win && win->webSearchWebView && win->webSearchWebView->CanGoForward()) {
+            win->webSearchWebView->GoForward();
+        }
+        return 0;
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
+static LRESULT CALLBACK WndProcSearchCloseBtn(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId, DWORD_PTR refData) {
+    auto* win = (MainWindow*)refData;
+    if (msg == WM_LBUTTONUP) {
+        if (win) {
+            win->uiState.aiChatVisible = false;
+            ScheduleUiUpdate(win);
+        }
+        return 0;
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
 
 static void OnWebSearchWebViewNavigated(void* ctx, Str, bool) {
     MainWindow* win = (MainWindow*)ctx;
@@ -39,13 +74,39 @@ static void OnWebSearchWebViewNavigated(void* ctx, Str, bool) {
     }
 }
 
+static void OnWebSearchHistoryChanged(void* ctx, bool, bool) {
+    MainWindow* win = (MainWindow*)ctx;
+    if (!IsMainWindowValidAndNotClosing(win) || !win->hwndAiChatBox) {
+        return;
+    }
+    RelayoutSearchPanel(win);
+}
+
 void CreateSearchPanel(MainWindow* win) {
+    if (!win) {
+        return;
+    }
     win->webSearchWebView = nullptr;
     win->webSearchWebViewReady = false;
 }
 
 void DestroySearchPanel(MainWindow* win) {
+    if (!win) {
+        return;
+    }
     win->webSearchWebViewReady = false;
+    if (win->hwndSearchBack) {
+        DestroyWindow(win->hwndSearchBack);
+        win->hwndSearchBack = nullptr;
+    }
+    if (win->hwndSearchForward) {
+        DestroyWindow(win->hwndSearchForward);
+        win->hwndSearchForward = nullptr;
+    }
+    if (win->hwndSearchClose) {
+        DestroyWindow(win->hwndSearchClose);
+        win->hwndSearchClose = nullptr;
+    }
     delete win->webSearchWebView;
     win->webSearchWebView = nullptr;
 }
@@ -56,16 +117,37 @@ void RelayoutSearchPanel(MainWindow* win) {
     }
     Rect rc = HwndClientRect(win->hwndAiChatBox);
     if (rc.dx > 0 && rc.dy > 0) {
-        int topY = 0;
-        if (win->aiChatUsed && win->webSearchUsed) {
-            topY = DpiScale(28);
-        }
-        int height = rc.dy - topY;
-        if (height < 10) {
-            height = 10;
-        }
-        MoveWindow(win->webSearchWebView->hwnd, 0, topY, rc.dx, height, TRUE);
+        // Full page search webview (0, 0, rc.dx, rc.dy) with zero top white bar
+        MoveWindow(win->webSearchWebView->hwnd, 0, 0, rc.dx, rc.dy, TRUE);
         win->webSearchWebView->UpdateWebviewSize();
+
+        bool isSearchTab = (win->activeSidebarTab == 1);
+        int btnSize = DpiScale(26);
+        int pad = DpiScale(4);
+
+        bool canBack = win->webSearchWebView->CanGoBack();
+        bool canFwd = win->webSearchWebView->CanGoForward();
+
+        if (win->hwndSearchBack) {
+            SetWindowPos(win->hwndSearchBack, HWND_TOP, pad, pad, btnSize, btnSize,
+                         SWP_NOACTIVATE | (isSearchTab && canBack ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
+            EnableWindow(win->hwndSearchBack, canBack);
+        }
+
+        int fwdX = pad;
+        if (canBack) {
+            fwdX += btnSize + pad;
+        }
+        if (win->hwndSearchForward) {
+            SetWindowPos(win->hwndSearchForward, HWND_TOP, fwdX, pad, btnSize, btnSize,
+                         SWP_NOACTIVATE | (isSearchTab && canFwd ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
+            EnableWindow(win->hwndSearchForward, canFwd);
+        }
+
+        if (win->hwndSearchClose) {
+            SetWindowPos(win->hwndSearchClose, HWND_TOP, rc.dx - btnSize - pad, pad, btnSize, btnSize,
+                         SWP_NOACTIVATE | (isSearchTab ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
+        }
     }
 }
 
@@ -79,10 +161,23 @@ void OpenSearchSelectionInSidebar(MainWindow* win, Str engineName, Str url) {
     str::ReplaceWithCopy(&win->webSearchEngineName, engineName);
     win->uiState.aiChatVisible = true;
 
+    if (!win->hwndSearchBack && win->hwndAiChatBox) {
+        HINSTANCE hinst = GetModuleHandle(nullptr);
+        win->hwndSearchBack = CreateWindowExW(0, WC_BUTTONW, L"←", WS_CHILD | BS_PUSHBUTTON, 0, 0, 0, 0, win->hwndAiChatBox, nullptr, hinst, nullptr);
+        SetWindowSubclass(win->hwndSearchBack, WndProcSearchBackBtn, NextSubclassId(), (DWORD_PTR)win);
+
+        win->hwndSearchForward = CreateWindowExW(0, WC_BUTTONW, L"→", WS_CHILD | BS_PUSHBUTTON, 0, 0, 0, 0, win->hwndAiChatBox, nullptr, hinst, nullptr);
+        SetWindowSubclass(win->hwndSearchForward, WndProcSearchForwardBtn, NextSubclassId(), (DWORD_PTR)win);
+
+        win->hwndSearchClose = CreateWindowExW(0, WC_BUTTONW, L"×", WS_CHILD | BS_PUSHBUTTON, 0, 0, 0, 0, win->hwndAiChatBox, nullptr, hinst, nullptr);
+        SetWindowSubclass(win->hwndSearchClose, WndProcSearchCloseBtn, NextSubclassId(), (DWORD_PTR)win);
+    }
+
     if (!win->webSearchWebView) {
         auto* webView = new WebviewWnd();
         webView->events.ctx = win;
         webView->events.navigationCompleted = OnWebSearchWebViewNavigated;
+        webView->events.historyChanged = OnWebSearchHistoryChanged;
         TempStr localAppData = GetSpecialFolderTemp(CSIDL_LOCAL_APPDATA);
         TempStr safeName = str::ReplaceTemp(engineName, StrL(" "), StrL("_"));
         webView->dataDir = str::Dup(fmt("%s\\SumatraPDF\\Search_%s", localAppData, safeName));
@@ -107,6 +202,6 @@ void OpenSearchSelectionInSidebar(MainWindow* win, Str engineName, Str url) {
         win->webSearchWebView->Navigate(url);
         win->webSearchWebView->SetIsVisible(win->activeSidebarTab == 1);
     }
-    RelayoutSearchPanel(win);
+    RelayoutAIChatPanel(win);
     ScheduleUiUpdate(win);
 }

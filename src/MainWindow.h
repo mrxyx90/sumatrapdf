@@ -341,6 +341,9 @@ struct MainWindow { // NOLINT(clang-analyzer-optin.performance.Padding)
     VirtButton* sidebarTabAiBtn = nullptr;
     VirtButton* sidebarTabSearchBtn = nullptr;
     HBox* sidebarTabHeader = nullptr;
+    HWND hwndSearchBack = nullptr;
+    HWND hwndSearchForward = nullptr;
+    HWND hwndSearchClose = nullptr;
 
     // width of the AI chat sidebar
     int aiChatDx = 0;
