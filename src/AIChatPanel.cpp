@@ -252,6 +252,24 @@ static void UpdateAIChatPanelTitle(MainWindow* win, int labelDx) {
 
 // --- Layout ---
 
+static void UpdateAIChatTabVisibility(MainWindow* win) {
+    if (!win || !win->aiChatTabs) {
+        return;
+    }
+    // No tab bar when only one experience exists. Once AI and Search both
+    // exist, show the tab row and use rounded buttons for the two tabs.
+    bool showTabs = win->aiChatWebView != nullptr && win->aiChatSearchWebView != nullptr;
+    win->aiChatTabs->SetIsVisible(showTabs);
+    if (win->aiChatAiTabBtn) {
+        win->aiChatAiTabBtn->SetIsVisible(showTabs);
+        win->aiChatAiTabBtn->textPadding = Insets{4, 12, 4, 12};
+    }
+    if (win->aiChatSearchTabBtn) {
+        win->aiChatSearchTabBtn->SetIsVisible(showTabs);
+        win->aiChatSearchTabBtn->textPadding = Insets{4, 12, 4, 12};
+    }
+}
+
 static void LayoutAIChatBox(MainWindow* win) {
     if (!win->aiChatLayout) {
         return;
@@ -262,10 +280,9 @@ static void LayoutAIChatBox(MainWindow* win) {
     }
 
     UpdateAIChatPanelTitle(win, rc.dx);
+    UpdateAIChatTabVisibility(win);
     LayoutTreeToSize(win->hwndAiChatBox, win->aiChatLayout, {rc.dx, rc.dy}, &win->aiChatRoot);
 
-    // The AI and Search tabs have separate WebView2 instances, so switching
-    // tabs preserves both pages. Only the active webview is visible.
     WebviewWnd* active = win->aiChatSearchMode ? win->aiChatSearchWebView : win->aiChatWebView;
     if (win->aiChatWebView) {
         win->aiChatWebView->SetIsVisible(!win->aiChatSearchMode);
