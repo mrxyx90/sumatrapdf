@@ -3485,12 +3485,18 @@ static MainWindow* CreateMainWindow() {
 }
 
 void ShowMainWindow(MainWindow* win, int windowState) {
-    if (WIN_STATE_FULLSCREEN == windowState || WIN_STATE_MAXIMIZED == windowState) {
-        ShowWindow(win->hwndFrame, SW_MAXIMIZE);
-    } else {
-        ShowWindow(win->hwndFrame, SW_SHOW);
-    }
+    // If this window was hidden during startup/session restore, complete all
+    // final geometry/layout work before exposing it. Showing the frame first
+    // lets DWM present its default background before the restored document is
+    // ready, which appears as a white flash when reopening a previous PDF.
+    bool wasVisible = HwndIsVisible(win->hwndFrame);
 
+    if (!wasVisible && (WIN_STATE_FULLSCREEN == windowState || WIN_STATE_MAXIMIZED == windowState)) {
+        // Apply maximize while hidden, then explicitly hide again. This updates
+        // the final placement without presenting an intermediate frame.
+        ShowWindow(win->hwndFrame, SW_MAXIMIZE);
+        ShowWindow(win->hwndFrame, SW_HIDE);
+    }
     // a hidden frame's GetDpiForWindow() can still be the primary-monitor
     // DPI; after ShowWindow the monitor of the window rect is reliable
     {
@@ -3508,20 +3514,27 @@ void ShowMainWindow(MainWindow* win, int windowState) {
         SetWindowPos(win->hwndFrame, nullptr, 0, 0, 0, 0, flags);
     }
 
-    // go fullscreen before the first paint so the user doesn't see the
-    // intermediate maximized window (EnterFullScreen requires a visible
-    // window, so it can't happen before ShowWindow above)
-    if (WIN_STATE_FULLSCREEN == windowState) {
-        EnterFullScreen(win);
-    }
-
-    // Hidden startup windows can miss the final titlebar/menu-bar geometry
+    // Hidden startup windows can miss the final titlebar/menu-bar geometry.
     // until they become visible. Force one relayout before the first paint.
     RelayoutFrame(win);
     RefreshTocTreeIfNeeded(win);
     UpdateWindow(win->hwndFrame);
     UpdateToolbarFindText(win);
     HwndEnsureOnScreen(win->hwndFrame);
+
+    if (!wasVisible) {
+        // Only expose a startup/session-restored window after its final chrome
+        // and document layout have been prepared. This prevents DWM from
+        // presenting the frame background before the restored PDF is painted.
+        if (WIN_STATE_FULLSCREEN == windowState) {
+            ShowWindow(win->hwndFrame, SW_SHOW);
+            EnterFullScreen(win);
+        } else if (WIN_STATE_MAXIMIZED == windowState) {
+            ShowWindow(win->hwndFrame, SW_MAXIMIZE);
+        } else {
+            ShowWindow(win->hwndFrame, SW_SHOW);
+        }
+    }
 
     if (IsRunningOnWine()) {
         Rect wr = HwndWindowRect(win->hwndFrame);
