@@ -1549,8 +1549,8 @@ const globalPrefs: Field[] = [
   field(
     "ScrollLineAmount",
     Int,
-    16,
-    "distance, in screen pixels at 96 DPI, scrolled by an arrow-key press or one mouse-wheel line; values below 1 use 16",
+    35,
+    "distance, in screen pixels at 96 DPI, scrolled by an arrow-key press or one mouse-wheel line; values below 1 use 35",
   ).ver("3.7"),
   field(
     "SaveMemory",

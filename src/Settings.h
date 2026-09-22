@@ -2148,7 +2148,7 @@ static const FieldInfo gSettingsFields[] = {
     {offsetof(Settings, scrollbars), SettingType::String, (intptr_t)"windows"},
     {offsetof(Settings, scrollbarInSinglePage), SettingType::Bool, false},
     {offsetof(Settings, smoothScroll), SettingType::Bool, true},
-    {offsetof(Settings, scrollLineAmount), SettingType::Int, 16},
+    {offsetof(Settings, scrollLineAmount), SettingType::Int, 35},
     {offsetof(Settings, saveMemory), SettingType::Int, 50},
     {offsetof(Settings, paddingAfterLastPage), SettingType::Bool, false},
     {offsetof(Settings, ignoreDestinationZoom), SettingType::Bool, false},

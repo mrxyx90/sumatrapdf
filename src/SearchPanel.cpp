@@ -84,7 +84,8 @@ static void PaintOwnerDrawButton(HWND hwnd, const WCHAR* label, bool isHovered, 
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, txtCol);
 
-    HFONT font = CreateFontW(-DpiScale(18), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+    int fontHeight = (rc.bottom - rc.top) * 80 / 100;
+    HFONT font = CreateFontW(-fontHeight, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                              DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                              CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
     HFONT oldFont = (HFONT)SelectObject(hdc, font);
