@@ -450,40 +450,29 @@ static void RelayoutPopupWindow(SearchPopupWindow* popup) {
     bool canBack = popup->webView->CanGoBack();
     bool canFwd = popup->webView->CanGoForward();
 
-    int btnSize = DpiScale(24);
-    int padX = DpiScale(6);
-    int padY = DpiScale(3);
+    int btnSize = DpiScale(26);
+    int pad = DpiScale(3);
 
     if (popup->hwndBack) {
-        SetWindowPos(popup->hwndBack, HWND_TOP, padX, padY, btnSize, btnSize,
+        SetWindowPos(popup->hwndBack, HWND_TOP, pad, pad, btnSize, btnSize,
                      SWP_NOACTIVATE | (canBack ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
         EnableWindow(popup->hwndBack, canBack);
         InvalidateRect(popup->hwndBack, nullptr, FALSE);
     }
 
-    int fwdX = padX;
+    int fwdX = pad;
     if (canBack) {
-        fwdX += btnSize + DpiScale(4);
+        fwdX += btnSize + pad;
     }
     if (popup->hwndForward) {
-        SetWindowPos(popup->hwndForward, HWND_TOP, fwdX, padY, btnSize, btnSize,
+        SetWindowPos(popup->hwndForward, HWND_TOP, fwdX, pad, btnSize, btnSize,
                      SWP_NOACTIVATE | (canFwd ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
         EnableWindow(popup->hwndForward, canFwd);
         InvalidateRect(popup->hwndForward, nullptr, FALSE);
     }
 
-    TempStr title;
-    if (canBack && canFwd) {
-        title = fmt("       %s", popup->engineName);
-    } else if (canBack || canFwd) {
-        title = fmt("    %s", popup->engineName);
-    } else {
-        title = fmt("%s", popup->engineName);
-    }
-    SetWindowTextW(popup->hwnd, CWStrTemp(title));
-
-    int topY = (canBack || canFwd) ? DpiScale(30) : 0;
-    MoveWindow(popup->webView->hwnd, 0, topY, rc.dx, std::max(10, rc.dy - topY), TRUE);
+    SetWindowTextW(popup->hwnd, CWStrTemp(popup->engineName));
+    MoveWindow(popup->webView->hwnd, 0, 0, rc.dx, rc.dy, TRUE);
     popup->webView->UpdateWebviewSize();
 }
 
