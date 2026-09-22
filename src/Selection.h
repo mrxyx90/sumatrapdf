@@ -32,7 +32,7 @@ struct SelectionOnPage {
 RenderedBitmap* RenderSelectionsAsRenderedBitmap(DisplayModel* dm, const Vec<SelectionOnPage>& selections);
 
 // default opacity of the selection rectangle when SelectionColor has no alpha
-constexpr u8 kSelectionDefaultAlpha = 0x5f;
+constexpr u8 kSelectionDefaultAlpha = 165;
 
 void DeleteOldSelectionInfo(MainWindow* win, bool alsoTextSel = false);
 void RemapSelOnRenumber(MainWindow* win, DisplayModel* dm);

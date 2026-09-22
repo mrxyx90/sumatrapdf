@@ -709,7 +709,7 @@ void PaintSelection(MainWindow* win, Gfx* gfx, HDC hdc) {
     // Fall back to the historical default when no alpha is given (e.g. #rrggbb).
     u8 alpha = GetAlpha(parsedCol->col);
     if (alpha == 0) {
-        alpha = IsPlacingHighlighterAnnotation(win) ? 0xff : kSelectionDefaultAlpha;
+        alpha = IsPlacingHighlighterAnnotation(win) ? 200 : kSelectionDefaultAlpha;
     }
     PaintMultiplySelection(hdc, win->canvasRc, rects, quadPts, parsedCol->col, alpha);
     PaintTouchSelHandles(win, gfx);
