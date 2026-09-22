@@ -1477,8 +1477,14 @@ static void CloseAIChatPanelFromLabel(MainWindow* win) {
     if (!tab) {
         return;
     }
+    ReleaseCapture();
     AIChatSetTabPanelOpen(tab, AIChatBackend::None);
     AIChatSyncPanelsToCurrentTab(win);
+    if (win->hwndCanvas) {
+        HwndSetFocus(win->hwndCanvas);
+    } else if (win->hwndFrame) {
+        HwndSetFocus(win->hwndFrame);
+    }
     ScheduleUiUpdate(win);
 }
 

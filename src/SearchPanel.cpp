@@ -27,38 +27,176 @@
 #include "Theme.h"
 #include "DarkMode.h"
 #include "SearchPanel.h"
+#include "AIChatCommon.h"
 #include "AIChatPanel.h"
+
+struct SearchButtonState {
+    bool isHovered = false;
+    bool isTracking = false;
+};
+
+static SearchButtonState gBackState;
+static SearchButtonState gForwardState;
+static SearchButtonState gCloseState;
+
+static COLORREF ColorToCOLORREF(Color c) {
+    return RGB(GetRed(c), GetGreen(c), GetBlue(c));
+}
+
+static void PaintOwnerDrawButton(HWND hwnd, const WCHAR* label, bool isHovered, bool isCloseBtn) {
+    PAINTSTRUCT ps;
+    HDC hdc = BeginPaint(hwnd, &ps);
+    RECT rc;
+    GetClientRect(hwnd, &rc);
+
+    COLORREF bgCol;
+    COLORREF txtCol = ColorToCOLORREF(ThemeWindowTextColor());
+
+    if (isCloseBtn) {
+        if (isHovered) {
+            bgCol = RGB(240, 80, 20); // Orange hover effect
+            txtCol = RGB(255, 255, 255);
+        } else {
+            bgCol = ColorToCOLORREF(ThemeControlBackgroundColor());
+        }
+    } else {
+        if (isHovered) {
+            bgCol = ColorToCOLORREF(AccentColor(ThemeControlBackgroundColor(), 30)); // Title bar button hover effect
+        } else {
+            bgCol = ColorToCOLORREF(ThemeControlBackgroundColor());
+        }
+    }
+
+    HBRUSH brBg = CreateSolidBrush(bgCol);
+    HPEN penBg = CreatePen(PS_SOLID, 1, bgCol);
+    HBRUSH oldBr = (HBRUSH)SelectObject(hdc, brBg);
+    HPEN oldPen = (HPEN)SelectObject(hdc, penBg);
+
+    int cornerRadius = DpiScale(8);
+    RoundRect(hdc, rc.left, rc.top, rc.right, rc.bottom, cornerRadius, cornerRadius);
+
+    SelectObject(hdc, oldBr);
+    SelectObject(hdc, oldPen);
+    DeleteObject(brBg);
+    DeleteObject(penBg);
+
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, txtCol);
+    HFONT font = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+    HFONT oldFont = (HFONT)SelectObject(hdc, font);
+
+    DrawTextW(hdc, label, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+    SelectObject(hdc, oldFont);
+    EndPaint(hwnd, &ps);
+}
 
 static LRESULT CALLBACK WndProcSearchBackBtn(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId, DWORD_PTR refData) {
     auto* win = (MainWindow*)refData;
-    if (msg == WM_LBUTTONUP) {
-        if (win && win->webSearchWebView && win->webSearchWebView->CanGoBack()) {
-            win->webSearchWebView->GoBack();
-        }
-        return 0;
+    switch (msg) {
+        case WM_MOUSEMOVE:
+            if (!gBackState.isTracking) {
+                TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, hwnd, 0 };
+                TrackMouseEvent(&tme);
+                gBackState.isTracking = true;
+            }
+            if (!gBackState.isHovered) {
+                gBackState.isHovered = true;
+                InvalidateRect(hwnd, nullptr, FALSE);
+            }
+            break;
+        case WM_MOUSELEAVE:
+            gBackState.isHovered = false;
+            gBackState.isTracking = false;
+            InvalidateRect(hwnd, nullptr, FALSE);
+            break;
+        case WM_ERASEBKGND:
+            return 1;
+        case WM_PAINT:
+            PaintOwnerDrawButton(hwnd, L"←", gBackState.isHovered, false);
+            return 0;
+        case WM_LBUTTONUP:
+            if (win && win->webSearchWebView && win->webSearchWebView->CanGoBack()) {
+                win->webSearchWebView->GoBack();
+            }
+            return 0;
     }
     return DefSubclassProc(hwnd, msg, wp, lp);
 }
 
 static LRESULT CALLBACK WndProcSearchForwardBtn(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId, DWORD_PTR refData) {
     auto* win = (MainWindow*)refData;
-    if (msg == WM_LBUTTONUP) {
-        if (win && win->webSearchWebView && win->webSearchWebView->CanGoForward()) {
-            win->webSearchWebView->GoForward();
-        }
-        return 0;
+    switch (msg) {
+        case WM_MOUSEMOVE:
+            if (!gForwardState.isTracking) {
+                TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, hwnd, 0 };
+                TrackMouseEvent(&tme);
+                gForwardState.isTracking = true;
+            }
+            if (!gForwardState.isHovered) {
+                gForwardState.isHovered = true;
+                InvalidateRect(hwnd, nullptr, FALSE);
+            }
+            break;
+        case WM_MOUSELEAVE:
+            gForwardState.isHovered = false;
+            gForwardState.isTracking = false;
+            InvalidateRect(hwnd, nullptr, FALSE);
+            break;
+        case WM_ERASEBKGND:
+            return 1;
+        case WM_PAINT:
+            PaintOwnerDrawButton(hwnd, L"→", gForwardState.isHovered, false);
+            return 0;
+        case WM_LBUTTONUP:
+            if (win && win->webSearchWebView && win->webSearchWebView->CanGoForward()) {
+                win->webSearchWebView->GoForward();
+            }
+            return 0;
     }
     return DefSubclassProc(hwnd, msg, wp, lp);
 }
 
 static LRESULT CALLBACK WndProcSearchCloseBtn(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId, DWORD_PTR refData) {
     auto* win = (MainWindow*)refData;
-    if (msg == WM_LBUTTONUP) {
-        if (win) {
-            win->uiState.aiChatVisible = false;
-            ScheduleUiUpdate(win);
-        }
-        return 0;
+    switch (msg) {
+        case WM_MOUSEMOVE:
+            if (!gCloseState.isTracking) {
+                TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, hwnd, 0 };
+                TrackMouseEvent(&tme);
+                gCloseState.isTracking = true;
+            }
+            if (!gCloseState.isHovered) {
+                gCloseState.isHovered = true;
+                InvalidateRect(hwnd, nullptr, FALSE);
+            }
+            break;
+        case WM_MOUSELEAVE:
+            gCloseState.isHovered = false;
+            gCloseState.isTracking = false;
+            InvalidateRect(hwnd, nullptr, FALSE);
+            break;
+        case WM_ERASEBKGND:
+            return 1;
+        case WM_PAINT:
+            PaintOwnerDrawButton(hwnd, L"×", gCloseState.isHovered, true);
+            return 0;
+        case WM_LBUTTONUP:
+            if (win) {
+                ReleaseCapture();
+                WindowTab* tab = win->CurrentTab();
+                if (tab) {
+                    AIChatSetTabPanelOpen(tab, AIChatBackend::None);
+                }
+                AIChatSyncPanelsToCurrentTab(win);
+                if (win->hwndCanvas) {
+                    HwndSetFocus(win->hwndCanvas);
+                } else if (win->hwndFrame) {
+                    HwndSetFocus(win->hwndFrame);
+                }
+                ScheduleUiUpdate(win);
+            }
+            return 0;
     }
     return DefSubclassProc(hwnd, msg, wp, lp);
 }
@@ -122,31 +260,35 @@ void RelayoutSearchPanel(MainWindow* win) {
         win->webSearchWebView->UpdateWebviewSize();
 
         bool isSearchTab = (win->activeSidebarTab == 1);
-        int btnSize = DpiScale(26);
-        int pad = DpiScale(4);
+        int btnSize = DpiScale(28);
+        int pad = DpiScale(8);
+        int bottomY = rc.dy - btnSize - pad;
 
         bool canBack = win->webSearchWebView->CanGoBack();
         bool canFwd = win->webSearchWebView->CanGoForward();
 
         if (win->hwndSearchBack) {
-            SetWindowPos(win->hwndSearchBack, HWND_TOP, pad, pad, btnSize, btnSize,
+            SetWindowPos(win->hwndSearchBack, HWND_TOP, pad, bottomY, btnSize, btnSize,
                          SWP_NOACTIVATE | (isSearchTab && canBack ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
             EnableWindow(win->hwndSearchBack, canBack);
+            InvalidateRect(win->hwndSearchBack, nullptr, FALSE);
         }
 
         int fwdX = pad;
         if (canBack) {
-            fwdX += btnSize + pad;
+            fwdX += btnSize + DpiScale(2);
         }
         if (win->hwndSearchForward) {
-            SetWindowPos(win->hwndSearchForward, HWND_TOP, fwdX, pad, btnSize, btnSize,
+            SetWindowPos(win->hwndSearchForward, HWND_TOP, fwdX, bottomY, btnSize, btnSize,
                          SWP_NOACTIVATE | (isSearchTab && canFwd ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
             EnableWindow(win->hwndSearchForward, canFwd);
+            InvalidateRect(win->hwndSearchForward, nullptr, FALSE);
         }
 
         if (win->hwndSearchClose) {
-            SetWindowPos(win->hwndSearchClose, HWND_TOP, rc.dx - btnSize - pad, pad, btnSize, btnSize,
+            SetWindowPos(win->hwndSearchClose, HWND_TOP, rc.dx - btnSize - pad, bottomY, btnSize, btnSize,
                          SWP_NOACTIVATE | (isSearchTab ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
+            InvalidateRect(win->hwndSearchClose, nullptr, FALSE);
         }
     }
 }
