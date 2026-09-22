@@ -256,17 +256,17 @@ static void UpdateAIChatTabVisibility(MainWindow* win) {
     if (!win || !win->aiChatTabs) {
         return;
     }
-    // No tab bar when only one experience exists. Once AI and Search both
-    // exist, show the tab row and use rounded buttons for the two tabs.
     bool showTabs = win->aiChatWebView != nullptr && win->aiChatSearchWebView != nullptr;
     win->aiChatTabs->SetIsVisible(showTabs);
     if (win->aiChatAiTabBtn) {
         win->aiChatAiTabBtn->SetIsVisible(showTabs);
         win->aiChatAiTabBtn->textPadding = Insets{4, 12, 4, 12};
+        win->aiChatAiTabBtn->roundCorners = showTabs;
     }
     if (win->aiChatSearchTabBtn) {
         win->aiChatSearchTabBtn->SetIsVisible(showTabs);
         win->aiChatSearchTabBtn->textPadding = Insets{4, 12, 4, 12};
+        win->aiChatSearchTabBtn->roundCorners = showTabs;
     }
 }
 
