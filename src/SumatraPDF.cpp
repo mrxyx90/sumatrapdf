@@ -10171,10 +10171,6 @@ static void NotifyUrlSelectionTruncated(WindowTab* tab) {
     ShowNotification(args);
 }
 
-static void LaunchBrowserWithSelection(WindowTab* tab, Str urlPattern) {
-    OpenSearchSelectionWithPattern(tab, StrL("Search"), urlPattern);
-}
-
 static void OpenSearchSelectionWithPattern(WindowTab* tab, Str engineName, Str urlPattern) {
     if (!tab || !HasPermission(Perm::InternetAccess) || !HasPermission(Perm::CopySelection)) {
         return;
@@ -10199,6 +10195,10 @@ static void OpenSearchSelectionWithPattern(WindowTab* tab, Str engineName, Str u
     uri = str::ReplaceNoCaseTemp(uri, Str(kSelectionPositionStr), FormatSelectionPositionTemp(tab));
     uri = str::ReplaceNoCaseTemp(uri, Str(kSelectionStr), encodedSelection);
     OpenSearchSelectionInSidebar(tab->win, engineName, uri);
+}
+
+static void LaunchBrowserWithSelection(WindowTab* tab, Str urlPattern) {
+    OpenSearchSelectionWithPattern(tab, StrL("Search"), urlPattern);
 }
 
 // Ctrl+C / Ctrl+X / Ctrl+Z are app accelerators, so they fire even while a text
