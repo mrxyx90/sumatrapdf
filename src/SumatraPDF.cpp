@@ -18662,7 +18662,14 @@ ContinueOpenWindow:
                         matchDocIdx = i;
                     }
                 }
-                if (matchDocIdx >= 0) {
+                if (want == 0) {
+                    for (int i = 0; i < nTabs; i++) {
+                        if (tabs[i]->IsAboutTab()) {
+                            selectIdx = i;
+                            break;
+                        }
+                    }
+                } else if (matchDocIdx >= 0) {
                     selectIdx = matchDocIdx;
                 } else if (want >= 1 && want <= nTabs && !tabs[want - 1]->IsAboutTab()) {
                     // legacy: UI index including home
