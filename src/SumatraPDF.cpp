@@ -18663,7 +18663,7 @@ ContinueOpenWindow:
                     }
                 }
                 if (want == 0) {
-                    GoToHomeTab(win);
+                    OpenHomeTab(win);
                 } else {
                     if (matchDocIdx >= 0) {
                         selectIdx = matchDocIdx;
