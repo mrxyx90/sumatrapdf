@@ -264,15 +264,99 @@ static void LayoutAIChatBox(MainWindow* win) {
     UpdateAIChatPanelTitle(win, rc.dx);
     LayoutTreeToSize(win->hwndAiChatBox, win->aiChatLayout, {rc.dx, rc.dy}, &win->aiChatRoot);
 
-    // the webview is created lazily so it's not part of the layout; a flex
-    // spacer reserves its area and we position it into the spacer's bounds
+    // The AI and Search tabs have separate WebView2 instances, so switching
+    // tabs preserves both pages. Only the active webview is visible.
+    WebviewWnd* active = win->aiChatSearchMode ? win->aiChatSearchWebView : win->aiChatWebView;
     if (win->aiChatWebView) {
+        SetWindowPos(win->aiChatWebView->hwnd, nullptr, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | (win->aiChatSearchMode ? SWP_HIDEWINDOW : SWP_SHOWWINDOW));
+    }
+    if (win->aiChatSearchWebView) {
+        SetWindowPos(win->aiChatSearchWebView->hwnd, nullptr, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | (win->aiChatSearchMode ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
+    }
+    if (active) {
         Rect wr = win->aiChatWebViewSlot->lastBounds;
-        MoveWindow(win->aiChatWebView->hwnd, wr.x, wr.y, wr.dx, wr.dy, TRUE);
-        // defer UpdateWebviewSize during rapid WM_SIZE to avoid WebView2 put_Bounds freeze
+        MoveWindow(active->hwnd, wr.x, wr.y, wr.dx, wr.dy, TRUE);
         KillTimer(win->hwndAiChatBox, kTimerWebViewSize);
         SetTimer(win->hwndAiChatBox, kTimerWebViewSize, 50, nullptr);
     }
+}
+
+// --- Sidebar tabs / Search WebView ---
+
+static void SetAIChatSidebarMode(MainWindow* win, bool searchMode) {
+    if (!win) {
+        return;
+    }
+    win->aiChatSearchMode = searchMode;
+    if (win->aiChatAiTabBtn) {
+        win->aiChatAiTabBtn->SetIsEnabled(searchMode);
+    }
+    if (win->aiChatSearchTabBtn) {
+        win->aiChatSearchTabBtn->SetIsEnabled(!searchMode);
+    }
+    if (win->aiChatSessionCombo) {
+        win->aiChatSessionCombo->SetIsVisible(!searchMode);
+    }
+    if (win->aiChatInputRow) {
+        win->aiChatInputRow->SetIsVisible(!searchMode);
+    }
+    if (win->aiChatOptionsRow) {
+        win->aiChatOptionsRow->SetIsVisible(!searchMode);
+    }
+    if (win->hwndAiChatBox) {
+        LayoutAIChatBox(win);
+    }
+}
+
+static void OnAIChatAiTab(MainWindow* win) {
+    SetAIChatSidebarMode(win, false);
+    if (win->uiState.aiChatVisible) {
+        EnsureWebViewReady(win);
+        UpdateAIChatPanelForCurrentTab(win);
+    }
+}
+
+static void OnAIChatSearchTab(MainWindow* win) {
+    SetAIChatSidebarMode(win, true);
+}
+
+static void EnsureSearchWebViewReady(MainWindow* win, Str url) {
+    if (!win || !win->hwndAiChatBox || !HasWebView()) {
+        return;
+    }
+    if (!win->aiChatSearchWebView) {
+        auto* webView = new WebviewWnd();
+        TempStr localAppData = GetSpecialFolderTemp(CSIDL_LOCAL_APPDATA);
+        webView->dataDir = str::Dup(fmt("%s\\SumatraPDF\\Search_%d", localAppData, (int)GetCurrentProcessId()));
+        Rect rc = HwndClientRect(win->hwndAiChatBox);
+        CreateWebViewArgs args;
+        args.parent = win->hwndAiChatBox;
+        args.pos = Rect(0, 0, rc.dx, rc.dy);
+        webView->Create(args);
+        if (!webView->hwnd) {
+            delete webView;
+            return;
+        }
+        webView->SetIsVisible(false);
+        win->aiChatSearchWebView = webView;
+        win->aiChatSearchWebViewReady = true;
+    }
+    if (url) {
+        win->aiChatSearchWebView->Navigate(url);
+    }
+    SetAIChatSidebarMode(win, true);
+    RelayoutAIChatPanel(win);
+}
+
+void AIChatOpenSearch(MainWindow* win, Str url) {
+    if (!win || len(url) == 0 || !HasWebView() || !win->hwndAiChatBox) {
+        return;
+    }
+    win->uiState.aiChatVisible = true;
+    EnsureSearchWebViewReady(win, url);
+    ScheduleUiUpdate(win);
 }
 
 // --- Session combo ---
@@ -1223,7 +1307,7 @@ void UpdateAIChatTheme(MainWindow* win) {
     DarkModeApplyToChildControls(win->hwndAiChatBox);
     if (win->aiChatWebView) {
         DeleteAIChatWebView(win);
-        if (win->uiState.aiChatVisible) {
+        if (win->uiState.aiChatVisible && !win->aiChatSearchMode) {
             EnsureWebViewReady(win);
             // the new webview's navigationCompleted callback replays the chat
             // once its page has loaded
@@ -1270,9 +1354,25 @@ void CreateAIChatPanel(MainWindow* win) {
         win->aiChatSessionCombo->onSelectionChanged = MkFunc0(OnSessionComboChange, win);
     }
 
-    // webview deferred
+    // tab buttons
+    {
+        auto* tabs = new HBox();
+        tabs->alignCross = CrossAxisAlign::Stretch;
+        win->aiChatAiTabBtn = NewThemedButton(win->hwndAiChatBox, StrL("AI Chat"), font, false);
+        win->aiChatSearchTabBtn = NewThemedButton(win->hwndAiChatBox, StrL("Google Search"), font, false);
+        win->aiChatAiTabBtn->onClick = MkFunc0(OnAIChatAiTab, win);
+        win->aiChatSearchTabBtn->onClick = MkFunc0(OnAIChatSearchTab, win);
+        tabs->AddChild(win->aiChatAiTabBtn, 1);
+        tabs->AddChild(win->aiChatSearchTabBtn, 1);
+        win->aiChatTabs = tabs;
+    }
+
+    // webviews are created lazily
     win->aiChatWebView = nullptr;
     win->aiChatWebViewReady = false;
+    win->aiChatSearchWebView = nullptr;
+    win->aiChatSearchWebViewReady = false;
+    win->aiChatSearchMode = false;
 
     // model combo
     {
@@ -1338,6 +1438,7 @@ void CreateAIChatPanel(MainWindow* win) {
         inputRow->alignCross = CrossAxisAlign::Stretch;
         inputRow->AddChild(win->aiChatInput, 1);
         inputRow->AddChild(win->aiChatStopBtn);
+        win->aiChatInputRow = inputRow;
 
         auto* optionsRow = new HBox();
         optionsRow->alignCross = CrossAxisAlign::CrossCenter;
@@ -1346,10 +1447,12 @@ void CreateAIChatPanel(MainWindow* win) {
         optionsRow->AddChild(win->aiChatOptionCombo, 1);
         optionsRow->AddChild(new Spacer(8, 0));
         optionsRow->AddChild(win->aiChatCheckbox, 1);
+        win->aiChatOptionsRow = optionsRow;
 
         auto* vbox = new VBox();
         vbox->alignCross = CrossAxisAlign::Stretch;
         vbox->AddChild(win->aiChatHeader);
+        vbox->AddChild(win->aiChatTabs);
         vbox->AddChild(win->aiChatSessionCombo);
         win->aiChatWebViewSlot = new Spacer(0, 0);
         vbox->AddChild(win->aiChatWebViewSlot, 1);
@@ -1362,6 +1465,7 @@ void CreateAIChatPanel(MainWindow* win) {
     // initialize provider-specific parts (default: Claude)
     win->aiChatProvider = -1;
     SetPanelProvider(win, 0);
+    SetAIChatSidebarMode(win, false);
 
     AIChatApplySavedSidebarDx(win);
     UpdateAIChatTheme(win);
@@ -1547,14 +1651,21 @@ void DestroyAIChatPanel(MainWindow* win) {
         }
     }
 
-    // save webview dataDir before deleting so we can clean up
+    // save WebView data dirs before deleting so we can clean up
     Str webViewDataDir;
+    Str searchWebViewDataDir;
     WebviewWnd* webView = win->aiChatWebView;
+    WebviewWnd* searchWebView = win->aiChatSearchWebView;
     win->aiChatWebView = nullptr;
+    win->aiChatSearchWebView = nullptr;
     if (webView) {
         webViewDataDir = str::Dup(webView->dataDir);
     }
+    if (searchWebView) {
+        searchWebViewDataDir = str::Dup(searchWebView->dataDir);
+    }
     delete webView;
+    delete searchWebView;
 
     // deleting the layout deletes the controls in it
     delete win->aiChatLayout;
@@ -1563,6 +1674,11 @@ void DestroyAIChatPanel(MainWindow* win) {
     delete win->aiChatRoot;
     win->aiChatRoot = nullptr;
     win->aiChatHeader = nullptr;
+    win->aiChatTabs = nullptr;
+    win->aiChatAiTabBtn = nullptr;
+    win->aiChatSearchTabBtn = nullptr;
+    win->aiChatInputRow = nullptr;
+    win->aiChatOptionsRow = nullptr;
     win->aiChatWebViewSlot = nullptr;
     win->aiChatLabel = nullptr;
     win->aiChatSessionCombo = nullptr;
@@ -1587,5 +1703,9 @@ void DestroyAIChatPanel(MainWindow* win) {
     if (webViewDataDir) {
         dir::RemoveAll(webViewDataDir);
         str::Free(webViewDataDir);
+    }
+    if (searchWebViewDataDir) {
+        dir::RemoveAll(searchWebViewDataDir);
+        str::Free(searchWebViewDataDir);
     }
 }
