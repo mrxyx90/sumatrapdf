@@ -777,6 +777,9 @@ AntiGravity [
 ; Build, and OpenAI Codex (internal) (introduced in version 3.7)
 AIChatSidebarDx = 0
 
+; if true, block common advertising and tracking requests in embedded WebView2 pages (introduced in version 3.7)
+WebViewAdBlock = false
+
 ; remembered destination language for selection translation; empty uses OS UI
 ; language (introduced in version 3.7)
 TranslateToLang = 
