@@ -330,7 +330,10 @@ static void EnsureSearchWebViewReady(MainWindow* win, Str url) {
     if (!win->aiChatSearchWebView) {
         auto* webView = new WebviewWnd();
         TempStr localAppData = GetSpecialFolderTemp(CSIDL_LOCAL_APPDATA);
-        webView->dataDir = str::Dup(fmt("%s\\SumatraPDF\\Search_%d", localAppData, (int)GetCurrentProcessId()));
+        // Keep a stable WebView2 profile so cookies, local storage and cache
+        // survive SumatraPDF restarts. Do not include the process ID here:
+        // a new process must reopen the same profile.
+        webView->dataDir = str::Dup(fmt("%s\\SumatraPDF\\Search_1", localAppData));
         Rect rc = HwndClientRect(win->hwndAiChatBox);
         CreateWebViewArgs args;
         args.parent = win->hwndAiChatBox;
@@ -1221,9 +1224,9 @@ static void EnsureWebViewReady(MainWindow* win) {
     webView->events.ctx = win;
     webView->events.navigationCompleted = OnAIChatWebViewNavigated;
     TempStr localAppData = GetSpecialFolderTemp(CSIDL_LOCAL_APPDATA);
-    // use unique data dir per process to avoid locking conflicts
-    webView->dataDir =
-        str::Dup(fmt("%s\\SumatraPDF\\%s_%d", localAppData, p->webViewDataDirPrefix, (int)GetCurrentProcessId()));
+    // Keep a stable WebView2 profile so cookies, local storage and cache
+    // survive SumatraPDF restarts. The profile is provider-specific.
+    webView->dataDir = str::Dup(fmt("%s\\SumatraPDF\\%s", localAppData, p->webViewDataDirPrefix));
     int markedLen = 0;
     u8* markedData = GetEmbeddedFileData(StrL("marked.min.js"), &markedLen);
     if (!markedData || markedLen <= 0) {
@@ -1653,19 +1656,13 @@ void DestroyAIChatPanel(MainWindow* win) {
         }
     }
 
-    // save WebView data dirs before deleting so we can clean up
-    Str webViewDataDir;
-    Str searchWebViewDataDir;
+    // Keep WebView2 data directories on disk. They contain persistent
+    // cookies, local storage, IndexedDB and cache and must survive normal
+    // application shutdown so browser sessions can be reused on next launch.
     WebviewWnd* webView = win->aiChatWebView;
     WebviewWnd* searchWebView = win->aiChatSearchWebView;
     win->aiChatWebView = nullptr;
     win->aiChatSearchWebView = nullptr;
-    if (webView) {
-        webViewDataDir = str::Dup(webView->dataDir);
-    }
-    if (searchWebView) {
-        searchWebViewDataDir = str::Dup(searchWebView->dataDir);
-    }
     delete webView;
     delete searchWebView;
 
@@ -1701,13 +1698,4 @@ void DestroyAIChatPanel(MainWindow* win) {
         win->hwndAiChatBox = nullptr;
     }
 
-    // clean up per-process WebView2 cache dir
-    if (webViewDataDir) {
-        dir::RemoveAll(webViewDataDir);
-        str::Free(webViewDataDir);
-    }
-    if (searchWebViewDataDir) {
-        dir::RemoveAll(searchWebViewDataDir);
-        str::Free(searchWebViewDataDir);
-    }
 }
