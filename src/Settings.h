@@ -2258,12 +2258,12 @@ static const FieldInfo gSettingsFields[] = {
 };
 static const StructInfo gSettingsInfo = {
     sizeof(Settings),
-    159,
+    160,
     gSettingsFields,
     "\0\0DefaultDisplayMode\0DefaultZoom\0DisableJavaScript\0AllowExternalImages\0EnableTeXEnhancements\0EscToExit\0Ful"
     "lPathInTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0Ho"
     "mePageViewMode\0FilePicker\0PrinterUI\0ReloadModifiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0Res"
-    "toreSession\0ReuseInstance\0ShowMenubar\0ShowMenubarWithTabs\0ShowPageNumberInTabs\0ShowHomePageReadingProgress\0S"
+    "toreSession\0ActiveSessionTabs\0ReuseInstance\0ShowMenubar\0ShowMenubarWithTabs\0ShowPageNumberInTabs\0ShowHomePageReadingProgress\0S"
     "howChaptersInEbooks\0ShowTips\0CustomColors\0ShowToolbar\0Toolbar\0ToolbarPosition\0SearchUIFloating\0ShowFavorite"
     "s\0SortFavoritesByName\0ShowToc\0SidebarOnRight\0SidebarWindowSize\0ShowLinks\0HighlightFormFields\0ClickEdgeToTur"
     "nPage\0DisableLinks\0ExplorerQuickLook\0RememberViewOffsetOnPageTurn\0MouseWheelTurnsPage\0ScrollEdgeTurnsPage\0Sh"
