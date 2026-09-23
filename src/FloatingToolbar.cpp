@@ -382,9 +382,6 @@ static void OnFloatingButton(FloatingToolbar* tb, VirtMouseEvent* ev) {
             }
             ScheduleUiUpdate(tb->win, kUiForceRelayout | kUiRelayout);
         }
-        if (tb->win->pdfAnnotationsToolbarEnabled) {
-            SetPdfAnnotationsToolbarEnabled(tb->win, false);
-        }
         ToolbarUpdateStateForWindow(tb->win, false);
         HwndSendCommand(tb->win->hwndFrame, cmd, 0);
 

@@ -93,10 +93,10 @@ HomePageSortByFrequentlyRead = false
 HomePageViewMode = thumbnails
 
 ; valid values: (empty), os, sumatrapdf (introduced in version 3.7)
-FilePicker = 
+FilePicker =
 
 ; valid values: (empty), auto, modern, classic (introduced in version 3.7)
-PrinterUI = 
+PrinterUI =
 
 ; if true, a document will be reloaded automatically whenever it's changed
 ; (currently doesn't work for documents shown in the ebook UI) (introduced in
@@ -185,7 +185,7 @@ ShowToc = true
 SidebarOnRight = false
 
 ; valid values: (empty), keep, grow (introduced in version 3.7)
-SidebarWindowSize = 
+SidebarWindowSize =
 
 ; if true, draw a blue border around links in the document (introduced in
 ; version 3.6)
@@ -367,11 +367,11 @@ HelpTheme = app
 
 ; the light theme the light/dark toggle and the System theme switch to
 ; (introduced in version 3.7)
-LastLightTheme = 
+LastLightTheme =
 
 ; the dark theme the light/dark toggle and the System theme switch to
 ; (introduced in version 3.7)
-LastDarkTheme = 
+LastDarkTheme =
 
 ; how MuPDF-rendered documents (PDF, XPS, DjVu, EPUB, MOBI, FB2, CBZ, images,
 ; etc.) use UI / FixedPageUI colors for the page. Values: off (document's own
@@ -392,7 +392,7 @@ TocDy = 0
 ; separator and PageInfo is the page number box. Empty (the default) means the
 ; standard layout. Buttons you added yourself (see Shortcuts) still come last
 ; (introduced in version 3.7)
-ToolbarCustomLayout = 
+ToolbarCustomLayout =
 
 ; if true, the toolbar has a Read Aloud button (with a drop-down for voice,
 ; speed and what to read). Read Aloud is still reachable from the Read Aloud
@@ -446,7 +446,7 @@ SelectionToolbar = true
 ; separator. Leave a button out to hide it. Empty (the default) is the standard
 ; set. SelectionHandlers with SelectToolbarNameOrSvg still come last (introduced
 ; in version 3.7)
-SelectionToolbarLayout = 
+SelectionToolbarLayout =
 
 ; if true, Ctrl+Tab and Ctrl+Shift+Tab show the tab switcher in most recently
 ; used order instead of tab-strip order (introduced in version 3.7)
@@ -459,7 +459,7 @@ CtrlTabSimple = false
 
 ; sequence of zoom levels when zooming in/out; values must lie between 8.33 and
 ; 1000000 (the largest one becomes the maximum zoom, which is 6400 by default)
-ZoomLevels = 
+ZoomLevels =
 
 ; how much a single zoom in / zoom out step changes the zoom, as a percentage of
 ; the current zoom level. If 0 or negative, zooming steps through ZoomLevels
@@ -501,7 +501,7 @@ FixedPageUI [
 
     ; if given, sets the canvas background color for PDF files (introduced in
     ; version 3.7)
-    WindowBgCol = 
+    WindowBgCol =
 
     ; measurement grid overlay (View > Page Grid). Spacing and style are saved;
     ; showing the grid is session-only (introduced in version 3.7)
@@ -547,7 +547,7 @@ EBookUI [
     ; fonts. wrapping quotes are stripped. a name that can't be loaded is
     ; reported with a notification when the document opens (introduced in
     ; version 3.7)
-    FontName = 
+    FontName =
 
     ; font size in points; 0 means the default (8.0)
     FontSize = 0
@@ -583,12 +583,12 @@ EBookUI [
 
     ; if given, sets the canvas background color for ebook documents (epub, mobi
     ; etc.) (introduced in version 3.7)
-    WindowBgCol = 
+    WindowBgCol =
 
     ; default page layout for ebooks; empty uses the global DefaultDisplayMode.
     ; valid values: automatic, single page, facing, book view, continuous,
     ; continuous facing, continuous book view (introduced in version 3.7)
-    DefaultDisplayMode = 
+    DefaultDisplayMode =
 ]
 
 ; customization options for Comic Book UI
@@ -609,7 +609,7 @@ ComicBookUI [
 
     ; if given, sets the canvas background color for comic book files
     ; (introduced in version 3.7)
-    WindowBgCol = 
+    WindowBgCol =
 
     ; if true, absolute zoom never makes a page wider than the window (each page
     ; is capped at Fit Width). Useful for comics/manga with double-page spreads
@@ -625,12 +625,12 @@ ComicBookUI [
     ; DefaultDisplayMode. valid values: automatic, single page, facing, book
     ; view, continuous, continuous facing, continuous book view (introduced in
     ; version 3.7)
-    DefaultDisplayMode = 
+    DefaultDisplayMode =
 
     ; default zoom for comic books; empty uses fit page. valid values: fit page,
     ; fit width, fit height, fit content, fit visible, shrink to fit or percent
     ; like 100% (introduced in version 3.7)
-    DefaultZoom = 
+    DefaultZoom =
 
     ; if true, in facing and book view a landscape page (wider than tall)
     ; occupies the whole two-page row instead of pairing with the next page. For
@@ -643,7 +643,7 @@ ComicBookUI [
 ImageUI [
     ; if given, sets the canvas background color for image files (introduced in
     ; version 3.7)
-    WindowBgCol = 
+    WindowBgCol =
 
     ; default zoom for image files. valid values: fit page, fit width, fit
     ; height, fit content, fit visible, shrink to fit or percent like 100%
@@ -704,7 +704,7 @@ ClaudeCode [
 
     ; extra Claude model aliases for the dropdown, comma-separated; documented
     ; Claude Code aliases are always included
-    Models = 
+    Models =
 
     ; Claude effort level: 0=Low, 1=Medium, 2=High, 3=Max
     Effort = 1
@@ -723,7 +723,7 @@ GrokBuild [
 
     ; extra Grok model IDs for the dropdown, comma-separated; used in addition
     ; to models reported by Grok
-    Models = 
+    Models =
 
     ; Grok effort level: 0=Low, 1=Medium, 2=High, 3=XHigh, 4=Max
     Effort = 1
@@ -743,7 +743,7 @@ CodexBuild [
 
     ; extra Codex model IDs for the dropdown, comma-separated; used in addition
     ; to models reported by Codex
-    Models = 
+    Models =
 
     ; Codex sandbox mode: 0=read-only, 1=workspace-write, 2=danger-full-access
     Sandbox = 1
@@ -761,7 +761,7 @@ AntiGravity [
     Model = gemini-3.8-flash-medium
 
     ; extra Antigravity model IDs for the dropdown, comma-separated
-    Models = 
+    Models =
 
     ; Antigravity effort level: 0=Low, 1=Medium, 2=High, 3=Max
     Effort = 1
@@ -781,15 +781,15 @@ AIChatSidebarDx = 0
 
 ; remembered destination language for selection translation; empty uses OS UI
 ; language (introduced in version 3.7)
-TranslateToLang = 
+TranslateToLang =
 
 ; remembered source language for selection translation; empty means Auto
 ; (introduced in version 3.7)
-TranslateFromLang = 
+TranslateFromLang =
 
 ; remembered engine for Translate Selection: Google, DeepL, Grok Build, Claude
 ; Code, OpenAI Codex or Antigravity (introduced in version 3.7)
-TranslateEngine = 
+TranslateEngine =
 
 ; default values for annotations in PDF documents (introduced in version 3.3)
 Annotations [
@@ -812,11 +812,11 @@ Annotations [
 
     ; text color of newly created free text annotations (introduced in version
     ; 3.5)
-    FreeTextColor = 
+    FreeTextColor =
 
     ; background color of newly created free text annotations (introduced in
     ; version 3.6)
-    FreeTextBackgroundColor = 
+    FreeTextBackgroundColor =
 
     ; opacity of free text annotation in percent (0-100); 0 - fully transparent
     ; (invisible), 50 - half transparent, 100 - fully opaque (introduced in
@@ -828,7 +828,7 @@ Annotations [
 
     ; border width of free text annotations, in points (introduced in version
     ; 3.5)
-    FreeTextBorderWidth = 1
+    FreeTextBorderWidth = 0
 
     ; how text is aligned in newly created free text annotations (Text Alignment
     ; in the compact property row): left, center or right. Right-to-left scripts
@@ -842,27 +842,27 @@ Annotations [
     PresetColors = #ffff00 #8bf05d #99defa #f199d2 #e24745 #ff0000 #0000ff #000000
 
     ; color of newly created text (sticky note) annotations
-    TextIconColor = 
+    TextIconColor =
 
     ; color of newly created line annotations. If not set, the PDF engine's
     ; default (red) is used (introduced in version 3.7)
-    LineColor = 
+    LineColor =
 
     ; color of newly created polyline annotations. If not set, the PDF engine's
     ; default (red) is used (introduced in version 3.7)
-    PolyLineColor = 
+    PolyLineColor =
 
     ; color of newly created square annotations. If not set, the PDF engine's
     ; default (red) is used (introduced in version 3.7)
-    SquareColor = 
+    SquareColor =
 
     ; color of newly created circle annotations. If not set, the PDF engine's
     ; default (red) is used (introduced in version 3.7)
-    CircleColor = 
+    CircleColor =
 
     ; color of newly created polygon annotations. If not set, the PDF engine's
     ; default (red) is used (introduced in version 3.7)
-    PolygonColor = 
+    PolygonColor =
 
     ; color of newly created ink annotations, as #aarrggbb: the alpha is how
     ; translucent the stroke is (00 = transparent, FF = opaque), so the color is
@@ -880,24 +880,24 @@ Annotations [
 
     ; color of newly created stamp annotations. If not set, the PDF engine's
     ; default (red) is used (introduced in version 3.7)
-    StampColor = 
+    StampColor =
 
     ; color of newly created caret annotations. If not set, the PDF engine's
     ; default (red) is used (introduced in version 3.7)
-    CaretColor = 
+    CaretColor =
 
     ; color of newly created file attachment annotations. If not set, the PDF
     ; engine's default (red) is used (introduced in version 3.7)
-    FileAttachmentColor = 
+    FileAttachmentColor =
 
     ; icon shown for text (sticky note) annotations: comment, help, insert, key,
     ; new paragraph, note or paragraph. If not set, note is used
-    TextIconType = 
+    TextIconType =
 
     ; author recorded on newly created annotations. If not set, the Windows user
     ; name is used; set it to (none) to leave the author out entirely
     ; (introduced in version 3.4)
-    DefaultAuthor = 
+    DefaultAuthor =
 ]
 
 ; list of additional external viewers for various file types. See docs for more information (https://www.sumatrapdfreader.org/docs/Customize-external-viewers)
@@ -983,7 +983,7 @@ Fullscreen [
     ; windowed fullscreen keeps the existing layout. valid values: automatic,
     ; single page, facing, book view, continuous, continuous facing, continuous
     ; book view (introduced in version 3.7)
-    DisplayMode = 
+    DisplayMode =
 ]
 
 ; list of handlers for selected text, shown in context menu when text selection
@@ -1053,10 +1053,10 @@ SelectionHandlers [
 Shortcuts [
   [
     ; command to run, e.g. CmdOpenFile. See the list of commands (https://www.sumatrapdfreader.org/docs/Commands)
-    Cmd = 
+    Cmd =
 
     ; keyboard shortcut (e.g. Ctrl-Alt-F)
-    Key = 
+    Key =
 
     ; name shown in command palette (introduced in version 3.6)
     Name =
@@ -1074,67 +1074,67 @@ Shortcuts [
 Themes [
   [
     ; name of the theme, as shown in the Settings / Theme menu
-    Name = 
+    Name =
 
     ; color of text in menus, toolbar, tabs and sidebars
-    TextColor = 
+    TextColor =
 
     ; background color of the window around the document
-    BackgroundColor = 
+    BackgroundColor =
 
     ; background color of toolbar, tabs, sidebars and dialogs
-    ControlBackgroundColor = 
+    ControlBackgroundColor =
 
     ; background color of the active tab; if empty, uses ControlBackgroundColor
     ; (introduced in version 3.7)
-    ActiveTabBackgroundColor = 
+    ActiveTabBackgroundColor =
 
     ; background color of inactive tabs; if empty, derived from
     ; ControlBackgroundColor (introduced in version 3.7)
-    InactiveTabBackgroundColor = 
+    InactiveTabBackgroundColor =
 
     ; color of clickable links in the UI
-    LinkColor = 
+    LinkColor =
 
     ; color of disabled (grayed out) text; if empty, derived from the colors
     ; above (introduced in version 3.7)
-    DisabledTextColor = 
+    DisabledTextColor =
 
     ; color of secondary / muted text like the page label; if empty, derived
     ; from the colors above (introduced in version 3.7)
-    DarkerTextColor = 
+    DarkerTextColor =
 
     ; background color of a control the mouse is over; if empty, derived from
     ; the colors above (introduced in version 3.7)
-    HotBackgroundColor = 
+    HotBackgroundColor =
 
     ; color of control borders and separators; if empty, derived from the colors
     ; above (introduced in version 3.7)
-    EdgeColor = 
+    EdgeColor =
 
     ; border color of a control the mouse is over; if empty, derived from the
     ; colors above (introduced in version 3.7)
-    HotEdgeColor = 
+    HotEdgeColor =
 
     ; border color of a disabled control; if empty, derived from the colors
     ; above (introduced in version 3.7)
-    DisabledEdgeColor = 
+    DisabledEdgeColor =
 
     ; background color of error messages; if empty, derived from the colors
     ; above (introduced in version 3.7)
-    ErrorBackgroundColor = 
+    ErrorBackgroundColor =
 
     ; background color of notification tips; if empty, derived from the colors
     ; above (introduced in version 3.7)
-    NotificationBackgroundColor = 
+    NotificationBackgroundColor =
 
     ; background color of a highlighted notification tip; if empty, derived from
     ; the colors above (introduced in version 3.7)
-    NotificationHighlightColor = 
+    NotificationHighlightColor =
 
     ; text color of a highlighted notification tip; if empty, derived from the
     ; colors above (introduced in version 3.7)
-    NotificationHighlightTextColor = 
+    NotificationHighlightTextColor =
 
     ; if true, apply the theme colors to Windows controls and window areas too
     ColorizeControls = false
@@ -1145,13 +1145,13 @@ Themes [
 TabGroups [
   [
     ; name of the tab group, as shown when restoring it
-    Name = 
+    Name =
 
     ; documents that belong to this tab group
     TabFiles [
       [
         ; path of the document
-        Path = 
+        Path =
       ]
     ]
   ]
@@ -1221,7 +1221,7 @@ FileStates [
     EBookUI [
         ; font family for this document (e.g. Segoe UI, Microsoft YaHei); empty
         ; uses EBookUI.FontName (introduced in version 3.7)
-        FontName = 
+        FontName =
 
         ; font size in points for this document; 0 uses EBookUI.FontSize
         ; (introduced in version 3.7)
@@ -1246,11 +1246,11 @@ FileStates [
 
         ; whether the CSS in this document is ignored: true or false; empty uses
         ; EBookUI.IgnoreDocumentCSS (introduced in version 3.7)
-        IgnoreDocumentCSS = 
+        IgnoreDocumentCSS =
 
         ; additional CSS applied to this document; empty uses EBookUI.CustomCSS
         ; (introduced in version 3.7)
-        CustomCSS = 
+        CustomCSS =
     ]
 
     ; data required to determine which parts of the table of contents have been
@@ -1274,11 +1274,11 @@ FileStates [
 
     ; if given, overrides the background color for this document (introduced in
     ; version 3.7)
-    BgCol = 
+    BgCol =
 
     ; if given, overrides the tab color for this document (introduced in version
     ; 3.7)
-    TabCol = 
+    TabCol =
 
     ; number of times this document has been opened recently
     OpenCount = 0
