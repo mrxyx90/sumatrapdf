@@ -112,10 +112,6 @@ static bool IsPointOnVisualButton(HWND hwnd, POINT ptScreen) {
     GetClientRect(hwnd, &rc);
     POINT ptClient = ptScreen;
     ScreenToClient(hwnd, &ptClient);
-    if (!PtInRect(&rc, ptClient)) {
-        return false;
-    }
-    InflateRect(&rc, -DpiScale(2), -DpiScale(2));
     return PtInRect(&rc, ptClient) != FALSE;
 }
 
