@@ -121,10 +121,11 @@ function want(s: State, what: string, cond: boolean): void {
   }
 }
 
+// the box a new free text annotation opens with: on the canvas, empty
 function findEditBox(canvas: number): number {
   let found = 0;
   enumChildWindows(canvas, (hwnd) => {
-    if (getClassName(hwnd) !== "Edit" || !getControlText(hwnd).startsWith("This is a text")) {
+    if (getClassName(hwnd) !== "Edit" || getControlText(hwnd).length !== 0) {
       return true;
     }
     found = hwnd;

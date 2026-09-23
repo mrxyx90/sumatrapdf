@@ -73,6 +73,8 @@ constexpr float kFreeTextLineHeight = 1.2f;
 constexpr float kFreeTextWidthSlack = 1.02f;
 // measure at a big size and scale down: GDI+ rounds a lot at 12 px
 constexpr float kFreeTextMeasureSize = 96.f;
+// alpha of the "start typing here" hint, so it reads as a hint and not as text
+constexpr BYTE kHintAlpha = 110;
 
 // The same values the create path will use, so the preview shows what the
 // click creates.
@@ -89,14 +91,21 @@ static float FreeTextPadding(const AnnotCreateArgs& args) {
     return args.borderWidth > 0 ? (float)args.borderWidth * 2.f : 0.f;
 }
 
-static Str FreeTextPlacementContent(const AnnotCreateArgs& args) {
+// What the preview box shows: the annotation's own text, or, when it has none,
+// the hint the in-place editor will show too. The hint is only drawn, never
+// written to the PDF.
+static Str FreeTextPlacementText(const AnnotCreateArgs& args) {
     if (str::IsEmptyOrWhiteSpace(args.content)) {
-        return StrL(kDefaultFreeTextContent);
+        return StrL(kFreeTextPlaceholder);
     }
     return args.content;
 }
 
-// Size, in page units, of a box that fits one line of the annotation's text.
+static bool FreeTextShowsHint(const AnnotCreateArgs& args) {
+    return str::IsEmptyOrWhiteSpace(args.content);
+}
+
+// Size, in page units, of a box that fits one line of what the box shows.
 static SizeF FreeTextPlacementPageSize(const AnnotCreateArgs& args) {
     float fontSize = (float)FreeTextFontSize(args);
     float pad = FreeTextPadding(args);
@@ -106,7 +115,7 @@ static SizeF FreeTextPlacementPageSize(const AnnotCreateArgs& args) {
         Gdiplus::Graphics gs(hdc);
         // Arial has Helvetica's metrics, which is what MuPDF's "Helv" is
         Gdiplus::Font font(L"Arial", kFreeTextMeasureSize, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-        WStr text = ToWStrTemp(FreeTextPlacementContent(args));
+        WStr text = ToWStrTemp(FreeTextPlacementText(args));
         // MeasureString with no layout rect: no wrapping, and its generous
         // side bearings keep us from under-measuring vs MuPDF's Helvetica
         RectF measured = MeasureTextStandard(&gs, &font, text);
@@ -1149,6 +1158,10 @@ static void PaintFreeTextPlacement(MainWindow* win, HDC hdc, DisplayModel* dm) {
     float fontDy = std::max((float)FreeTextFontSize(args) * scale, 4.f);
     Gdiplus::Color textCol = args.col.parsedOk ? GdiRgbFromColor(args.col.col) : Gdiplus::Color(255, 0, 0, 0);
     Gdiplus::Color bgCol = args.bgCol.parsedOk ? GdiRgbFromColor(args.bgCol.col) : Gdiplus::Color(255, 255, 255, 255);
+    if (FreeTextShowsHint(args)) {
+        // the hint lies under the text that is still to come
+        textCol = Gdiplus::Color(kHintAlpha, textCol.GetR(), textCol.GetG(), textCol.GetB());
+    }
 
     Gdiplus::Graphics gs(hdc);
     gs.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
@@ -1179,7 +1192,7 @@ static void PaintFreeTextPlacement(MainWindow* win, HDC hdc, DisplayModel* dm) {
     sf.SetLineAlignment(Gdiplus::StringAlignmentCenter);
     Gdiplus::RectF tr((Gdiplus::REAL)r.x + pad, (Gdiplus::REAL)r.y + pad, (Gdiplus::REAL)r.dx - (2 * pad),
                       (Gdiplus::REAL)r.dy - (2 * pad));
-    WStr content = ToWStrTemp(FreeTextPlacementContent(args));
+    WStr content = ToWStrTemp(FreeTextPlacementText(args));
     gs.DrawString(content.s, content.len, &font, tr, &sf, &text);
 }
 

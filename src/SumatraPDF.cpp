@@ -13898,9 +13898,9 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
     if (win->pdfAnnotationsToolbarEnabled) {
         SetSelectedAnnotation(tab, lastCreatedAnnot);
     }
-    // a new free text annotation is a box of placeholder text: put the caret
-    // in it rather than make the user find it again. Not for a paste, which
-    // brings the text it was copied from.
+    // a new free text annotation is an empty box with a hint in it: put the
+    // caret in it rather than make the user find it again. Not for a paste,
+    // which brings the text it was copied from.
     if (cmdId == CmdCreateAnnotFreeText && lastCreatedAnnot->type == AnnotationType::FreeText) {
         StartFreeTextInPlaceEdit(win, lastCreatedAnnot);
     } else if (openEdit) {

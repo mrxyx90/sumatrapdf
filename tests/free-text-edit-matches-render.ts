@@ -24,7 +24,7 @@ import { findCanvas, killAndWait, launchControlled, pressEscape, sendCommand } f
 
 type Rect = { x: number; y: number; dx: number; dy: number };
 
-const TEXT = "This is a text... and I'm here for it, with enough words to outgrow the box it started in";
+const TEXT = "Free text... and I'm here for it, with enough words to outgrow the box it started in";
 
 function makeBlankPdf(): string {
   return assemblePdf([
@@ -144,12 +144,13 @@ export async function testit(): Promise<void> {
     // creating a free text annotation opens the in-place editor on it
     sendMessage(frame, WM_COMMAND, cmdId("CmdCreateAnnotFreeText"), packCoords(120, 250));
     await waitForEdit(client, true);
-    const box = findBox(canvas, (t) => t.startsWith("This is a text"));
+    // a new annotation opens empty, with the hint drawn but not typed
+    const box = findBox(canvas, (t) => t.length === 0);
     if (!box) {
       throw new Error("free-text-edit-matches-render: placing a free text annotation did not open the editor");
     }
 
-    // replace the placeholder with one long line
+    // one long line typed into the empty box
     sendText(box, TEXT);
     const deadline = Date.now() + 5_000 * SLOW_BUILD_FACTOR;
     while (getControlText(box) !== TEXT) {

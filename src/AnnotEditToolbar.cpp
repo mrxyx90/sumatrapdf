@@ -2294,6 +2294,14 @@ struct FreeTextInPlaceEdit {
     Size size;
     Size minSize;
     int padding = 0;
+    // width of the move handle on the left, kept out of the text's margin
+    int gripDx = 0;
+    bool gripHot = false;
+    // dragging the handle: the box follows the pointer, the annotation is
+    // written to only once, when the button comes up
+    bool dragging = false;
+    Point dragGrab{};
+    Rect dragStartRect{};
     // what MuPDF will lay the text out with
     int textSize = 12;
     int borderWidth = 0;
@@ -2309,6 +2317,16 @@ constexpr float kFreeTextLineHeight = 1.2f;
 // GDI's Arial is not quite MuPDF's Helvetica; leave room rather than let the
 // annotation wrap a line the box showed whole
 constexpr float kInPlaceWidthSlack = 1.03f;
+
+// The handle that moves the annotation: a strip down the left edge of the box,
+// taken out of the text's left margin, with a dot grid drawn in it.
+constexpr int kGripDx = 11;
+constexpr int kGripDotDx = 2;
+constexpr int kGripDotGap = 2;
+constexpr int kGripDotCols = 2;
+constexpr int kGripDotRows = 3;
+// the strip under the pointer
+constexpr COLORREF kGripHotBg = MkGray(0xe8);
 
 static FreeTextInPlaceEdit gInPlace;
 static WNDPROC gInPlaceDefProc = nullptr;
@@ -2353,12 +2371,17 @@ static void SizeInPlaceEditToText() {
     }
     TempStr text = HwndGetTextTemp(gInPlace.hwnd);
     Size ts = MeasureInPlaceText(text);
+    if (SendMessageW(gInPlace.hwnd, WM_GETTEXTLENGTH, 0, 0) == 0) {
+        // an empty box shows the hint; be wide enough to show all of it
+        Size hint = MeasureInPlaceText(StrL(kFreeTextPlaceholder));
+        ts.dx = std::max(ts.dx, hint.dx);
+    }
     int pad = gInPlace.padding;
     // room for the caret past the last glyph
     int caret = std::max(DpiScale(3), 2);
     // big enough for the edit control to show the text...
     Size want;
-    want.dx = ts.dx + (2 * pad) + caret;
+    want.dx = ts.dx + (2 * pad) + gInPlace.gripDx + caret;
     want.dy = ts.dy + (2 * pad);
 
     // ...and big enough for MuPDF to lay it out the same way once the box is
@@ -2387,6 +2410,127 @@ static void SizeInPlaceEditToText() {
     SetWindowPos(gInPlace.hwnd, nullptr, 0, 0, want.dx, want.dy, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
+// `col` mixed towards white: 2 halves the distance to it, 4 quarters it
+static COLORREF WashOutColor(COLORREF col, int part) {
+    u8 r, g, b;
+    UnpackColor(col, r, g, b);
+    auto mix = [part](u8 c) { return (u8)(c + ((255 - c) / part)); };
+    return MkRgb(mix(r), mix(g), mix(b));
+}
+
+// The move handle and, in an empty box, the "start typing here" hint, painted
+// over what the edit control drew: neither of them is text in the control, so
+// neither of them is ever written to the annotation.
+static void PaintInPlaceChrome(HWND hwnd) {
+    HDC hdc = GetDC(hwnd);
+    if (!hdc) {
+        return;
+    }
+    RECT rc{};
+    GetClientRect(hwnd, &rc);
+    int gripDx = gInPlace.gripDx;
+    COLORREF col = WashOutColor(gInPlace.textCol, 2);
+
+    RECT strip{rc.left, rc.top, rc.left + gripDx, rc.bottom};
+    HBRUSH bg = CreateSolidBrush(gInPlace.gripHot ? kGripHotBg : kColWhite);
+    FillRect(hdc, &strip, bg);
+    DeleteObject(bg);
+
+    int dot = std::max(DpiScale(kGripDotDx), 2);
+    int gap = std::max(DpiScale(kGripDotGap), 2);
+    int gridDx = (kGripDotCols * dot) + ((kGripDotCols - 1) * gap);
+    int gridDy = (kGripDotRows * dot) + ((kGripDotRows - 1) * gap);
+    int x = rc.left + ((gripDx - gridDx) / 2);
+    int y = rc.top + (((rc.bottom - rc.top) - gridDy) / 2);
+    HBRUSH dots = CreateSolidBrush(col);
+    for (int row = 0; row < kGripDotRows; row++) {
+        for (int c = 0; c < kGripDotCols; c++) {
+            RECT d{x + (c * (dot + gap)), y + (row * (dot + gap)), 0, 0};
+            d.right = d.left + dot;
+            d.bottom = d.top + dot;
+            FillRect(hdc, &d, dots);
+        }
+    }
+    DeleteObject(dots);
+
+    // a hairline between the handle and the text
+    HPEN pen = CreatePen(PS_SOLID, 1, WashOutColor(gInPlace.textCol, 4));
+    HPEN prev = (HPEN)SelectObject(hdc, pen);
+    MoveToEx(hdc, rc.left + gripDx - 1, rc.top + 2, nullptr);
+    LineTo(hdc, rc.left + gripDx - 1, rc.bottom - 2);
+    SelectObject(hdc, prev);
+    DeleteObject(pen);
+
+    if (SendMessageW(hwnd, WM_GETTEXTLENGTH, 0, 0) == 0) {
+        RECT tr{};
+        SendMessageW(hwnd, EM_GETRECT, 0, (LPARAM)&tr);
+        SetBkMode(hdc, TRANSPARENT);
+        SetTextColor(hdc, col);
+        HdcDrawText(hdc, StrL(kFreeTextPlaceholder), Point{tr.left, tr.top},
+                    DT_SINGLELINE | DT_NOPREFIX | DT_EDITCONTROL | DT_NOCLIP, gInPlace.font);
+    }
+    ReleaseDC(hwnd, hdc);
+}
+
+static bool InPlaceGripContains(Point pt) {
+    return pt.x >= 0 && pt.x < gInPlace.gripDx;
+}
+
+static void UpdateInPlaceGripHover(HWND hwnd, Point pt) {
+    bool hot = InPlaceGripContains(pt);
+    if (hot == gInPlace.gripHot) {
+        return;
+    }
+    gInPlace.gripHot = hot;
+    RECT rc{};
+    GetClientRect(hwnd, &rc);
+    rc.right = gInPlace.gripDx;
+    InvalidateRect(hwnd, &rc, FALSE);
+}
+
+static void StartInPlaceDrag(HWND hwnd, Point pt) {
+    MainWindow* win = gInPlace.win;
+    DisplayModel* dm = win ? win->AsFixed() : nullptr;
+    if (!dm || !AnnotationIsLive(gInPlace.annot)) {
+        return;
+    }
+    gInPlace.dragging = true;
+    gInPlace.dragGrab = pt;
+    gInPlace.dragStartRect = dm->CvtToScreen(PageNo(gInPlace.annot), GetRect(gInPlace.annot));
+    SetCapture(hwnd);
+}
+
+static void DragInPlaceTo(HWND hwnd, Point pt) {
+    Rect r = gInPlace.dragStartRect;
+    r.x += pt.x - gInPlace.dragGrab.x;
+    r.y += pt.y - gInPlace.dragGrab.y;
+    SetWindowPos(hwnd, nullptr, r.x, r.y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+// `commit` writes the new position to the annotation; otherwise the box snaps
+// back to where the annotation is. Either way the box ends up on it, which is
+// also what keeps a drop on another page from moving the annotation there.
+static void EndInPlaceDrag(HWND hwnd, bool commit) {
+    gInPlace.dragging = false;
+    if (GetCapture() == hwnd) {
+        ReleaseCapture();
+    }
+    MainWindow* win = gInPlace.win;
+    DisplayModel* dm = win ? win->AsFixed() : nullptr;
+    Annotation* annot = gInPlace.annot;
+    if (!dm || !AnnotationIsLive(annot)) {
+        return;
+    }
+    int pageNo = PageNo(annot);
+    Rect moved = ChildPosWithinParent(hwnd);
+    if (commit && moved != gInPlace.dragStartRect && dm->GetPageNoByPoint(Point{moved.x, moved.y}) == pageNo) {
+        SetRect(annot, dm->CvtFromScreen(moved, pageNo));
+        AnnotChanged(gInPlace.tab);
+    }
+    Rect r = dm->CvtToScreen(pageNo, GetRect(annot));
+    SetWindowPos(hwnd, nullptr, r.x, r.y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
 // Scrolling and zooming move the annotation out from under the box.
 void RepositionFreeTextInPlaceEdit(MainWindow* win) {
     if (!IsEditingFreeTextInPlace(win)) {
@@ -2411,6 +2555,10 @@ void EndFreeTextInPlaceEdit(bool accept) {
     }
     gInPlaceEnding = true;
     HWND hwnd = gInPlace.hwnd;
+    if (gInPlace.dragging && GetCapture() == hwnd) {
+        ReleaseCapture();
+    }
+    gInPlace.dragging = false;
     HFONT font = gInPlace.font;
     MainWindow* win = gInPlace.win;
     WindowTab* tab = gInPlace.tab;
@@ -2486,6 +2634,49 @@ static LRESULT CALLBACK WndProcFreeTextInPlaceEdit(HWND hwnd, UINT msg, WPARAM w
                 return 0;
             }
             break;
+        case WM_PAINT: {
+            LRESULT res = CallWindowProcW(gInPlaceDefProc, hwnd, msg, wp, lp);
+            PaintInPlaceChrome(hwnd);
+            return res;
+        }
+        case WM_SETCURSOR:
+            // on the handle, the box says it can be moved
+            if (LOWORD(lp) == HTCLIENT && InPlaceGripContains(HwndGetCursorPos(hwnd))) {
+                SetCursorCached(IDC_SIZEALL);
+                return TRUE;
+            }
+            break;
+        case WM_LBUTTONDOWN: {
+            Point pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+            if (InPlaceGripContains(pt)) {
+                StartInPlaceDrag(hwnd, pt);
+                return 0;
+            }
+            break;
+        }
+        case WM_MOUSEMOVE: {
+            Point pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+            if (gInPlace.dragging) {
+                DragInPlaceTo(hwnd, pt);
+                return 0;
+            }
+            UpdateInPlaceGripHover(hwnd, pt);
+            break;
+        }
+        case WM_LBUTTONUP:
+            if (gInPlace.dragging) {
+                EndInPlaceDrag(hwnd, true);
+                return 0;
+            }
+            break;
+        case WM_CANCELMODE:
+        case WM_CAPTURECHANGED:
+            // capture lost: the drag is off, put the box back
+            if (gInPlace.dragging) {
+                EndInPlaceDrag(hwnd, false);
+                return 0;
+            }
+            break;
         case WM_NCCALCSIZE: {
             // reserve a 1px frame, drawn in WM_NCPAINT
             LRESULT res = CallWindowProcW(gInPlaceDefProc, hwnd, msg, wp, lp);
@@ -2517,6 +2708,10 @@ static LRESULT CALLBACK WndProcFreeTextInPlaceEdit(HWND hwnd, UINT msg, WPARAM w
                     PostMessageW(gInPlace.hwnd, WM_SETFOCUS, 0, 0);
                 }
                 break;
+            }
+            // a drag in progress has to land before the box goes away
+            if (gInPlace.dragging) {
+                EndInPlaceDrag(hwnd, true);
             }
             EndFreeTextInPlaceEdit(true);
             // only a click elsewhere gets here, and if that click was on the
@@ -2597,7 +2792,9 @@ bool StartFreeTextInPlaceEdit(MainWindow* win, Annotation* annot) {
     SetWindowTheme(hwnd, L"", L"");
     SetWindowFont(hwnd, font, TRUE);
     int pad = std::max(DpiScale(2), 1);
-    SendMessageW(hwnd, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(pad, pad));
+    int gripDx = std::max(DpiScale(kGripDx), 6);
+    // the text starts to the right of the move handle
+    SendMessageW(hwnd, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(pad + gripDx, pad));
     TempStr text = str::DupTemp(Contents(annot));
     str::NormalizeNewlinesToLFInPlace(text);
     text = str::LFToCRLFTemp(text);
@@ -2614,6 +2811,7 @@ bool StartFreeTextInPlaceEdit(MainWindow* win, Annotation* annot) {
     gInPlace.size = rc.Size();
     gInPlace.minSize = rc.Size();
     gInPlace.padding = pad;
+    gInPlace.gripDx = gripDx;
     gInPlace.textSize = textSize;
     gInPlace.borderWidth = borderWidth;
     gInPlace.fontPx = fontPx;

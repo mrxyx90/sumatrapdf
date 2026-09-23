@@ -176,8 +176,8 @@ export async function testit(): Promise<void> {
     // creating a free text annotation opens the in-place editor on it
     sendMessage(frame, WM_COMMAND, cmdId("CmdCreateAnnotFreeText"), packCoords(120, 250));
     s = await waitForEdit(client, true);
-    if (!s.text.startsWith("This is a text")) {
-      throw new Error(`free-text-in-place-edit: box shows "${s.text}", want the annotation's text`);
+    if (s.text.length !== 0) {
+      throw new Error(`free-text-in-place-edit: box shows "${s.text}", a new one must be empty`);
     }
     const annotRect = await selectedRect(client);
     if (Math.abs(s.rect.x - annotRect.x) > 3 || Math.abs(s.rect.y - annotRect.y) > 3) {
@@ -186,7 +186,7 @@ export async function testit(): Promise<void> {
           `at ${annotRect.x},${annotRect.y}\n${s.raw}`,
       );
     }
-    const box = findBox(canvas, (t) => t.startsWith("This is a text"));
+    const box = findBox(canvas, (t) => t.length === 0);
     if (!box) {
       throw new Error("free-text-in-place-edit: the edit control is not a child of the canvas");
     }

@@ -2503,11 +2503,11 @@ Annotation* EngineMupdfCreateAnnotation(EngineBase* engine, int pageNo, PointF p
                 if (args->quadding > kQuaddingLeft) {
                     pdf_set_annot_quadding(ctx, annot, args->quadding);
                 }
+                // no text is a box waiting to be typed in, not one filled
+                // with a placeholder the reader has to delete first
                 const char* content = CStrTemp(args->content);
                 if (!str::IsEmptyOrWhiteSpace(Str(content))) {
                     pdf_set_annot_contents(ctx, annot, content);
-                } else {
-                    pdf_set_annot_contents(ctx, annot, kDefaultFreeTextContent);
                 }
                 int fontSize = args->textSize;
                 if (fontSize <= 0) {

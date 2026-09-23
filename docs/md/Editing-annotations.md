@@ -58,6 +58,8 @@ You can also create an annotation object at the mouse location:
 
 Click a selected shape annotation (including polygon, polyline, and ink) and drag to move it.
 
+Free text opens as an empty box with a **start typing here** hint in it; the hint is not text and is never saved. While you type, the handle on the box's left edge drags the annotation somewhere else on the page.
+
 To put a picture of your signature (or any other image) on a PDF page:
 
 - right-click the page → **Document → Insert Image...**, or
