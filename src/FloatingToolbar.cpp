@@ -750,8 +750,8 @@ static void StartFloatingPageInPlaceEdit(FloatingToolbar* tb, Rect widgetBounds)
 
     HWND parent = tb->host->native;
     int boxH = widgetBounds.dy;
-    float topPt = std::max((float)DpiScale(9), (float)boxH * 0.30f);
-    int fontPx = (int)(topPt * (float)DpiGet() / 72.f);
+    float fontSizePt = std::max((float)DpiScale(8), (float)boxH * 0.26f);
+    int fontPx = (int)(fontSizePt * (float)DpiGet() / 72.f);
 
     int x = widgetBounds.x + DpiScale(2);
     int w = widgetBounds.dx - DpiScale(4);
@@ -815,7 +815,7 @@ struct FloatingPageWidget : VirtButton {
         int pageCount = ctrl ? ctrl->PageCount() : 0;
 
         TempStr curStr = pageNo > 0 ? fmt("%d", pageNo) : StrL("-");
-        TempStr totalStr = pageCount > 0 ? fmt("/ %d", pageCount) : StrL("");
+        TempStr totalStr = pageCount > 0 ? fmt("%d", pageCount) : StrL("");
 
         Color txtCol = ThemeWindowTextColor();
         Color subCol = MkRgb(0x80, 0x80, 0x80); // Neutral mid-grey visible on light & dark themes
@@ -823,11 +823,10 @@ struct FloatingPageWidget : VirtButton {
         Rect rc = ctx.bounds;
         int boxH = rc.dy;
 
-        float topPt = std::max((float)DpiScale(9), (float)boxH * 0.30f);
-        float botPt = std::max((float)DpiScale(7), (float)boxH * 0.22f);
+        float fontSizePt = std::max((float)DpiScale(8), (float)boxH * 0.26f);
 
-        PlatformFont* fontTop = GetPlatformFont(StrL("Segoe UI"), topPt, PlatformFontStyle::Bold);
-        PlatformFont* fontBot = GetPlatformFont(StrL("Segoe UI"), botPt, PlatformFontStyle::Regular);
+        PlatformFont* fontTop = GetPlatformFont(StrL("Segoe UI"), fontSizePt, PlatformFontStyle::Bold);
+        PlatformFont* fontBot = GetPlatformFont(StrL("Segoe UI"), fontSizePt, PlatformFontStyle::Regular);
 
         Rect rcTop = rc;
         rcTop.dy = boxH * 50 / 100;
@@ -840,6 +839,14 @@ struct FloatingPageWidget : VirtButton {
         ctx.gfx->DrawText(curStr, rcTop, flags, fontTop, txtCol);
 
         if (pageCount > 0) {
+            Size szTot = ctx.gfx->MeasureText(totalStr, fontBot);
+            int lineW = std::min(szTot.dx, rc.dx - DpiScale(6));
+            int lineX = rc.x + (rc.dx - lineW) / 2;
+            int lineY = rc.y + rcTop.dy;
+
+            Color lineCol = MkRgb(0x8c, 0x8c, 0x8c);
+            ctx.gfx->DrawLine({lineX, lineY, lineW, 1}, lineCol, DpiScale(1));
+
             ctx.gfx->DrawText(totalStr, rcBot, flags, fontBot, subCol);
         }
     }
