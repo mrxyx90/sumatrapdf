@@ -157,7 +157,6 @@ struct WebviewWnd : WindowBase {
 
     bool initStarted = false;
     bool initFailed = false;
-    bool useMobileUserAgent = false;
     // desired visibility: OnControllerReady respects this so a host can create
     // the control hidden (tab probe / deferred show) without the async ready
     // callback flipping it visible again. Default true matches hosts that call

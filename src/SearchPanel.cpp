@@ -297,6 +297,35 @@ static void OnWebSearchHistoryChanged(void* ctx, bool, bool) {
     RelayoutSearchPanel(win);
 }
 
+struct SearchPopupWindow {
+    HWND hwnd = nullptr;
+    HWND hwndBack = nullptr;
+    HWND hwndForward = nullptr;
+    WebviewWnd* webView = nullptr;
+    Str engineName;
+};
+
+static SearchPopupWindow* gSearchPopupWnd = nullptr;
+
+static bool OnWebSearchNavigationStarting(void* ctx, Str url, bool newWindow) {
+    if (newWindow && ctx) {
+        WebviewWnd* wv = nullptr;
+        if (gSearchPopupWnd && ctx == gSearchPopupWnd) {
+            wv = gSearchPopupWnd->webView;
+        } else {
+            MainWindow* win = (MainWindow*)ctx;
+            if (IsMainWindowValidAndNotClosing(win)) {
+                wv = win->webSearchWebView;
+            }
+        }
+        if (wv) {
+            wv->Navigate(url);
+            return false;
+        }
+    }
+    return true;
+}
+
 void CreateSearchPanel(MainWindow* win) {
     if (!win) {
         return;
@@ -401,8 +430,8 @@ void OpenSearchSelectionInSidebar(MainWindow* win, Str engineName, Str url) {
 
     if (!win->webSearchWebView) {
         auto* webView = new WebviewWnd();
-        webView->useMobileUserAgent = true;
         webView->events.ctx = win;
+        webView->events.navigationStarting = OnWebSearchNavigationStarting;
         webView->events.navigationCompleted = OnWebSearchWebViewNavigated;
         webView->events.historyChanged = OnWebSearchHistoryChanged;
         TempStr localAppData = GetSpecialFolderTemp(CSIDL_LOCAL_APPDATA);
@@ -447,16 +476,6 @@ static void SetPopupTitleBarThemeColor(HWND hwnd) {
     DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, &txtCol, sizeof(txtCol));
     DarkModeApplyToTitleBar(hwnd);
 }
-
-struct SearchPopupWindow {
-    HWND hwnd = nullptr;
-    HWND hwndBack = nullptr;
-    HWND hwndForward = nullptr;
-    WebviewWnd* webView = nullptr;
-    Str engineName;
-};
-
-static SearchPopupWindow* gSearchPopupWnd = nullptr;
 
 static LRESULT CALLBACK WndProcPopupBackBtn(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId, DWORD_PTR refData) {
     auto* popup = (SearchPopupWindow*)refData;
@@ -724,8 +743,8 @@ void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url) {
         SetWindowSubclass(popup->hwndForward, WndProcPopupForwardBtn, NextSubclassId(), (DWORD_PTR)popup);
 
         auto* webView = new WebviewWnd();
-        webView->useMobileUserAgent = true;
         webView->events.ctx = popup;
+        webView->events.navigationStarting = OnWebSearchNavigationStarting;
         webView->events.historyChanged = OnPopupHistoryChanged;
         TempStr localAppData = GetSpecialFolderTemp(CSIDL_LOCAL_APPDATA);
         TempStr safeName = str::ReplaceTemp(engineName, StrL(" "), StrL("_"));

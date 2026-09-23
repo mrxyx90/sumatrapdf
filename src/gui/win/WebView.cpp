@@ -640,7 +640,7 @@ class webview2_new_window_handler : public ICoreWebView2NewWindowRequestedEventH
         return E_NOINTERFACE;
     }
     HRESULT STDMETHODCALLTYPE Invoke(ICoreWebView2* /*sender*/, ICoreWebView2NewWindowRequestedEventArgs* args) {
-        if (!args || !m_wnd || !m_wnd->events.navigationStarting) {
+        if (!args || !m_wnd) {
             return S_OK;
         }
         WCHAR* uri = nullptr;
@@ -651,7 +651,11 @@ class webview2_new_window_handler : public ICoreWebView2NewWindowRequestedEventH
         CoTaskMemFree(uri);
         args->put_Handled(TRUE);
         if (url) {
-            m_wnd->events.navigationStarting(m_wnd->events.ctx, url, true);
+            if (m_wnd->events.navigationStarting) {
+                m_wnd->events.navigationStarting(m_wnd->events.ctx, url, true);
+            } else {
+                m_wnd->Navigate(url);
+            }
         }
         return S_OK;
     }
@@ -1283,15 +1287,6 @@ void WebviewWnd::OnControllerReady(ICoreWebView2Controller* controller) {
         settings->put_AreDefaultScriptDialogsEnabled(FALSE);
         settings->put_IsStatusBarEnabled(FALSE);
         settings->put_IsZoomControlEnabled(FALSE);
-
-        if (useMobileUserAgent) {
-            ICoreWebView2Settings2* settings2 = nullptr;
-            if (SUCCEEDED(settings->QueryInterface(IID_PPV_ARGS(&settings2))) && settings2) {
-                settings2->put_UserAgent(L"Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1");
-                settings2->Release();
-            }
-        }
-
         settings->Release();
     }
 
