@@ -479,14 +479,23 @@ static TempStr GetEdgeExePathTemp() {
 }
 
 void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url) {
-    int w = DpiScale(550);
-    int h = DpiScale(1050);
     Rect rcWork = GetWorkAreaRect({}, win ? win->hwndFrame : nullptr);
-    if (h > rcWork.dy) {
-        h = rcWork.dy;
+
+    // Reference values at 100% DPI on 1920x1080: size (450, 810), position (1035, 30)
+    int w = DpiScale(450);
+    int h = std::min(DpiScale(810), rcWork.dy - DpiScale(40));
+    int x = rcWork.x + (int)((i64)1015 * rcWork.dx / 1920);
+    int y = rcWork.y + DpiScale(30);
+
+    if (x + w > rcWork.x + rcWork.dx) {
+        x = rcWork.x + rcWork.dx - w;
     }
-    int x = rcWork.x + rcWork.dx - w;
-    int y = rcWork.y + rcWork.dy - h;
+    if (x < rcWork.x) {
+        x = rcWork.x;
+    }
+    if (y + h > rcWork.y + rcWork.dy) {
+        y = rcWork.y;
+    }
 
     TempStr edgeExe = GetEdgeExePathTemp();
     TempStr localAppData = GetSpecialFolderTemp(CSIDL_LOCAL_APPDATA);
