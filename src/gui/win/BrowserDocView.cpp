@@ -352,6 +352,17 @@ bool BrowserDocView::NavigationStarting(void* ctx, Str url, bool newWindow) {
     if (!view || !view->cb) {
         return false;
     }
+    // Once WebView2 is showing an external page, don't route ordinary
+    // http(s)-to-http(s) navigations through the CHM controller. Google and
+    // other sites can issue several same-tab navigations per click; keeping
+    // these in Chromium avoids host-side callback/re-entry latency.
+    if (!newWindow && view->externalPage && IsExternalUrl(url)) {
+        view->webviewScrollPos = Point(-1, -1);
+        return true;
+    }
+    if (!IsExternalUrl(url)) {
+        view->externalPage = false;
+    }
     bool allow = view->cb->OnBeforeNavigate(url, newWindow);
     // drop the previous page's position so GetScrollPos() does not keep a stale
     // y while the new document (or hash) is still applying
@@ -371,6 +382,7 @@ void BrowserDocView::NavigationCompleted(void* ctx, Str url, bool success) {
     if (view->wv) {
         view->wv->RegisterForwardingDropTarget();
     }
+    view->externalPage = IsExternalUrl(url);
     view->cb->OnDocumentComplete(url);
     // after zoom / restore have applied: init scripts may have missed this
     // document, and hash navigation often never fires a 'scroll' event
