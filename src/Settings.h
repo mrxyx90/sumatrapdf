@@ -1080,7 +1080,7 @@ struct Settings {
     // if true, documents that were still open when the last window was
     // closed (SessionData) are reopened at startup
     bool restoreSession;
-    char* activeSessionTabs;
+    Str activeSessionTabs;
     // if true, open documents in the already running SumatraPDF instead of
     // starting a new one
     bool reuseInstance;

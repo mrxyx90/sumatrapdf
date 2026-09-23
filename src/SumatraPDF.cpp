@@ -178,14 +178,14 @@ static int MaxSessionTabsToRestore() {
     if (!SettingsRestoreSession()) {
         return 0;
     }
-    const char* s = gSettings->activeSessionTabs;
-    if (!s || len(s) == 0 || str::EqI(Str(s), StrL("all")) || str::EqI(Str(s), StrL("true"))) {
+    Str s = gSettings->activeSessionTabs;
+    if (len(s) == 0 || str::EqI(s, StrL("all")) || str::EqI(s, StrL("true"))) {
         return 999999;
     }
-    if (str::EqI(Str(s), StrL("0")) || str::EqI(Str(s), StrL("false"))) {
+    if (str::EqI(s, StrL("0")) || str::EqI(s, StrL("false"))) {
         return 0;
     }
-    int val = atoi(s);
+    int val = atoi(CStrTemp(s));
     return val > 0 ? val : 999999;
 }
 
