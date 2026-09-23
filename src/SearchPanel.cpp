@@ -308,6 +308,46 @@ static bool OnWebSearchNavigationStarting(void* ctx, Str url, bool newWindow) {
     return true;
 }
 
+static DWORD gEdgeSearchPid = 0;
+static HANDLE gEdgeSearchProcess = nullptr;
+
+struct FindProcessWndData {
+    DWORD pid = 0;
+    HWND hwnd = nullptr;
+};
+
+static BOOL CALLBACK EnumProcessWindowsProc(HWND hwnd, LPARAM lp) {
+    auto* data = (FindProcessWndData*)lp;
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (pid == data->pid && IsWindowVisible(hwnd)) {
+        data->hwnd = hwnd;
+        return FALSE;
+    }
+    return TRUE;
+}
+
+static HWND GetHwndForProcess(DWORD pid) {
+    if (pid == 0) return nullptr;
+    FindProcessWndData data{ pid, nullptr };
+    EnumWindows(EnumProcessWindowsProc, (LPARAM)&data);
+    return data.hwnd;
+}
+
+static void CloseEdgeSearchProcess() {
+    if (gEdgeSearchPid != 0) {
+        HWND hwnd = GetHwndForProcess(gEdgeSearchPid);
+        if (hwnd) {
+            PostMessageW(hwnd, WM_CLOSE, 0, 0);
+        }
+    }
+    if (gEdgeSearchProcess) {
+        CloseHandle(gEdgeSearchProcess);
+        gEdgeSearchProcess = nullptr;
+    }
+    gEdgeSearchPid = 0;
+}
+
 void CreateSearchPanel(MainWindow* win) {
     if (!win) {
         return;
@@ -320,6 +360,7 @@ void DestroySearchPanel(MainWindow* win) {
     if (!win) {
         return;
     }
+    CloseEdgeSearchProcess();
     win->webSearchWebViewReady = false;
     if (win->hwndSearchBack) {
         DestroyWindow(win->hwndSearchBack);
@@ -479,9 +520,11 @@ static TempStr GetEdgeExePathTemp() {
 }
 
 void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url) {
+    CloseEdgeSearchProcess();
+
     Rect rcWork = GetWorkAreaRect({}, win ? win->hwndFrame : nullptr);
 
-    // Reference values at 100% DPI on 1920x1080: size (450, 810), position (1035, 30)
+    // Reference values at 100% DPI on 1920x1080: size (450, 810), position (1015, 30)
     int w = DpiScale(450);
     int h = std::min(DpiScale(810), rcWork.dy - DpiScale(40));
     int x = rcWork.x + (int)((i64)1015 * rcWork.dx / 1920);
@@ -504,12 +547,27 @@ void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url) {
     TempStr params = fmt("--app=\"%s\" --user-data-dir=\"%s\" --window-size=%d,%d --window-position=%d,%d",
                          url, profileDir, w, h, x, y);
 
-    bool ok = LaunchFileShell(edgeExe, params);
-    if (!ok) {
+    TempStr cmdLine = fmt("\"%s\" %s", edgeExe, params);
+    STARTUPINFOW si{ sizeof(si) };
+    PROCESS_INFORMATION pi{};
+    TempWStr cmdW = ToWStrTemp(cmdLine);
+    if (CreateProcessW(nullptr, cmdW.s, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
+        gEdgeSearchPid = pi.dwProcessId;
+        gEdgeSearchProcess = pi.hProcess;
+        CloseHandle(pi.hThread);
+    } else {
         LaunchBrowser(url);
     }
 }
 
-void OnSearchPopupFrameSize(MainWindow*, int) {
-    // Edge process handles its own window sizing/minimizing
+void OnSearchPopupFrameSize(MainWindow*, int sizeType) {
+    if (sizeType != SIZE_MINIMIZED) {
+        return;
+    }
+    if (gEdgeSearchPid != 0) {
+        HWND hwndPopup = GetHwndForProcess(gEdgeSearchPid);
+        if (hwndPopup && IsWindow(hwndPopup)) {
+            ShowWindow(hwndPopup, SW_MINIMIZE);
+        }
+    }
 }
