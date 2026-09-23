@@ -646,6 +646,13 @@ void ChmModel::OnDocumentComplete(Str url) {
 // loading if returns false.
 // for HtmlWindowCallback (called through htmlWindowCb)
 bool ChmModel::OnBeforeNavigate(Str url, bool newWindow) {
+    // External-to-external navigation is already handled by Chromium. Avoid
+    // even touching CHM scroll state on these clicks; this callback is on the
+    // WebView2 NavigationStarting path and must stay as cheap as possible.
+    if (!newWindow && IsExternalUrl(currentPageUrl) && IsExternalUrl(url)) {
+        return true;
+    }
+
     // save scroll pos of the page we're leaving, unless DisplayPage() already
     // saved it before triggering this programmatic navigation
     if (skipNextBeforeNavigateScrollSave) {
