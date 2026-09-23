@@ -656,6 +656,14 @@ bool ChmModel::OnBeforeNavigate(Str url, bool newWindow) {
         SaveHtmlScrollPos();
     }
 
+    // Once an external page is already hosted by WebView2 (for example
+    // Google), keep subsequent http(s) navigations inside WebView2. This avoids
+    // bouncing every click back through Sumatra's external-link handler.
+    // New-window requests still leave the embedded browser.
+    if (!newWindow && IsExternalUrl(currentPageUrl) && IsExternalUrl(url)) {
+        return true;
+    }
+
     // external links and new-window requests leave the embedded browser
     // (same as FixedPageUI / SimpleBrowserWindow; issue #5920 for downloads).
     // Do this before FocusFrame(false): changing focus on WebView2 during
