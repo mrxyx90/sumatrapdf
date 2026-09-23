@@ -315,30 +315,58 @@ struct EdgeProcessInfo {
 
 static Vec<EdgeProcessInfo> gEdgeSearchProcesses;
 
-struct FindProcessWndData {
-    DWORD pid = 0;
-    HWND hwnd = nullptr;
-};
-
-static BOOL CALLBACK EnumProcessWindowsProc(HWND hwnd, LPARAM lp) {
-    auto* data = (FindProcessWndData*)lp;
-    DWORD pid = 0;
-    GetWindowThreadProcessId(hwnd, &pid);
-    if (pid == data->pid && IsWindowVisible(hwnd)) {
-        data->hwnd = hwnd;
-        return FALSE;
+static BOOL CALLBACK EnumMinimizeEdgeSearchWindowsProc(HWND hwnd, LPARAM) {
+    if (!IsWindowVisible(hwnd)) {
+        return TRUE;
+    }
+    WCHAR className[256];
+    if (GetClassNameW(hwnd, className, dimofi(className)) > 0 && wstr::Eq(WStr(className), WStrL(L"Chrome_WidgetWin_1"))) {
+        DWORD pid = 0;
+        GetWindowThreadProcessId(hwnd, &pid);
+        if (pid != 0) {
+            HANDLE hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+            if (hProc) {
+                WCHAR exePath[MAX_PATH];
+                DWORD dwSize = dimof(exePath);
+                if (QueryFullProcessImageNameW(hProc, 0, exePath, &dwSize)) {
+                    if (str::ContainsI(ToUtf8Temp(WStr(exePath)), StrL("msedge.exe"))) {
+                        ShowWindow(hwnd, SW_MINIMIZE);
+                    }
+                }
+                CloseHandle(hProc);
+            }
+        }
     }
     return TRUE;
 }
 
-static HWND GetHwndForProcess(DWORD pid) {
-    if (pid == 0) return nullptr;
-    FindProcessWndData data{ pid, nullptr };
-    EnumWindows(EnumProcessWindowsProc, (LPARAM)&data);
-    return data.hwnd;
+static BOOL CALLBACK EnumCloseEdgeSearchWindowsProc(HWND hwnd, LPARAM) {
+    if (!IsWindowVisible(hwnd)) {
+        return TRUE;
+    }
+    WCHAR className[256];
+    if (GetClassNameW(hwnd, className, dimofi(className)) > 0 && wstr::Eq(WStr(className), WStrL(L"Chrome_WidgetWin_1"))) {
+        DWORD pid = 0;
+        GetWindowThreadProcessId(hwnd, &pid);
+        if (pid != 0) {
+            HANDLE hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+            if (hProc) {
+                WCHAR exePath[MAX_PATH];
+                DWORD dwSize = dimof(exePath);
+                if (QueryFullProcessImageNameW(hProc, 0, exePath, &dwSize)) {
+                    if (str::ContainsI(ToUtf8Temp(WStr(exePath)), StrL("msedge.exe"))) {
+                        PostMessageW(hwnd, WM_CLOSE, 0, 0);
+                    }
+                }
+                CloseHandle(hProc);
+            }
+        }
+    }
+    return TRUE;
 }
 
 void CloseAllEdgeSearchProcesses() {
+    EnumWindows(EnumCloseEdgeSearchWindowsProc, 0);
     for (const auto& info : gEdgeSearchProcesses) {
         if (info.hProcess) {
             TerminateProcess(info.hProcess, 0);
@@ -573,26 +601,9 @@ void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url) {
     }
 }
 
-static void MinimizeAllWindowsForProcess(DWORD pid) {
-    if (pid == 0) return;
-    EnumWindows([](HWND hwnd, LPARAM lp) -> BOOL {
-        DWORD targetPid = (DWORD)lp;
-        DWORD windowPid = 0;
-        GetWindowThreadProcessId(hwnd, &windowPid);
-        if (windowPid == targetPid && IsWindowVisible(hwnd)) {
-            ShowWindow(hwnd, SW_MINIMIZE);
-        }
-        return TRUE;
-    }, (LPARAM)pid);
-}
-
 void OnSearchPopupFrameSize(MainWindow*, int sizeType) {
     if (sizeType != SIZE_MINIMIZED) {
         return;
     }
-    for (const auto& info : gEdgeSearchProcesses) {
-        if (info.pid != 0) {
-            MinimizeAllWindowsForProcess(info.pid);
-        }
-    }
+    EnumWindows(EnumMinimizeEdgeSearchWindowsProc, 0);
 }
