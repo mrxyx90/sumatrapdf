@@ -8,4 +8,5 @@ void DestroySearchPanel(MainWindow* win);
 void OpenSearchSelectionInSidebar(MainWindow* win, Str engineName, Str url);
 void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url);
 void OnSearchPopupFrameSize(MainWindow* win, int sizeType);
+void CloseAllEdgeSearchProcesses();
 void RelayoutSearchPanel(MainWindow* win);

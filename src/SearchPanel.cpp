@@ -308,8 +308,12 @@ static bool OnWebSearchNavigationStarting(void* ctx, Str url, bool newWindow) {
     return true;
 }
 
-static DWORD gEdgeSearchPid = 0;
-static HANDLE gEdgeSearchProcess = nullptr;
+struct EdgeProcessInfo {
+    DWORD pid = 0;
+    HANDLE hProcess = nullptr;
+};
+
+static Vec<EdgeProcessInfo> gEdgeSearchProcesses;
 
 struct FindProcessWndData {
     DWORD pid = 0;
@@ -334,18 +338,19 @@ static HWND GetHwndForProcess(DWORD pid) {
     return data.hwnd;
 }
 
-static void CloseEdgeSearchProcess() {
-    if (gEdgeSearchPid != 0) {
-        HWND hwnd = GetHwndForProcess(gEdgeSearchPid);
-        if (hwnd) {
-            PostMessageW(hwnd, WM_CLOSE, 0, 0);
+void CloseAllEdgeSearchProcesses() {
+    for (const auto& info : gEdgeSearchProcesses) {
+        if (info.pid != 0) {
+            HWND hwnd = GetHwndForProcess(info.pid);
+            if (hwnd) {
+                PostMessageW(hwnd, WM_CLOSE, 0, 0);
+            }
+        }
+        if (info.hProcess) {
+            CloseHandle(info.hProcess);
         }
     }
-    if (gEdgeSearchProcess) {
-        CloseHandle(gEdgeSearchProcess);
-        gEdgeSearchProcess = nullptr;
-    }
-    gEdgeSearchPid = 0;
+    VecReset(gEdgeSearchProcesses);
 }
 
 void CreateSearchPanel(MainWindow* win) {
@@ -360,7 +365,7 @@ void DestroySearchPanel(MainWindow* win) {
     if (!win) {
         return;
     }
-    CloseEdgeSearchProcess();
+    CloseAllEdgeSearchProcesses();
     win->webSearchWebViewReady = false;
     if (win->hwndSearchBack) {
         DestroyWindow(win->hwndSearchBack);
@@ -520,8 +525,6 @@ static TempStr GetEdgeExePathTemp() {
 }
 
 void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url) {
-    CloseEdgeSearchProcess();
-
     TempStr edgeExe = GetEdgeExePathTemp();
     if (len(edgeExe) == 0) {
         LaunchBrowser(url);
@@ -557,8 +560,8 @@ void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url) {
     PROCESS_INFORMATION pi{};
     TempWStr cmdW = ToWStrTemp(cmdLine);
     if (CreateProcessW(nullptr, cmdW.s, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
-        gEdgeSearchPid = pi.dwProcessId;
-        gEdgeSearchProcess = pi.hProcess;
+        EdgeProcessInfo info{ pi.dwProcessId, pi.hProcess };
+        VecAppend(gEdgeSearchProcesses, info);
         CloseHandle(pi.hThread);
     } else {
         LaunchBrowser(url);
@@ -569,10 +572,12 @@ void OnSearchPopupFrameSize(MainWindow*, int sizeType) {
     if (sizeType != SIZE_MINIMIZED) {
         return;
     }
-    if (gEdgeSearchPid != 0) {
-        HWND hwndPopup = GetHwndForProcess(gEdgeSearchPid);
-        if (hwndPopup && IsWindow(hwndPopup)) {
-            ShowWindow(hwndPopup, SW_MINIMIZE);
+    for (const auto& info : gEdgeSearchProcesses) {
+        if (info.pid != 0) {
+            HWND hwndPopup = GetHwndForProcess(info.pid);
+            if (hwndPopup && IsWindow(hwndPopup)) {
+                ShowWindow(hwndPopup, SW_MINIMIZE);
+            }
         }
     }
 }

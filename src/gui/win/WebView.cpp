@@ -17,6 +17,7 @@
 #include "WebView2EnvironmentOptions.h"
 #endif
 #include "gui/win/WebView.h"
+#include "SearchPanel.h"
 
 static Kind kindWebView = "webView";
 
@@ -1914,6 +1915,7 @@ static void CancelEnvRetryTimer() {
 
 void WebViewShutdown() {
     gWebViewShuttingDown = true;
+    CloseAllEdgeSearchProcesses();
     CancelEnvRetryTimer();
     FailPendingWebviews();
     ResetSharedEnvironment();
