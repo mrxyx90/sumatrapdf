@@ -26,6 +26,8 @@
 #include "Notifications.h"
 #include "Toolbar.h"
 #include "CommandPalette.h"
+#include "DocController.h"
+#include "Translations.h"
 
 constexpr const WCHAR* kFloatingToolbarClassName = L"SumatraFloatingToolbar";
 constexpr int kFloatingToolbarIconSize = 22;
@@ -442,12 +444,12 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
         return;
     }
 
-    int w = DpiScale(2 * kFloatingToolbarMargin + kFloatingToolbarButtonSize);
-    int h = DpiScale(2 * kFloatingToolbarMargin +
-                     (int)dimof(gButtons) * kFloatingToolbarButtonSize +
-                     ((int)dimof(gButtons) - 1) * kFloatingToolbarGap +
-                     2 * kFloatingToolbarSeparatorGap +
-                     kFloatingToolbarButtonSize);
+    Rect client = tb->host->ClientRect();
+    int w = client.dx > 0 ? client.dx : DpiScale(2 * kFloatingToolbarMargin + kFloatingToolbarButtonSize);
+    int h = client.dy > 0 ? client.dy : DpiScale(2 * kFloatingToolbarMargin +
+                     (int)(dimof(gButtons) + 2) * kFloatingToolbarButtonSize +
+                     ((int)dimof(gButtons) + 1) * kFloatingToolbarGap +
+                     4 * kFloatingToolbarSeparatorGap);
 
     if (!FloatingToolbarIsForPdf(tb)) {
         ShowWindow(tb->host->native, SW_HIDE);
@@ -524,6 +526,15 @@ static void PositionFloatingToolbar(FloatingToolbar* tb) {
     tb->lastFrameRect = fr;
 }
 
+struct FloatingPageInPlaceEdit {
+    HWND hwndEdit = nullptr;
+    WNDPROC prevWndProc = nullptr;
+    FloatingToolbar* tb = nullptr;
+};
+
+static FloatingPageInPlaceEdit gFloatingPageEdit;
+static bool gInEndFloatingPageEdit = false;
+
 static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
     if (!tb || !ev) {
         return;
@@ -563,6 +574,27 @@ static void OnFloatingNativeMsg(FloatingToolbar* tb, VirtHostNativeMsg* ev) {
             ev->didHandle = true;
         }
         break;
+    case WM_CTLCOLOREDIT: {
+        HWND hEdit = (HWND)ev->lp;
+        if (hEdit && hEdit == gFloatingPageEdit.hwndEdit) {
+            HDC hdc = (HDC)ev->wp;
+            Color bg = ThemeControlBackgroundColor();
+            Color txt = ThemeWindowTextColor();
+            COLORREF bgRef = RGB(GetRed(bg), GetGreen(bg), GetBlue(bg));
+            COLORREF txtRef = RGB(GetRed(txt), GetGreen(txt), GetBlue(txt));
+            SetBkColor(hdc, bgRef);
+            SetTextColor(hdc, txtRef);
+            static HBRUSH sBgBrush = nullptr;
+            if (sBgBrush) {
+                DeleteObject(sBgBrush);
+            }
+            sBgBrush = CreateSolidBrush(bgRef);
+            ev->res = (LRESULT)sBgBrush;
+            ev->didHandle = true;
+            return;
+        }
+        break;
+    }
     case WM_LBUTTONDOWN: {
         Point p(GET_X_LPARAM(ev->lp), GET_Y_LPARAM(ev->lp));
         ILayout* hit = ElementFromPoint(tb->host->vroot, p);
@@ -641,6 +673,178 @@ static VirtCtrl* MakeFloatingToolbarSeparator(int width) {
     return sep;
 }
 
+static void EndFloatingPageInPlaceEdit(bool accept) {
+    if (!gFloatingPageEdit.hwndEdit || gInEndFloatingPageEdit) {
+        return;
+    }
+    gInEndFloatingPageEdit = true;
+    HWND hwndEdit = gFloatingPageEdit.hwndEdit;
+    WNDPROC prevProc = gFloatingPageEdit.prevWndProc;
+    FloatingToolbar* tb = gFloatingPageEdit.tb;
+
+    if (accept && tb && tb->win && tb->win->IsDocLoaded() && tb->win->ctrl) {
+        WCHAR buf[64];
+        GetWindowTextW(hwndEdit, buf, dimof(buf));
+        Str s = ToUtf8Temp(WStr(buf));
+        int newPage = tb->win->ctrl->GetPageByLabel(s);
+        if (!tb->win->ctrl->ValidPageNo(newPage)) {
+            newPage = ParseInt(s);
+        }
+        if (tb->win->ctrl->ValidPageNo(newPage)) {
+            tb->win->ctrl->GoToPage(newPage, true);
+        }
+    }
+
+    gFloatingPageEdit = {};
+    SetWindowLongPtrW(hwndEdit, GWLP_WNDPROC, (LONG_PTR)prevProc);
+    DestroyWindow(hwndEdit);
+
+    if (tb && tb->win) {
+        if (tb->win->hwndCanvas) {
+            HwndSetFocus(tb->win->hwndCanvas);
+        } else if (tb->win->hwndFrame) {
+            HwndSetFocus(tb->win->hwndFrame);
+        }
+        if (tb->host) {
+            tb->host->Invalidate(false);
+        }
+    }
+    gInEndFloatingPageEdit = false;
+}
+
+static LRESULT CALLBACK WndProcFloatingPageInPlaceEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    WNDPROC prevProc = gFloatingPageEdit.prevWndProc;
+    switch (msg) {
+    case WM_KEYDOWN:
+        if (wp == VK_RETURN) {
+            EndFloatingPageInPlaceEdit(true);
+            return 0;
+        }
+        if (wp == VK_ESCAPE) {
+            EndFloatingPageInPlaceEdit(false);
+            return 0;
+        }
+        break;
+    case WM_CHAR:
+        if (wp == VK_RETURN || wp == VK_ESCAPE) {
+            return 0;
+        }
+        break;
+    case WM_KILLFOCUS:
+        if (!gInEndFloatingPageEdit) {
+            EndFloatingPageInPlaceEdit(false);
+        }
+        return 0;
+    }
+    return CallWindowProcW(prevProc, hwnd, msg, wp, lp);
+}
+
+static void StartFloatingPageInPlaceEdit(FloatingToolbar* tb, Rect widgetBounds) {
+    if (!tb || !tb->win || !tb->win->IsDocLoaded() || !tb->host) {
+        return;
+    }
+    EndFloatingPageInPlaceEdit(false);
+
+    int pageNo = tb->win->ctrl ? tb->win->ctrl->CurrentPageNo() : 1;
+    TempStr pageStr = fmt("%d", pageNo);
+
+    HWND parent = tb->host->native;
+    int boxH = widgetBounds.dy;
+    float topPt = std::max((float)DpiScale(9), (float)boxH * 0.30f);
+    int fontPx = (int)(topPt * (float)DpiGet() / 72.f);
+
+    int x = widgetBounds.x + DpiScale(2);
+    int w = widgetBounds.dx - DpiScale(4);
+    int h = fontPx + DpiScale(4);
+    int topHalfH = boxH * 50 / 100;
+    int y = widgetBounds.y + (topHalfH - h) / 2;
+
+    HWND hwndEdit = CreateWindowExW(
+        0, L"EDIT", ToWStrTemp(pageStr).s,
+        WS_CHILD | WS_VISIBLE | ES_CENTER | ES_AUTOHSCROLL,
+        x, y, w, h, parent, nullptr, GetModuleHandleW(nullptr), nullptr);
+
+    if (!hwndEdit) {
+        return;
+    }
+
+    HFONT font = CreateFontW(-fontPx, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+                             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                             CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+    SendMessageW(hwndEdit, WM_SETFONT, (WPARAM)font, TRUE);
+
+    gFloatingPageEdit.hwndEdit = hwndEdit;
+    gFloatingPageEdit.prevWndProc = (WNDPROC)SetWindowLongPtrW(hwndEdit, GWLP_WNDPROC, (LONG_PTR)WndProcFloatingPageInPlaceEdit);
+    gFloatingPageEdit.tb = tb;
+
+    HwndSetFocus(hwndEdit);
+    EditSelectAll(hwndEdit);
+}
+
+struct FloatingPageWidget : VirtButton {
+    FloatingToolbar* toolbar = nullptr;
+
+    FloatingPageWidget() : VirtButton(StrL("")) {
+        id = PageInfoId;
+        onMouseEnter = MkMethod0<VirtButton, &VirtButton::OnMouseEnter>(this);
+        onMouseLeave = MkMethod0<VirtButton, &VirtButton::OnMouseLeave>(this);
+        align = VirtTextAlign::Center;
+        SetTooltip(Tr("Go to Page"));
+    }
+
+    Size GetIdealSize() override {
+        int sideLen = DpiScale(kFloatingToolbarButtonSize);
+        return {sideLen, sideLen};
+    }
+
+    void OnClick(VirtMouseEvent*) {
+        if (toolbar) {
+            StartFloatingPageInPlaceEdit(toolbar, bounds);
+        }
+    }
+
+    void Paint(VirtPaintCtx& ctx) override {
+        bool isHovered = IsEnabled() && HasFlag(vwfHovered);
+        Color bgCol = isHovered ? FloatingHover() : FloatingBg();
+        ctx.gfx->FillRoundedRect(ctx.bounds, DpiScale(6), bgCol, bgCol);
+
+        MainWindow* win = toolbar ? toolbar->win : nullptr;
+        DocController* ctrl = (win && win->IsDocLoaded()) ? win->ctrl : nullptr;
+
+        int pageNo = ctrl ? ctrl->CurrentPageNo() : 0;
+        int pageCount = ctrl ? ctrl->PageCount() : 0;
+
+        TempStr curStr = pageNo > 0 ? fmt("%d", pageNo) : StrL("-");
+        TempStr totalStr = pageCount > 0 ? fmt("/ %d", pageCount) : StrL("");
+
+        Color txtCol = ThemeWindowTextColor();
+        Color subCol = MkRgb(0x80, 0x80, 0x80); // Neutral mid-grey visible on light & dark themes
+
+        Rect rc = ctx.bounds;
+        int boxH = rc.dy;
+
+        float topPt = std::max((float)DpiScale(9), (float)boxH * 0.30f);
+        float botPt = std::max((float)DpiScale(7), (float)boxH * 0.22f);
+
+        PlatformFont* fontTop = GetPlatformFont(StrL("Segoe UI"), topPt, PlatformFontStyle::Bold);
+        PlatformFont* fontBot = GetPlatformFont(StrL("Segoe UI"), botPt, PlatformFontStyle::Regular);
+
+        Rect rcTop = rc;
+        rcTop.dy = boxH * 50 / 100;
+
+        Rect rcBot = rc;
+        rcBot.y = rc.y + rcTop.dy;
+        rcBot.dy = boxH - rcTop.dy;
+
+        u32 flags = gfxTextCenter | gfxTextVCenter | gfxTextSingleLine;
+        ctx.gfx->DrawText(curStr, rcTop, flags, fontTop, txtCol);
+
+        if (pageCount > 0) {
+            ctx.gfx->DrawText(totalStr, rcBot, flags, fontBot, subCol);
+        }
+    }
+};
+
 static void BuildFloatingToolbar(FloatingToolbar* tb) {
     auto* box = new VBox();
     box->alignCross = CrossAxisAlign::Stretch;
@@ -685,9 +889,25 @@ static void BuildFloatingToolbar(FloatingToolbar* tb) {
     screenshot->onClick = MkFunc1(OnFloatingButton, tb);
     box->AddChild(screenshot);
 
+    box->AddChild(new Spacer(DpiScale(kFloatingToolbarSeparatorGap), DpiScale(kFloatingToolbarSeparatorGap)));
+    box->AddChild(MakeFloatingToolbarSeparator(buttonSize));
+    box->AddChild(new Spacer(DpiScale(kFloatingToolbarSeparatorGap), DpiScale(kFloatingToolbarSeparatorGap)));
+
+    auto* pageWidget = new FloatingPageWidget();
+    pageWidget->toolbar = tb;
+    pageWidget->onClick = MkMethod1<FloatingPageWidget, VirtMouseEvent*, &FloatingPageWidget::OnClick>(pageWidget);
+    box->AddChild(pageWidget);
+
     auto* content = new Padding(box, Insets{kFloatingToolbarMargin, kFloatingToolbarMargin,
                                              kFloatingToolbarMargin, kFloatingToolbarMargin});
     tb->host->SetLayoutSizedToContent(content);
+}
+
+void UpdateFloatingToolbarPageText(MainWindow* win) {
+    if (!win || !win->floatingToolbar || !win->floatingToolbar->host) {
+        return;
+    }
+    win->floatingToolbar->host->Invalidate(false);
 }
 
 void FloatingToolbarCreate(MainWindow* win) {

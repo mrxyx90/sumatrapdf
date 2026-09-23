@@ -36,6 +36,7 @@
 #include "SearchAndDDE.h"
 #include "AnnotEditToolbar.h"
 #include "AnnotFilterToolbar.h"
+#include "FloatingToolbar.h"
 #include "Tabs.h"
 #include "PagePosition.h"
 #include "gui/Layout.h"
@@ -1183,6 +1184,7 @@ void UpdateToolbarPageText(MainWindow* win, int pageCount, bool updateOnly) {
     tb->pageTotal->SetText(txt);
     host->Relayout();
     host->Invalidate(true);
+    UpdateFloatingToolbarPageText(win);
 }
 
 static TempStr ShortcutToolbarToolTipTemp(Shortcut* shortcut) {
