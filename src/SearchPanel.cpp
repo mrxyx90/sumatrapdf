@@ -522,6 +522,12 @@ static TempStr GetEdgeExePathTemp() {
 void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url) {
     CloseEdgeSearchProcess();
 
+    TempStr edgeExe = GetEdgeExePathTemp();
+    if (len(edgeExe) == 0) {
+        LaunchBrowser(url);
+        return;
+    }
+
     Rect rcWork = GetWorkAreaRect({}, win ? win->hwndFrame : nullptr);
 
     // Reference values at 100% DPI on 1920x1080: size (450, 810), position (1015, 30)
@@ -540,7 +546,6 @@ void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url) {
         y = rcWork.y;
     }
 
-    TempStr edgeExe = GetEdgeExePathTemp();
     TempStr localAppData = GetSpecialFolderTemp(CSIDL_LOCAL_APPDATA);
     TempStr profileDir = path::JoinTemp(localAppData, StrL("SumatraPDF\\EdgeSearchProfile"));
 
