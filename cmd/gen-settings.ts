@@ -1646,7 +1646,7 @@ const globalPrefs: Field[] = [
   field(
     "Theme",
     Str,
-    "Light",
+    "System",
     "the name of the theme to use. System follows the Windows light/dark app mode " +
       "and switches between LastLightTheme and LastDarkTheme. Built-in themes: " +
       "Light, Dark, Light Warm, Dark from 3.5, Charcoal, Solarized Light, " +
@@ -1668,10 +1668,10 @@ const globalPrefs: Field[] = [
       "The switch in the manual's top-right corner changes it",
   ).ver("3.7"),
   // remembered by the light/dark toggle and System theme; not user-facing knobs
-  field("LastLightTheme", Str, "", "the light theme the light/dark toggle and the System theme switch to")
+  field("LastLightTheme", Str, "Light", "the light theme the light/dark toggle and the System theme switch to")
     .internal()
     .ver("3.7"),
-  field("LastDarkTheme", Str, "", "the dark theme the light/dark toggle and the System theme switch to")
+  field("LastDarkTheme", Str, "Charcoal", "the dark theme the light/dark toggle and the System theme switch to")
     .internal()
     .ver("3.7"),
   // Full text is shown in Advanced Settings and Advanced-options-settings.md

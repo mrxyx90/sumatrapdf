@@ -358,7 +358,7 @@ TabWidth = 300
 ; Light, Solarized Dark, Dracula, Nebula, Greeny, Choco, Purpy, One Dark,
 ; Monokai, Nord, GitHub Dark, Catppuccin Mocha, Tokyo Night, Gruvbox, Night Owl,
 ; Ayu, Palenight, System (introduced in version 3.5)
-Theme = Light
+Theme = System
 
 ; color theme of the in-app manual (F1): app (follow the app's theme), light or
 ; dark. The switch in the manual's top-right corner changes it (introduced in
@@ -367,11 +367,11 @@ HelpTheme = app
 
 ; the light theme the light/dark toggle and the System theme switch to
 ; (introduced in version 3.7)
-LastLightTheme =
+LastLightTheme = Light
 
 ; the dark theme the light/dark toggle and the System theme switch to
 ; (introduced in version 3.7)
-LastDarkTheme =
+LastDarkTheme = Charcoal
 
 ; how MuPDF-rendered documents (PDF, XPS, DjVu, EPUB, MOBI, FB2, CBZ, images,
 ; etc.) use UI / FixedPageUI colors for the page. Values: off (document's own

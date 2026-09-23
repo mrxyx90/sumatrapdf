@@ -502,6 +502,7 @@ static void UpdateGuiColorsFromTheme();
 int gFirstSetThemeCmdId;
 int gLastSetThemeCmdId;
 int gCurrSetThemeCmdId;
+int gSysSetThemeCmdId = 0;
 
 static Vec<Theme*>* gThemes = nullptr;
 static int gThemeCount;
@@ -559,6 +560,11 @@ void FreeThemes() {
     gParsedThemes = nullptr;
 }
 
+// when true, the user picked "System" as the theme: we resolve it to the
+// preferred light/dark theme from the OS setting and re-resolve when Windows
+// switches modes; gSettings->theme stays "System"
+static bool gThemeFollowsSystem = false;
+
 void CreateThemeCommands() {
     FreeThemes();
     DetectHighContrastMode();
@@ -582,24 +588,27 @@ void CreateThemeCommands() {
     RecalcUseHighContrast();
 
     CustomCommand* cmd;
+    auto* sysArgs = NewStringArg(kCmdArgTheme, StrL("System"));
+    cmd = CreateCustomCommand(StrL("System"), CmdSetTheme, sysArgs, Tr("Set theme 'System'"));
+    gSysSetThemeCmdId = cmd->id;
+    gFirstSetThemeCmdId = cmd->id;
+
     for (int i = 0; i < gThemeCount; i++) {
         Theme* theme = (*gThemes)[i];
         Str themeName = theme->name;
         auto* args = NewStringArg(kCmdArgTheme, themeName);
         cmd = CreateCustomCommand(themeName, CmdSetTheme, args, fmt(Tr("Set theme '%s'").s, themeName));
-        if (i == 0) {
-            gFirstSetThemeCmdId = cmd->id;
-        } else if (i == gThemeCount - 1) {
+        if (i == gThemeCount - 1) {
             gLastSetThemeCmdId = cmd->id;
         }
     }
-    gCurrSetThemeCmdId = gFirstSetThemeCmdId + gCurrThemeIndex;
-}
 
-// when true, the user picked "System" as the theme: we resolve it to the
-// preferred light/dark theme from the OS setting and re-resolve when Windows
-// switches modes; gSettings->theme stays "System"
-static bool gThemeFollowsSystem = false;
+    if (gThemeFollowsSystem) {
+        gCurrSetThemeCmdId = gSysSetThemeCmdId;
+    } else {
+        gCurrSetThemeCmdId = gFirstSetThemeCmdId + 1 + gCurrThemeIndex;
+    }
+}
 
 // remember the last explicitly used light and dark theme so the light/dark
 // toggle and the System theme know what to switch to
@@ -642,7 +651,7 @@ void SetThemeByIndex(int themeIdx) {
     gThemeFollowsSystem = false;
     bool themeChanged = (gCurrThemeIndex != themeIdx);
     gCurrThemeIndex = themeIdx;
-    gCurrSetThemeCmdId = gFirstSetThemeCmdId + themeIdx;
+    gCurrSetThemeCmdId = gFirstSetThemeCmdId + 1 + themeIdx;
     gCurrentTheme = (*gThemes)[gCurrThemeIndex];
     RecalcUseHighContrast(); // it depends on which theme is current
     str::ReplaceWithCopy(&gSettings->theme, gCurrentTheme->name);
@@ -750,17 +759,20 @@ static int GetPreferredDarkThemeIndex() {
     if (idx >= 0) {
         return idx;
     }
-    idx = GetThemeByName(StrL("Dark"));
+    idx = GetThemeByName(StrL("Charcoal"));
     return idx >= 0 ? idx : 0;
 }
 
 void SetTheme(Str name) {
-    if (str::EqI(name, StrL("System"))) {
+    if (str::IsEmptyOrWhiteSpace(name) || str::EqI(name, StrL("System"))) {
         // resolve to the preferred light/dark theme from the OS setting; keep
         // "System" in prefs so it persists and keeps following the OS
         int idx = OsAppsUseDarkMode() ? GetPreferredDarkThemeIndex() : GetPreferredLightThemeIndex();
         SetThemeByIndex(idx);
         gThemeFollowsSystem = true;
+        if (gSysSetThemeCmdId != 0) {
+            gCurrSetThemeCmdId = gSysSetThemeCmdId;
+        }
         str::ReplaceWithCopy(&gSettings->theme, StrL("System"));
         return;
     }
