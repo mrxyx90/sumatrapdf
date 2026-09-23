@@ -340,13 +340,8 @@ static HWND GetHwndForProcess(DWORD pid) {
 
 void CloseAllEdgeSearchProcesses() {
     for (const auto& info : gEdgeSearchProcesses) {
-        if (info.pid != 0) {
-            HWND hwnd = GetHwndForProcess(info.pid);
-            if (hwnd) {
-                PostMessageW(hwnd, WM_CLOSE, 0, 0);
-            }
-        }
         if (info.hProcess) {
+            TerminateProcess(info.hProcess, 0);
             CloseHandle(info.hProcess);
         }
     }
@@ -494,12 +489,19 @@ void OpenSearchSelectionInSidebar(MainWindow* win, Str engineName, Str url) {
 }
 
 static TempStr GetEdgeExePathTemp() {
+    static Str cachedPath = {};
+    if (len(cachedPath) > 0) {
+        return str::DupTemp(cachedPath);
+    }
+
     TempStr p = ReadRegStrTemp(HKEY_LOCAL_MACHINE, StrL("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\msedge.exe"), {});
     if (len(p) > 0 && file::Exists(p)) {
+        cachedPath = str::Dup(p);
         return p;
     }
     p = ReadRegStrTemp(HKEY_CURRENT_USER, StrL("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\msedge.exe"), {});
     if (len(p) > 0 && file::Exists(p)) {
+        cachedPath = str::Dup(p);
         return p;
     }
 
@@ -509,6 +511,7 @@ static TempStr GetEdgeExePathTemp() {
     };
     for (Str cand : candidates) {
         if (file::Exists(cand)) {
+            cachedPath = str::Dup(cand);
             return str::DupTemp(cand);
         }
     }
@@ -517,10 +520,12 @@ static TempStr GetEdgeExePathTemp() {
     if (len(localAppData) > 0) {
         p = path::JoinTemp(localAppData, StrL("Microsoft\\Edge\\Application\\msedge.exe"));
         if (file::Exists(p)) {
+            cachedPath = str::Dup(p);
             return p;
         }
     }
 
+    cachedPath = StrL("msedge.exe");
     return StrL("msedge.exe");
 }
 
@@ -568,16 +573,26 @@ void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url) {
     }
 }
 
+static void MinimizeAllWindowsForProcess(DWORD pid) {
+    if (pid == 0) return;
+    EnumWindows([](HWND hwnd, LPARAM lp) -> BOOL {
+        DWORD targetPid = (DWORD)lp;
+        DWORD windowPid = 0;
+        GetWindowThreadProcessId(hwnd, &windowPid);
+        if (windowPid == targetPid && IsWindowVisible(hwnd)) {
+            ShowWindow(hwnd, SW_MINIMIZE);
+        }
+        return TRUE;
+    }, (LPARAM)pid);
+}
+
 void OnSearchPopupFrameSize(MainWindow*, int sizeType) {
     if (sizeType != SIZE_MINIMIZED) {
         return;
     }
     for (const auto& info : gEdgeSearchProcesses) {
         if (info.pid != 0) {
-            HWND hwndPopup = GetHwndForProcess(info.pid);
-            if (hwndPopup && IsWindow(hwndPopup)) {
-                ShowWindow(hwndPopup, SW_MINIMIZE);
-            }
+            MinimizeAllWindowsForProcess(info.pid);
         }
     }
 }

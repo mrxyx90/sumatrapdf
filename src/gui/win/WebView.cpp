@@ -2003,8 +2003,7 @@ static Microsoft::WRL::ComPtr<CoreWebView2EnvironmentOptions> CreateOfflineEnvir
         L"--disable-default-apps "
         L"--disable-features=AutofillServerCommunication,MediaRouter,OptimizationHints,Translate,"
         L"CertificateTransparencyComponentUpdater "
-        L"--metrics-recording-only "
-        L"--no-pings");
+        L"--metrics-recording-only");
     return options;
 }
 
