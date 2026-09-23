@@ -325,32 +325,34 @@ static bool IsEdgeSearchPid(DWORD pid) {
     return false;
 }
 
-static BOOL CALLBACK EnumMinimizeEdgeSearchWindowsProc(HWND hwnd, LPARAM) {
+enum class EdgeWindowAction {
+    Minimize,
+    Close
+};
+
+static BOOL CALLBACK EnumEdgeSearchWindowsProc(HWND hwnd, LPARAM lp) {
     if (!IsWindowVisible(hwnd)) {
         return TRUE;
     }
     DWORD pid = 0;
     GetWindowThreadProcessId(hwnd, &pid);
     if (IsEdgeSearchPid(pid)) {
-        ShowWindow(hwnd, SW_MINIMIZE);
+        auto action = (EdgeWindowAction)lp;
+        if (action == EdgeWindowAction::Minimize) {
+            ShowWindow(hwnd, SW_MINIMIZE);
+        } else if (action == EdgeWindowAction::Close) {
+            PostMessageW(hwnd, WM_CLOSE, 0, 0);
+        }
     }
     return TRUE;
 }
 
-static BOOL CALLBACK EnumCloseEdgeSearchWindowsProc(HWND hwnd, LPARAM) {
-    if (!IsWindowVisible(hwnd)) {
-        return TRUE;
-    }
-    DWORD pid = 0;
-    GetWindowThreadProcessId(hwnd, &pid);
-    if (IsEdgeSearchPid(pid)) {
-        PostMessageW(hwnd, WM_CLOSE, 0, 0);
-    }
-    return TRUE;
+static void ActOnEdgeSearchWindows(EdgeWindowAction action) {
+    EnumWindows(EnumEdgeSearchWindowsProc, (LPARAM)action);
 }
 
 void CloseAllEdgeSearchProcesses() {
-    EnumWindows(EnumCloseEdgeSearchWindowsProc, 0);
+    ActOnEdgeSearchWindows(EdgeWindowAction::Close);
     for (const auto& info : gEdgeSearchProcesses) {
         if (info.hProcess) {
             TerminateProcess(info.hProcess, 0);
@@ -552,11 +554,13 @@ void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url) {
 
     // Reference values at 100% DPI on 1920x1080: size (450, 815), position (1015, 21)
     int w = DpiScale(450);
-    int h = std::min(DpiScale(815), (int)(rcWork.dy * 0.85f));
-    int rightMargin = DpiScale(455);
-    int x = rcWork.x + rcWork.dx - w - rightMargin;
+    int h = std::min(DpiScale(815), rcWork.dy - DpiScale(40));
+    int x = rcWork.x + (int)((i64)1015 * rcWork.dx / 1920);
     int y = rcWork.y + DpiScale(21);
 
+    if (x + w > rcWork.x + rcWork.dx) {
+        x = rcWork.x + rcWork.dx - w;
+    }
     if (x < rcWork.x) {
         x = rcWork.x;
     }
@@ -587,5 +591,5 @@ void OnSearchPopupFrameSize(MainWindow*, int sizeType) {
     if (sizeType != SIZE_MINIMIZED) {
         return;
     }
-    EnumWindows(EnumMinimizeEdgeSearchWindowsProc, 0);
+    ActOnEdgeSearchWindows(EdgeWindowAction::Minimize);
 }
