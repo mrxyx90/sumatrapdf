@@ -566,11 +566,11 @@ void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url) {
 
     Rect rcWork = GetWorkAreaRect({}, win ? win->hwndFrame : nullptr);
 
-    // Reference values at 100% DPI on 1920x1080: size (450, 810), position (1015, 30)
+    // Reference values at 100% DPI on 1920x1080: size (450, 815), position (1015, 21)
     int w = DpiScale(450);
     int h = std::min(DpiScale(815), rcWork.dy - DpiScale(40));
     int x = rcWork.x + (int)((i64)1015 * rcWork.dx / 1920);
-    int y = rcWork.y + DpiScale(22);
+    int y = rcWork.y + DpiScale(21);
 
     if (x + w > rcWork.x + rcWork.dx) {
         x = rcWork.x + rcWork.dx - w;
