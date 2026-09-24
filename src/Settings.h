@@ -2129,7 +2129,7 @@ static const FieldInfo gSettingsFields[] = {
     {offsetof(Settings, searchUIFloating), SettingType::Bool, false},
     {offsetof(Settings, showFavorites), SettingType::Bool, false},
     {offsetof(Settings, sortFavoritesByName), SettingType::Bool, false},
-    {offsetof(Settings, showToc), SettingType::Bool, true},
+    {offsetof(Settings, showToc), SettingType::Bool, false},
     {offsetof(Settings, sidebarOnRight), SettingType::Bool, false},
     {offsetof(Settings, sidebarWindowSize), SettingType::String, (intptr_t)""},
     {offsetof(Settings, showLinks), SettingType::Bool, false},

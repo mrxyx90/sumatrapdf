@@ -1432,7 +1432,7 @@ const globalPrefs: Field[] = [
     "if true, favorites within each file are sorted alphabetically by name " +
       "(or page label); if false (the default), they are sorted by page number",
   ).ver("3.7"),
-  field("ShowToc", Bool, true, "if true, show the table of contents (Bookmarks) sidebar when the document has one"),
+  field("ShowToc", Bool, false, "if true, show the table of contents (Bookmarks) sidebar when the document has one"),
   field(
     "SidebarOnRight",
     Bool,
