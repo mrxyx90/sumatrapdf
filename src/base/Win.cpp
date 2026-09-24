@@ -438,6 +438,78 @@ struct AppWindowSearchCtx {
     HWND result = nullptr;
 };
 
+static TempStr GetProcessCommandLineTemp(DWORD pid) {
+    AutoCloseHandle hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+    if (!hProc.IsValid()) {
+        return {};
+    }
+
+    using NtQueryInformationProcessFn = NTSTATUS(WINAPI*)(HANDLE, ULONG, PVOID, ULONG, PULONG);
+    auto fn = (NtQueryInformationProcessFn)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtQueryInformationProcess");
+    if (!fn) {
+        return {};
+    }
+
+    struct ProcessBasicInformation {
+        PVOID reserved1;
+        PVOID pebBaseAddress;
+        PVOID reserved2[2];
+        ULONG_PTR uniqueProcessId;
+        PVOID reserved3;
+    };
+    struct UnicodeString {
+        USHORT length;
+        USHORT maxLength;
+        PWSTR buffer;
+    };
+    struct ProcessParameters {
+        BYTE reserved1[16];
+        PVOID reserved2[10];
+        UnicodeString imagePathName;
+        UnicodeString commandLine;
+    };
+    struct Peb {
+        BYTE reserved1[2];
+        BYTE beingDebugged;
+        BYTE reserved2[1];
+        PVOID reserved3[2];
+        PVOID ldr;
+        ProcessParameters* processParameters;
+    };
+
+    ProcessBasicInformation pbi{};
+    ULONG retLen = 0;
+    if (fn(hProc.Get(), 0, &pbi, sizeof(pbi), &retLen) < 0 || !pbi.pebBaseAddress) {
+        return {};
+    }
+
+    Peb peb{};
+    SIZE_T bytesRead = 0;
+    if (!ReadProcessMemory(hProc.Get(), pbi.pebBaseAddress, &peb, sizeof(peb), &bytesRead) ||
+        bytesRead != sizeof(peb) || !peb.processParameters) {
+        return {};
+    }
+
+    ProcessParameters params{};
+    if (!ReadProcessMemory(hProc.Get(), peb.processParameters, &params, sizeof(params), &bytesRead) ||
+        bytesRead != sizeof(params) || !params.commandLine.buffer || !params.commandLine.length) {
+        return {};
+    }
+
+    int cch = params.commandLine.length / sizeof(WCHAR);
+    WCHAR* buf = AllocArrayTemp<WCHAR>(cch + 1);
+    if (!buf) {
+        return {};
+    }
+
+    if (!ReadProcessMemory(hProc.Get(), params.commandLine.buffer, buf, params.commandLine.length, &bytesRead) ||
+        bytesRead != params.commandLine.length) {
+        return {};
+    }
+    buf[cch] = 0;
+    return ToUtf8Temp(WStr(buf, cch));
+}
+
 static bool CommandLineHasAppId(Str cmdLine, Str appId) {
     if (len(cmdLine) == 0 || len(appId) == 0) {
         return false;
@@ -448,10 +520,7 @@ static bool CommandLineHasAppId(Str cmdLine, Str appId) {
 
 static BOOL CALLBACK FindTopLevelWindowByAppIdProc(HWND hwnd, LPARAM lp) {
     auto* ctx = (AppWindowSearchCtx*)lp;
-    if (ctx->result || !IsWindowVisible(hwnd)) {
-        return TRUE;
-    }
-    if (GetWindowLongPtrW(hwnd, GWL_STYLE) & WS_CHILD) {
+    if (ctx->result || !IsWindowVisible(hwnd) || (GetWindowLongPtrW(hwnd, GWL_STYLE) & WS_CHILD)) {
         return TRUE;
     }
 
@@ -466,9 +535,30 @@ static BOOL CALLBACK FindTopLevelWindowByAppIdProc(HWND hwnd, LPARAM lp) {
         return TRUE;
     }
 
-    // The process command line is resolved by the helper below. Keep the
-    // window enumeration separate so this remains an HWND-level operation.
+    TempStr cmdLine = GetProcessCommandLineTemp(pid);
+    if (CommandLineHasAppId(cmdLine, ctx->appId)) {
+        ctx->result = hwnd;
+    }
     return TRUE;
+}
+
+HWND FindTopLevelWindowByAppId(Str appId) {
+    if (len(appId) == 0) {
+        return nullptr;
+    }
+    AppWindowSearchCtx ctx{appId, nullptr};
+    EnumWindows(FindTopLevelWindowByAppIdProc, (LPARAM)&ctx);
+    return ctx.result;
+}
+
+bool MinimizeTopLevelWindowByAppId(Str appId) {
+    HWND hwnd = FindTopLevelWindowByAppId(appId);
+    return hwnd ? (ShowWindow(hwnd, SW_MINIMIZE) != FALSE) : false;
+}
+
+bool CloseTopLevelWindowByAppId(Str appId) {
+    HWND hwnd = FindTopLevelWindowByAppId(appId);
+    return hwnd ? (PostMessageW(hwnd, WM_CLOSE, 0, 0) != FALSE) : false;
 }
 
 bool HwndIsVisible(HWND hwnd) {
