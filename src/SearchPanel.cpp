@@ -311,71 +311,95 @@ static bool OnWebSearchNavigationStarting(void* ctx, Str url, bool newWindow) {
 struct EdgeProcessInfo {
     DWORD pid = 0;
     HANDLE hProcess = nullptr;
-    HWND hwnd = nullptr;
+    Vec<HWND> hwnds;
+
+    EdgeProcessInfo() {}
+    EdgeProcessInfo(DWORD pid, HANDLE hProcess) : pid(pid), hProcess(hProcess) {}
 };
 
 static Vec<EdgeProcessInfo> gEdgeSearchProcesses;
 
-struct FindHwndData {
-    DWORD pid = 0;
-    HWND hwnd = nullptr;
+static bool IsEdgeSearchPid(DWORD pid) {
+    if (pid == 0) {
+        return false;
+    }
+    for (const auto& info : gEdgeSearchProcesses) {
+        if (info.pid == pid) {
+            return true;
+        }
+    }
+    return false;
+}
+
+struct FindAllHwndsData {
+    Vec<HWND> hwnds;
+
+    FindAllHwndsData() {}
 };
 
-// Callback to find visible top-level window for a process ID
-static BOOL CALLBACK FindProcessWindowProc(HWND hwnd, LPARAM lp) {
+// Callback to find all visible top-level windows for Edge search processes
+static BOOL CALLBACK FindAllEdgeWindowsProc(HWND hwnd, LPARAM lp) {
     if (!IsWindowVisible(hwnd)) {
         return TRUE;
     }
     DWORD pid = 0;
     GetWindowThreadProcessId(hwnd, &pid);
-    auto* data = (FindHwndData*)lp;
-    if (pid == data->pid) {
-        data->hwnd = hwnd;
-        return FALSE;
+    if (IsEdgeSearchPid(pid)) {
+        auto* data = (FindAllHwndsData*)lp;
+        if (!VecContains(data->hwnds, hwnd)) {
+            VecAppend(data->hwnds, hwnd);
+        }
     }
     return TRUE;
 }
 
-static HWND FindProcessWindow(DWORD pid) {
-    if (pid == 0) {
-        return nullptr;
-    }
-    FindHwndData data{ pid, nullptr };
-    EnumWindows(FindProcessWindowProc, (LPARAM)&data);
-    return data.hwnd;
+static Vec<HWND> FindAllEdgeWindows() {
+    FindAllHwndsData data;
+    EnumWindows(FindAllEdgeWindowsProc, (LPARAM)&data);
+    return data.hwnds;
 }
 
 struct EdgeHwndResult {
-    DWORD pid = 0;
-    HWND hwnd = nullptr;
+    Vec<HWND> hwnds;
+
+    EdgeHwndResult() {}
 };
 
-// UI thread callback to safely store the discovered HWND
-static void OnFoundEdgeHwndUI(EdgeHwndResult* res) {
+// UI thread callback to safely store all discovered HWNDs
+static void OnFoundEdgeHwndsUI(EdgeHwndResult* res) {
     if (!res) {
         return;
     }
-    for (auto& info : gEdgeSearchProcesses) {
-        if (info.pid == res->pid) {
-            info.hwnd = res->hwnd;
-            break;
+    for (HWND hwnd : res->hwnds) {
+        if (!IsWindow(hwnd)) {
+            continue;
+        }
+        DWORD pid = 0;
+        GetWindowThreadProcessId(hwnd, &pid);
+        for (auto& info : gEdgeSearchProcesses) {
+            if (info.pid == pid) {
+                if (!VecContains(info.hwnds, hwnd)) {
+                    VecAppend(info.hwnds, hwnd);
+                }
+                break;
+            }
         }
     }
     delete res;
 }
 
-// Poll for process HWND asynchronously on a background thread
+// Poll for process HWNDs asynchronously on a background thread
 static void PollEdgeHwndOnThread(void* param) {
     DWORD pid = (DWORD)(uintptr_t)param;
     if (pid == 0) {
         return;
     }
     for (int i = 0; i < 40; i++) {
-        HWND hwnd = FindProcessWindow(pid);
-        if (hwnd) {
-            auto* res = new EdgeHwndResult{ pid, hwnd };
-            uitask::Post(MkFunc0(OnFoundEdgeHwndUI, res), "UpdateEdgeHwnd");
-            break;
+        Vec<HWND> hwnds = FindAllEdgeWindows();
+        if (len(hwnds) > 0) {
+            auto* res = new EdgeHwndResult();
+            res->hwnds = hwnds;
+            uitask::Post(MkFunc0(OnFoundEdgeHwndsUI, res), "UpdateEdgeHwnd");
         }
         SleepInMs(50);
     }
@@ -383,8 +407,10 @@ static void PollEdgeHwndOnThread(void* param) {
 
 void CloseAllEdgeSearchProcesses() {
     for (auto& info : gEdgeSearchProcesses) {
-        if (info.hwnd && IsWindow(info.hwnd)) {
-            PostMessageW(info.hwnd, WM_CLOSE, 0, 0);
+        for (HWND hwnd : info.hwnds) {
+            if (IsWindow(hwnd)) {
+                PostMessageW(hwnd, WM_CLOSE, 0, 0);
+            }
         }
         if (info.hProcess) {
             if (WaitForSingleObject(info.hProcess, 200) == WAIT_TIMEOUT) {
@@ -392,6 +418,7 @@ void CloseAllEdgeSearchProcesses() {
             }
             CloseHandle(info.hProcess);
         }
+        VecReset(info.hwnds);
     }
     VecReset(gEdgeSearchProcesses);
 }
@@ -613,7 +640,7 @@ void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url) {
     PROCESS_INFORMATION pi{};
     TempWStr cmdW = ToWStrTemp(cmdLine);
     if (CreateProcessW(nullptr, cmdW.s, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
-        EdgeProcessInfo info{ pi.dwProcessId, pi.hProcess, nullptr };
+        EdgeProcessInfo info(pi.dwProcessId, pi.hProcess);
         VecAppend(gEdgeSearchProcesses, info);
         CloseHandle(pi.hThread);
         RunAsync(MkFunc0(PollEdgeHwndOnThread, (void*)(uintptr_t)pi.dwProcessId), StrL("PollEdgeHwnd"));
@@ -627,8 +654,10 @@ void OnSearchPopupFrameSize(MainWindow*, int sizeType) {
         return;
     }
     for (auto& info : gEdgeSearchProcesses) {
-        if (info.hwnd && IsWindow(info.hwnd)) {
-            ShowWindow(info.hwnd, SW_MINIMIZE);
+        for (HWND hwnd : info.hwnds) {
+            if (IsWindow(hwnd)) {
+                ShowWindow(hwnd, SW_MINIMIZE);
+            }
         }
     }
 }
