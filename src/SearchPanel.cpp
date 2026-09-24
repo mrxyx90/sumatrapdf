@@ -311,51 +311,85 @@ static bool OnWebSearchNavigationStarting(void* ctx, Str url, bool newWindow) {
 struct EdgeProcessInfo {
     DWORD pid = 0;
     HANDLE hProcess = nullptr;
+    HWND hwnd = nullptr;
 };
 
 static Vec<EdgeProcessInfo> gEdgeSearchProcesses;
 
-static bool IsEdgeSearchPid(DWORD pid) {
-    if (pid == 0) return false;
-    for (const auto& info : gEdgeSearchProcesses) {
-        if (info.pid == pid) {
-            return true;
-        }
-    }
-    return false;
-}
-
-enum class EdgeWindowAction {
-    Minimize,
-    Close
+struct FindHwndData {
+    DWORD pid = 0;
+    HWND hwnd = nullptr;
 };
 
-static BOOL CALLBACK EnumEdgeSearchWindowsProc(HWND hwnd, LPARAM lp) {
+// Callback to find visible top-level window for a process ID
+static BOOL CALLBACK FindProcessWindowProc(HWND hwnd, LPARAM lp) {
     if (!IsWindowVisible(hwnd)) {
         return TRUE;
     }
     DWORD pid = 0;
     GetWindowThreadProcessId(hwnd, &pid);
-    if (IsEdgeSearchPid(pid)) {
-        auto action = (EdgeWindowAction)lp;
-        if (action == EdgeWindowAction::Minimize) {
-            ShowWindow(hwnd, SW_MINIMIZE);
-        } else if (action == EdgeWindowAction::Close) {
-            PostMessageW(hwnd, WM_CLOSE, 0, 0);
-        }
+    auto* data = (FindHwndData*)lp;
+    if (pid == data->pid) {
+        data->hwnd = hwnd;
+        return FALSE;
     }
     return TRUE;
 }
 
-static void ActOnEdgeSearchWindows(EdgeWindowAction action) {
-    EnumWindows(EnumEdgeSearchWindowsProc, (LPARAM)action);
+static HWND FindProcessWindow(DWORD pid) {
+    if (pid == 0) {
+        return nullptr;
+    }
+    FindHwndData data{ pid, nullptr };
+    EnumWindows(FindProcessWindowProc, (LPARAM)&data);
+    return data.hwnd;
+}
+
+struct EdgeHwndResult {
+    DWORD pid = 0;
+    HWND hwnd = nullptr;
+};
+
+// UI thread callback to safely store the discovered HWND
+static void OnFoundEdgeHwndUI(EdgeHwndResult* res) {
+    if (!res) {
+        return;
+    }
+    for (auto& info : gEdgeSearchProcesses) {
+        if (info.pid == res->pid) {
+            info.hwnd = res->hwnd;
+            break;
+        }
+    }
+    delete res;
+}
+
+// Poll for process HWND asynchronously on a background thread
+static void PollEdgeHwndOnThread(void* param) {
+    DWORD pid = (DWORD)(uintptr_t)param;
+    if (pid == 0) {
+        return;
+    }
+    for (int i = 0; i < 40; i++) {
+        HWND hwnd = FindProcessWindow(pid);
+        if (hwnd) {
+            auto* res = new EdgeHwndResult{ pid, hwnd };
+            uitask::Post(MkFunc0(OnFoundEdgeHwndUI, res), "UpdateEdgeHwnd");
+            break;
+        }
+        SleepInMs(50);
+    }
 }
 
 void CloseAllEdgeSearchProcesses() {
-    ActOnEdgeSearchWindows(EdgeWindowAction::Close);
-    for (const auto& info : gEdgeSearchProcesses) {
+    for (auto& info : gEdgeSearchProcesses) {
+        if (info.hwnd && IsWindow(info.hwnd)) {
+            PostMessageW(info.hwnd, WM_CLOSE, 0, 0);
+        }
         if (info.hProcess) {
-            TerminateProcess(info.hProcess, 0);
+            if (WaitForSingleObject(info.hProcess, 200) == WAIT_TIMEOUT) {
+                TerminateProcess(info.hProcess, 0);
+            }
             CloseHandle(info.hProcess);
         }
     }
@@ -579,9 +613,10 @@ void OpenSearchSelectionInPopup(MainWindow* win, Str engineName, Str url) {
     PROCESS_INFORMATION pi{};
     TempWStr cmdW = ToWStrTemp(cmdLine);
     if (CreateProcessW(nullptr, cmdW.s, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
-        EdgeProcessInfo info{ pi.dwProcessId, pi.hProcess };
+        EdgeProcessInfo info{ pi.dwProcessId, pi.hProcess, nullptr };
         VecAppend(gEdgeSearchProcesses, info);
         CloseHandle(pi.hThread);
+        RunAsync(MkFunc0(PollEdgeHwndOnThread, (void*)(uintptr_t)pi.dwProcessId), StrL("PollEdgeHwnd"));
     } else {
         LaunchBrowser(url);
     }
@@ -591,5 +626,9 @@ void OnSearchPopupFrameSize(MainWindow*, int sizeType) {
     if (sizeType != SIZE_MINIMIZED) {
         return;
     }
-    ActOnEdgeSearchWindows(EdgeWindowAction::Minimize);
+    for (auto& info : gEdgeSearchProcesses) {
+        if (info.hwnd && IsWindow(info.hwnd)) {
+            ShowWindow(info.hwnd, SW_MINIMIZE);
+        }
+    }
 }
