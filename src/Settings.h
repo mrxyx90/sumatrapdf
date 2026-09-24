@@ -910,6 +910,8 @@ struct Settings {
     // default) is the standard set. SelectionHandlers with
     // SelectToolbarNameOrSvg still come last
     Str selectionToolbarLayout;
+    // last screen position of the main floating toolbar; x/y of 0 means use the default position
+    Point floatingToolbarPosition;
     // remembered destination language for selection translation; empty
     // uses OS UI language
     Str translateToLang;
@@ -919,6 +921,8 @@ struct Settings {
     // remembered engine for Translate Selection: Google, DeepL, Grok
     // Build, Claude Code, OpenAI Codex or Antigravity
     Str translateEngine;
+    // search mode for selection search: sidebar (opens in sidebar) or popup (opens in 600x1000 popup window)
+    Str selectionSearchMode;
     // ISO code of the current UI language
     Str uiLanguage;
     // SumatraPDF won't offer to update to this version again
@@ -1076,6 +1080,7 @@ struct Settings {
     // if true, documents that were still open when the last window was
     // closed (SessionData) are reopened at startup
     bool restoreSession;
+    Str activeSessionTabs;
     // if true, open documents in the already running SumatraPDF instead of
     // starting a new one
     bool reuseInstance;
@@ -1084,8 +1089,6 @@ struct Settings {
     bool showMenubar;
     // if true, show the menu bar when using tabs (useTabs = true)
     bool showMenubarWithTabs;
-    // if true, show tips on the home page
-    bool showTips;
     // if true, show the current page as n/N after the file name on tabs
     bool showPageNumberInTabs;
     // if true, show reading progress (n/N, or chapter:page for ebooks) on
@@ -1097,6 +1100,8 @@ struct Settings {
     // number for the whole document. the saved position stays a chapter
     // bookmark either way, and next / previous page still cross chapters
     bool showChaptersInEbooks;
+    // if true, show tips on the home page
+    bool showTips;
     // legacy bool for toolbar; if Toolbar is empty, derived as show/hide
     // (internal; use Toolbar instead)
     bool showToolbar;
@@ -1316,7 +1321,7 @@ static const FieldInfo gFixedPageUIFields[] = {
     {offsetof(FixedPageUI, grayscale), SettingType::Bool, false},
     {offsetof(FixedPageUI, textColor), SettingType::Color, (intptr_t)"#000000"},
     {offsetof(FixedPageUI, backgroundColor), SettingType::Color, (intptr_t)"#ffffff"},
-    {offsetof(FixedPageUI, selectionColor), SettingType::Color, (intptr_t)"#ffff00"},
+    {offsetof(FixedPageUI, selectionColor), SettingType::Color, (intptr_t)"#603399ff"},
     {offsetof(FixedPageUI, windowMargin), SettingType::Compact, (intptr_t)&gWindowMarginInfo},
     {offsetof(FixedPageUI, pageSpacing), SettingType::Compact, (intptr_t)&gSizeInfo},
     {offsetof(FixedPageUI, gradientColors), SettingType::ColorArray, 0},
@@ -1565,7 +1570,7 @@ static const StructInfo gAntiGravityInfo = {
     false};
 
 static const FieldInfo gAnnotationsFields[] = {
-    {offsetof(Annotations, highlightColor), SettingType::Color, (intptr_t)"#ffff00"},
+    {offsetof(Annotations, highlightColor), SettingType::Color, (intptr_t)"#c8ffff00"},
     {offsetof(Annotations, underlineColor), SettingType::Color, (intptr_t)"#8bf05d"},
     {offsetof(Annotations, squigglyColor), SettingType::Color, (intptr_t)"#f199d2"},
     {offsetof(Annotations, strikeOutColor), SettingType::Color, (intptr_t)"#e24745"},
@@ -1573,7 +1578,7 @@ static const FieldInfo gAnnotationsFields[] = {
     {offsetof(Annotations, freeTextBackgroundColor), SettingType::Color, (intptr_t)""},
     {offsetof(Annotations, freeTextOpacity), SettingType::Int, 100},
     {offsetof(Annotations, freeTextSize), SettingType::Int, 12},
-    {offsetof(Annotations, freeTextBorderWidth), SettingType::Int, 1},
+    {offsetof(Annotations, freeTextBorderWidth), SettingType::Int, 0},
     {offsetof(Annotations, freeTextAlignment), SettingType::String, (intptr_t)"left"},
     {offsetof(Annotations, presetColors), SettingType::String,
      (intptr_t)"#ffff00 #8bf05d #99defa #f199d2 #e24745 #ff0000 #0000ff #000000"},
@@ -1583,10 +1588,10 @@ static const FieldInfo gAnnotationsFields[] = {
     {offsetof(Annotations, squareColor), SettingType::Color, (intptr_t)""},
     {offsetof(Annotations, circleColor), SettingType::Color, (intptr_t)""},
     {offsetof(Annotations, polygonColor), SettingType::Color, (intptr_t)""},
-    {offsetof(Annotations, inkColor), SettingType::Color, (intptr_t)"#66ffff00"},
+    {offsetof(Annotations, inkColor), SettingType::Color, (intptr_t)"#0000ff"},
     {offsetof(Annotations, inkColors), SettingType::String,
-     (intptr_t)"#66ffff00 #668bf05d #6699defa #66f199d2 #66e24745"},
-    {offsetof(Annotations, inkBorderWidth), SettingType::Int, 16},
+     (intptr_t)"#0000ff #8bf05d #99defa #f199d2 #e24745"},
+    {offsetof(Annotations, inkBorderWidth), SettingType::Int, 2},
     {offsetof(Annotations, stampColor), SettingType::Color, (intptr_t)""},
     {offsetof(Annotations, caretColor), SettingType::Color, (intptr_t)""},
     {offsetof(Annotations, fileAttachmentColor), SettingType::Color, (intptr_t)""},
@@ -2109,6 +2114,7 @@ static const FieldInfo gSettingsFields[] = {
     {offsetof(Settings, rememberOpenedFiles), SettingType::Bool, true},
     {offsetof(Settings, rememberStatePerDocument), SettingType::Bool, true},
     {offsetof(Settings, restoreSession), SettingType::Bool, true},
+    {offsetof(Settings, activeSessionTabs), SettingType::String, (intptr_t)""},
     {offsetof(Settings, reuseInstance), SettingType::Bool, true},
     {offsetof(Settings, showMenubar), SettingType::Bool, true},
     {offsetof(Settings, showMenubarWithTabs), SettingType::Bool, false},
@@ -2145,7 +2151,7 @@ static const FieldInfo gSettingsFields[] = {
     {offsetof(Settings, scrollbars), SettingType::String, (intptr_t)"windows"},
     {offsetof(Settings, scrollbarInSinglePage), SettingType::Bool, false},
     {offsetof(Settings, smoothScroll), SettingType::Bool, true},
-    {offsetof(Settings, scrollLineAmount), SettingType::Int, 16},
+    {offsetof(Settings, scrollLineAmount), SettingType::Int, 35},
     {offsetof(Settings, saveMemory), SettingType::Int, 50},
     {offsetof(Settings, paddingAfterLastPage), SettingType::Bool, false},
     {offsetof(Settings, ignoreDestinationZoom), SettingType::Bool, false},
@@ -2158,10 +2164,10 @@ static const FieldInfo gSettingsFields[] = {
     {offsetof(Settings, fastScrollOverScrollbar), SettingType::Bool, false},
     {offsetof(Settings, preventSleepInFullscreen), SettingType::Bool, true},
     {offsetof(Settings, tabWidth), SettingType::Int, 300},
-    {offsetof(Settings, theme), SettingType::String, (intptr_t)"Light"},
+    {offsetof(Settings, theme), SettingType::String, (intptr_t)"System"},
     {offsetof(Settings, helpTheme), SettingType::String, (intptr_t)"app"},
-    {offsetof(Settings, lastLightTheme), SettingType::String, (intptr_t)"", true},
-    {offsetof(Settings, lastDarkTheme), SettingType::String, (intptr_t)"", true},
+    {offsetof(Settings, lastLightTheme), SettingType::String, (intptr_t)"Light", true},
+    {offsetof(Settings, lastDarkTheme), SettingType::String, (intptr_t)"Charcoal", true},
     {offsetof(Settings, documentColorsFollowTheme), SettingType::String, (intptr_t)"off"},
     {offsetof(Settings, tocDy), SettingType::Int, 0, true},
     {offsetof(Settings, toolbarCustomLayout), SettingType::String, (intptr_t)""},
@@ -2177,6 +2183,7 @@ static const FieldInfo gSettingsFields[] = {
     {offsetof(Settings, useTabs), SettingType::Bool, true},
     {offsetof(Settings, selectionToolbar), SettingType::Bool, true},
     {offsetof(Settings, selectionToolbarLayout), SettingType::String, (intptr_t)""},
+    {offsetof(Settings, floatingToolbarPosition), SettingType::Compact, (intptr_t)&gPointInfo, true},
     {offsetof(Settings, tabsMru), SettingType::Bool, false},
     {offsetof(Settings, ctrlTabSimple), SettingType::Bool, false},
     {offsetof(Settings, zoomLevels), SettingType::FloatArray, (intptr_t)""},
@@ -2209,6 +2216,7 @@ static const FieldInfo gSettingsFields[] = {
     {offsetof(Settings, translateToLang), SettingType::String, (intptr_t)"", true},
     {offsetof(Settings, translateFromLang), SettingType::String, (intptr_t)"", true},
     {offsetof(Settings, translateEngine), SettingType::String, (intptr_t)"", true},
+    {offsetof(Settings, selectionSearchMode), SettingType::String, (intptr_t)"sidebar", false},
     {(size_t)-1, SettingType::Comment, 0},
     {offsetof(Settings, annotations), SettingType::Struct, (intptr_t)&gAnnotationsInfo},
     {(size_t)-1, SettingType::Comment, 0},
@@ -2250,12 +2258,12 @@ static const FieldInfo gSettingsFields[] = {
 };
 static const StructInfo gSettingsInfo = {
     sizeof(Settings),
-    159,
+    (int)dimof(gSettingsFields),
     gSettingsFields,
     "\0\0DefaultDisplayMode\0DefaultZoom\0DisableJavaScript\0AllowExternalImages\0EnableTeXEnhancements\0EscToExit\0Ful"
     "lPathInTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0Ho"
     "mePageViewMode\0FilePicker\0PrinterUI\0ReloadModifiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0Res"
-    "toreSession\0ReuseInstance\0ShowMenubar\0ShowMenubarWithTabs\0ShowPageNumberInTabs\0ShowHomePageReadingProgress\0S"
+    "toreSession\0ActiveSessionTabs\0ReuseInstance\0ShowMenubar\0ShowMenubarWithTabs\0ShowPageNumberInTabs\0ShowHomePageReadingProgress\0S"
     "howChaptersInEbooks\0ShowTips\0CustomColors\0ShowToolbar\0Toolbar\0ToolbarPosition\0SearchUIFloating\0ShowFavorite"
     "s\0SortFavoritesByName\0ShowToc\0SidebarOnRight\0SidebarWindowSize\0ShowLinks\0HighlightFormFields\0ClickEdgeToTur"
     "nPage\0DisableLinks\0ExplorerQuickLook\0RememberViewOffsetOnPageTurn\0MouseWheelTurnsPage\0ScrollEdgeTurnsPage\0Sh"
@@ -2463,7 +2471,6 @@ static const StructInfo gTheme_1_Info = {
 static const FieldInfo gThemesFields[] = {
     {offsetof(Themes, themes), SettingType::Array, (intptr_t)&gTheme_1_Info},
 };
-static const StructInfo gThemesInfo = {sizeof(Themes), 1, gThemesFields, "Themes", "color themes", false};
+static const StructInfo gThemesInfo = {sizeof(Themes), 1, gThemesFields, "Themes", "color themes for the UI", false};
 
-// NOLINTEND(modernize-use-designated-initializers)
 #endif

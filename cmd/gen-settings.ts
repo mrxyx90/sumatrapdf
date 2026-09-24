@@ -819,7 +819,7 @@ const annotations: Field[] = [
   field(
     "HighlightColor",
     Color,
-    rgb(0xff, 0xff, 0x0),
+    rgba(0xff, 0xff, 0x0, 200),
     "color of newly created highlight annotations. Use an #aarrggbb value to set " +
       "default opacity (00 = transparent, FF = opaque); #rrggbb is fully opaque",
   ),
@@ -853,7 +853,7 @@ const annotations: Field[] = [
   // sizes are in PDF user space units (points), not screen pixels: they're
   // part of the document, so they must not be DPI-scaled
   field("FreeTextSize", Int, 12, "font size of free text annotations, in points").ver("3.5"),
-  field("FreeTextBorderWidth", Int, 1, "border width of free text annotations, in points").ver("3.5"),
+  field("FreeTextBorderWidth", Int, 0, "border width of free text annotations, in points").ver("3.5"),
   field(
     "FreeTextAlignment",
     Str,
@@ -903,18 +903,18 @@ const annotations: Field[] = [
   field(
     "InkColor",
     Color,
-    rgba(0xff, 0xff, 0x0, 0x66),
+    rgb(0x00, 0x00, 0xff),
     "color of newly created ink annotations, as #aarrggbb: the alpha is how translucent the stroke is " +
       "(00 = transparent, FF = opaque), so the color is exactly what ends up on the page",
   ).ver("3.7"),
   field(
     "InkColors",
     Str,
-    "#66ffff00 #668bf05d #6699defa #66f199d2 #66e24745",
+    "#0000ff #8bf05d #99defa #f199d2 #e24745",
     "colors offered by the ink button's drop-down, separated by space. Use #aarrggbb values: " +
       "the alpha is the stroke's opacity. The color ink currently draws in is added when it is missing",
   ).ver("3.7"),
-  field("InkBorderWidth", Int, 16, "width of the stroke of new ink annotations, in points").ver("3.7"),
+  field("InkBorderWidth", Int, 2, "width of the stroke of new ink annotations, in points").ver("3.7"),
   field(
     "StampColor",
     Color,
@@ -1352,6 +1352,12 @@ const globalPrefs: Field[] = [
       "(SessionData) are reopened at startup",
   ),
   field(
+    "ActiveSessionTabs",
+    Str,
+    "",
+    "maximum number of active tabs to keep open/restore when reopening the app if RestoreSession is true (blank or all means all open tabs)",
+  ),
+  field(
     "ReuseInstance",
     Bool,
     true,
@@ -1559,8 +1565,8 @@ const globalPrefs: Field[] = [
   field(
     "ScrollLineAmount",
     Int,
-    16,
-    "distance, in screen pixels at 96 DPI, scrolled by an arrow-key press or one mouse-wheel line; values below 1 use 16",
+    35,
+    "distance, in screen pixels at 96 DPI, scrolled by an arrow-key press or one mouse-wheel line; values below 1 use 35",
   ).ver("3.7"),
   field(
     "SaveMemory",
@@ -1640,7 +1646,7 @@ const globalPrefs: Field[] = [
   field(
     "Theme",
     Str,
-    "Light",
+    "System",
     "the name of the theme to use. System follows the Windows light/dark app mode " +
       "and switches between LastLightTheme and LastDarkTheme. Built-in themes: " +
       "Light, Dark, Light Warm, Dark from 3.5, Charcoal, Solarized Light, " +
@@ -1662,10 +1668,10 @@ const globalPrefs: Field[] = [
       "The switch in the manual's top-right corner changes it",
   ).ver("3.7"),
   // remembered by the light/dark toggle and System theme; not user-facing knobs
-  field("LastLightTheme", Str, "", "the light theme the light/dark toggle and the System theme switch to")
+  field("LastLightTheme", Str, "Light", "the light theme the light/dark toggle and the System theme switch to")
     .internal()
     .ver("3.7"),
-  field("LastDarkTheme", Str, "", "the dark theme the light/dark toggle and the System theme switch to")
+  field("LastDarkTheme", Str, "Charcoal", "the dark theme the light/dark toggle and the System theme switch to")
     .internal()
     .ver("3.7"),
   // Full text is shown in Advanced Settings and Advanced-options-settings.md
@@ -1775,6 +1781,14 @@ const globalPrefs: Field[] = [
       "out to hide it. Empty (the default) is the standard set. SelectionHandlers with " +
       "SelectToolbarNameOrSvg still come last",
   ).ver("3.7"),
+  compactStruct(
+    "FloatingToolbarPosition",
+    pointPos,
+    "last screen position of the main floating toolbar; x/y of 0 means use the default position",
+  )
+    .structName("Point")
+    .internal()
+    .ver("3.7"),
   field(
     "TabsMru",
     Bool,
@@ -1871,6 +1885,13 @@ const globalPrefs: Field[] = [
     "remembered engine for Translate Selection: Google, DeepL, Grok Build, Claude Code, OpenAI Codex or Antigravity",
   )
     .internal()
+    .ver("3.7"),
+  field(
+    "SelectionSearchMode",
+    Str,
+    "sidebar",
+    "search mode for selection search: sidebar (opens in sidebar) or popup (opens in 600x1000 popup window)",
+  )
     .ver("3.7"),
   emptyLine(),
   struct("Annotations", annotations, "default values for annotations in PDF documents").ver("3.3"),
@@ -2018,9 +2039,11 @@ const globalPrefsLayout = [
   "TreeFontName",
   "EngineeringDrawingEnhance",
   "SelectionToolbarLayout",
+  "FloatingToolbarPosition",
   "TranslateToLang",
   "TranslateFromLang",
   "TranslateEngine",
+  "SelectionSearchMode",
   "UiLanguage",
   "VersionToSkip",
   "ChmUI",
@@ -2075,6 +2098,7 @@ const globalPrefsLayout = [
   "RememberOpenedFiles",
   "RememberStatePerDocument",
   "RestoreSession",
+  "ActiveSessionTabs",
   "ReuseInstance",
   "ShowMenubar",
   "ShowMenubarWithTabs",

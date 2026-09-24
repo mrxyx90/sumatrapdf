@@ -37,6 +37,7 @@ struct TocItem;
 struct FindBarWnd;
 struct FindWindowWnd;
 struct ToolbarVirt;
+struct FloatingToolbar;
 
 constexpr int kMaxKeyboardLinkHintLength = 9;
 
@@ -63,7 +64,7 @@ struct FindMatch {
 constexpr float kCaptionTabBarDyFactor = 1.0f;
 
 // gap in pixels between top of caption and tabs; this area allows dragging the window
-constexpr int kCaptionTopPadding = 8;
+constexpr int kCaptionTopPadding = 0;
 
 enum CaptionButtons {
     CB_BTN_FIRST = 0,
@@ -73,7 +74,8 @@ enum CaptionButtons {
     CB_CLOSE = 3,
     CB_MENU = 4,
     CB_SYSTEM_MENU = 5,
-    CB_BTN_COUNT = 6
+    CB_HOME = 6,
+    CB_BTN_COUNT = 7
 };
 
 struct ButtonInfo {
@@ -246,6 +248,9 @@ struct MainWindow { // NOLINT(clang-analyzer-optin.performance.Padding)
 
     HWND hwndToolbar = nullptr;
     ToolbarVirt* toolbarVirt = nullptr;
+    // Optional floating quick-action toolbar; owned by MainWindow.
+    FloatingToolbar* floatingToolbar = nullptr;
+    Func1List<MainWindow*> floatingToolbarOnWindowMoved;
     HWND hwndMenuReBar = nullptr;
     HWND hwndMenuToolbar = nullptr;
     // the search input of the active find UI (compact bar or floating window)
@@ -327,6 +332,19 @@ struct MainWindow { // NOLINT(clang-analyzer-optin.performance.Padding)
     // provider (AIChatBackend value) the panel content is configured for; -1 = none
     int aiChatProvider = -1;
 
+    bool aiChatUsed = false;
+    bool webSearchUsed = false;
+    int activeSidebarTab = 0; // 0 = AI Chat, 1 = Web Search
+    Str webSearchEngineName;
+    WebviewWnd* webSearchWebView = nullptr;
+    bool webSearchWebViewReady = false;
+    VirtButton* sidebarTabAiBtn = nullptr;
+    VirtButton* sidebarTabSearchBtn = nullptr;
+    HBox* sidebarTabHeader = nullptr;
+    HWND hwndSearchBack = nullptr;
+    HWND hwndSearchForward = nullptr;
+    HWND hwndSearchClose = nullptr;
+
     // width of the AI chat sidebar
     int aiChatDx = 0;
 
@@ -339,6 +357,7 @@ struct MainWindow { // NOLINT(clang-analyzer-optin.performance.Padding)
     VirtSplitter* favSplitter = nullptr;
 
     TabsCtrl* tabsCtrl = nullptr;
+    WindowTab* homeTab = nullptr;
     bool tabsVisible = false;
     bool tabsInTitlebar = false;
 
@@ -493,6 +512,11 @@ struct MainWindow { // NOLINT(clang-analyzer-optin.performance.Padding)
     Spacer* capDrag1 = nullptr;
     Spacer* capRow2Lead = nullptr;
     Spacer* capRow2Trail = nullptr;
+    // single-row caption: left margin before the menu (hamburger) button and
+    // the gap between the menu and the home button
+    Spacer* capMenuPadL = nullptr;
+    Spacer* capMenuHomeGap = nullptr;
+    Spacer* capHomeTabsGap = nullptr;
 
     // home page thumbnail scrolling
     int homePageScrollY = 0;
@@ -512,6 +536,8 @@ struct MainWindow { // NOLINT(clang-analyzer-optin.performance.Padding)
 
     bool isToolbarVisible = false;
     bool pdfAnnotationsToolbarEnabled = false;
+    // Floating Edit PDF temporarily reveals the top toolbar only when it was hidden.
+    bool floatingEditPdfRevealedToolbar = false;
     AnnotPlacement annotPlacement;
     // overlay toolbar mode: the toolbar floats over the page (doesn't reserve
     // space) and is only revealed when the mouse is near the top

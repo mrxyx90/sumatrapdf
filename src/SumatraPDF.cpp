@@ -63,6 +63,7 @@
 #include "TextSearch.h"
 #include "Notifications.h"
 #include "MainWindow.h"
+#include "FloatingToolbar.h"
 #include "AnnotPlacement.h"
 #include "WindowTab.h"
 #include "UpdateCheck.h"
@@ -108,6 +109,7 @@
 #include "SumatraConfig.h"
 #include "AIChatCommon.h"
 #include "AIChatPanel.h"
+#include "SearchPanel.h"
 #include "SelectionTranslate.h"
 #include "SelectionHandlers.h"
 #include "GoogleLens.h"
@@ -148,8 +150,8 @@ constexpr const WCHAR* kCanvasClassName = L"SUMATRA_PDF_CANVAS";
 
 constexpr const char* kRestrictionsFileName = "sumatrapdfrestrict.ini";
 
-constexpr const char* kSumatraWindowTitle = "SumatraPDF";
-constexpr const WCHAR* kSumatraWindowTitleW = L"SumatraPDF";
+constexpr const char* kSumatraWindowTitle = "Apdf";
+constexpr const WCHAR* kSumatraWindowTitleW = L"Apdf";
 
 // used to show it in debug, but is not very useful,
 // so always disable
@@ -170,6 +172,21 @@ bool SettingsUseTabs() {
 
 static bool SettingsRestoreSession() {
     return gSettings->restoreSession && !gMyWindowWasEmbedded && !gForTesting;
+}
+
+static int MaxSessionTabsToRestore() {
+    if (!SettingsRestoreSession()) {
+        return 0;
+    }
+    Str s = gSettings->activeSessionTabs;
+    if (len(s) == 0 || str::EqI(s, StrL("all")) || str::EqI(s, StrL("true"))) {
+        return 999999;
+    }
+    if (str::EqI(s, StrL("0")) || str::EqI(s, StrL("false"))) {
+        return 0;
+    }
+    int val = atoi(CStrTemp(s));
+    return val > 0 ? val : 999999;
 }
 
 bool SettingsRememberOpenedFiles() {
@@ -621,9 +638,10 @@ void SelectTabInWindow(WindowTab* tab) {
         return;
     }
     auto* win = tab->win;
-    if (tab == win->CurrentTab()) {
+    if (!win->IsCurrentTabAbout() && tab == win->CurrentTab()) {
         return;
     }
+    win->currentTabTemp = nullptr;
     TabsSelect(win, win->GetTabIdx(tab));
 }
 
@@ -2292,6 +2310,17 @@ static void UpdateUiForCurrentTab(MainWindow* win) {
     RebuildMenuBarForWindow(win);
     // the toolbar isn't supported for ebook docs (yet)
     ShowOrHideToolbar(win);
+    // restore per-tab annotation toolbar and active tool placement state
+    WindowTab* currentTab = win->CurrentTab();
+    if (currentTab) {
+        win->pdfAnnotationsToolbarEnabled = currentTab->pdfAnnotationsToolbarEnabled;
+        if (currentTab->annotPlacementCmdId != 0) {
+            StartAnnotationPlacement(win, currentTab->annotPlacementCmdId);
+        }
+    }
+    HideSelectionToolbar(win);
+    UpdateFloatingToolbarActiveState(win);
+
     // TODO: unify?
     ToolbarUpdateStateForWindow(win, true);
     UpdateToolbarState(win);
@@ -2525,7 +2554,6 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
         } else if (fs->windowState == WIN_STATE_MINIMIZED) {
             showType = SW_MINIMIZE;
         }
-        showToc = fs->showToc;
         if (win->ctrl && win->presentation) {
             showToc = tab->showTocPresentation;
         }
@@ -2881,7 +2909,7 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
     // features notification: bottom-right, small margins, 16s timeout)
     DisplayModel* dmErr = win->AsFixed();
     EngineBase* engineErr = dmErr ? dmErr->GetEngine() : nullptr;
-    if (engineErr && engineErr->HasErrors()) {
+    if (false && engineErr && engineErr->HasErrors()) {
         TempStr msg = fmt("[%s](CmdShowErrors) %s", Tr("Errors"), Tr("in document"));
         NotificationCreateArgs nargs;
         nargs.hwndParent = win->hwndCanvas;
@@ -3144,6 +3172,10 @@ void VirtCaptionButton::SetBounds(Rect r) {
 }
 
 constexpr int kTabsButtonGapX = 32;
+// single-row caption: margin between the frame edge and the menu (hamburger)
+// button, and the gap between the menu and the home button
+constexpr int kCaptionMenuLeftPad = 8;
+constexpr int kCaptionMenuHomeGap = 8;
 
 static void CreateCaptionLayout(MainWindow* win) {
     for (int i = CB_BTN_FIRST; i < CB_BTN_COUNT; i++) {
@@ -3160,21 +3192,31 @@ static void CreateCaptionLayout(MainWindow* win) {
     win->capDrag1 = new Spacer(0, 0);
     win->capRow2Lead = new Spacer(0, 0);
     win->capRow2Trail = new Spacer(0, 0);
+    win->capMenuPadL = new Spacer(DpiScale(kCaptionMenuLeftPad), 0);
+    win->capMenuHomeGap = new Spacer(DpiScale(kCaptionMenuHomeGap), 0);
+    win->capHomeTabsGap = new Spacer(DpiScale(kCaptionMenuHomeGap), 0);
 
-    // single row: sys | menu | tabs | gap | min | max/restore | close
-    // two row:     sys | menu hwnd | drag | min | max/restore | close
+    // single row: pad | menu | gap | home | gap | tabs | gap | min | max/restore | close
+    // two row:     home | menu hwnd | drag | min | max/restore | close
     win->captionRow1 = new HBox();
-    win->captionRow1->alignCross = CrossAxisAlign::CrossEnd;
+    win->captionRow1->alignCross = CrossAxisAlign::CrossStart;
+    win->captionRow1->AddChild(win->capMenuPadL);
     win->captionRow1->AddChild(win->capBtn[CB_SYSTEM_MENU]);
     win->captionRow1->AddChild(win->capBtn[CB_MENU]);
+    win->captionRow1->AddChild(win->capMenuHomeGap);
+    win->captionRow1->AddChild(win->capBtn[CB_HOME]);
+    win->captionRow1->AddChild(win->capHomeTabsGap);
     win->captionRow1->AddChild(win->capMenuSlot);
     win->captionRow1->AddChild(win->capTabsRow1, 1);
     win->captionRow1->AddChild(win->capDrag1, 1);
     win->captionRow1->AddChild(win->capGap);
     win->captionRow1->AddChild(win->capBtn[CB_MINIMIZE]);
+    win->captionRow1->AddChild(new Spacer(DpiScale(14), 0));
     win->captionRow1->AddChild(win->capBtn[CB_MAXIMIZE]);
     win->captionRow1->AddChild(win->capBtn[CB_RESTORE]);
+    win->captionRow1->AddChild(new Spacer(DpiScale(14), 0));
     win->captionRow1->AddChild(win->capBtn[CB_CLOSE]);
+    win->captionRow1->AddChild(new Spacer(DpiScale(7), 0));
 
     // two-row tabs sit under the menu, stopping short of the window buttons
     win->captionRow2 = new HBox();
@@ -3395,15 +3437,14 @@ static MainWindow* CreateMainWindow() {
     // if tabsInTitlebar, we use a rebar menu bar; otherwise native SetMenu
     win->brControlBgColor = CreateSolidBrush(ThemeControlBackgroundColor());
 
-    // Note: don't send WM_SETREDRAW to hwndFrame here. The frame is hidden
-    // (shown later by ShowMainWindow / LoadDocument) so nothing paints anyway,
-    // and DefWindowProc's WM_SETREDRAW TRUE handling *shows* the window, which
-    // would flash a normal-size standard-caption window before the custom
-    // caption / maximized / fullscreen state is applied (the old fix for the
-    // dark-theme startup flash, #5421, predates creating the frame hidden).
-    ShowWindow(win->hwndCanvas, SW_SHOW);
-    // frame is still hidden; a sync paint here draws the empty/home canvas
-    // that session restore is about to replace
+    // Keep the entire window hierarchy hidden until startup layout and the
+    // initial document/home-page state are ready. Showing the child canvas here
+    // can cause Windows to paint the default background before ShowMainWindow()
+    // reveals the frame, producing the launch-time white flash.
+    //
+    // Do not use WM_SETREDRAW here either: DefWindowProc's handling of enabling
+    // redraw can show the hidden frame before the custom caption / maximized /
+    // fullscreen state is applied.
 
     Tooltip::CreateArgs args;
     args.parent = win->hwndCanvas;
@@ -3479,12 +3520,18 @@ static MainWindow* CreateMainWindow() {
 }
 
 void ShowMainWindow(MainWindow* win, int windowState) {
-    if (WIN_STATE_FULLSCREEN == windowState || WIN_STATE_MAXIMIZED == windowState) {
-        ShowWindow(win->hwndFrame, SW_MAXIMIZE);
-    } else {
-        ShowWindow(win->hwndFrame, SW_SHOW);
-    }
+    // If this window was hidden during startup/session restore, complete all
+    // final geometry/layout work before exposing it. Showing the frame first
+    // lets DWM present its default background before the restored document is
+    // ready, which appears as a white flash when reopening a previous PDF.
+    bool wasVisible = HwndIsVisible(win->hwndFrame);
 
+    if (!wasVisible && (WIN_STATE_FULLSCREEN == windowState || WIN_STATE_MAXIMIZED == windowState)) {
+        // Apply maximize while hidden, then explicitly hide again. This updates
+        // the final placement without presenting an intermediate frame.
+        ShowWindow(win->hwndFrame, SW_MAXIMIZE);
+        ShowWindow(win->hwndFrame, SW_HIDE);
+    }
     // a hidden frame's GetDpiForWindow() can still be the primary-monitor
     // DPI; after ShowWindow the monitor of the window rect is reliable
     {
@@ -3502,20 +3549,27 @@ void ShowMainWindow(MainWindow* win, int windowState) {
         SetWindowPos(win->hwndFrame, nullptr, 0, 0, 0, 0, flags);
     }
 
-    // go fullscreen before the first paint so the user doesn't see the
-    // intermediate maximized window (EnterFullScreen requires a visible
-    // window, so it can't happen before ShowWindow above)
-    if (WIN_STATE_FULLSCREEN == windowState) {
-        EnterFullScreen(win);
-    }
-
-    // Hidden startup windows can miss the final titlebar/menu-bar geometry
+    // Hidden startup windows can miss the final titlebar/menu-bar geometry.
     // until they become visible. Force one relayout before the first paint.
     RelayoutFrame(win);
     RefreshTocTreeIfNeeded(win);
     UpdateWindow(win->hwndFrame);
     UpdateToolbarFindText(win);
     HwndEnsureOnScreen(win->hwndFrame);
+
+    if (!wasVisible) {
+        // Only expose a startup/session-restored window after its final chrome
+        // and document layout have been prepared. This prevents DWM from
+        // presenting the frame background before the restored PDF is painted.
+        if (WIN_STATE_FULLSCREEN == windowState) {
+            ShowWindow(win->hwndFrame, SW_SHOW);
+            EnterFullScreen(win);
+        } else if (WIN_STATE_MAXIMIZED == windowState) {
+            ShowWindow(win->hwndFrame, SW_MAXIMIZE);
+        } else {
+            ShowWindow(win->hwndFrame, SW_SHOW);
+        }
+    }
 
     if (IsRunningOnWine()) {
         Rect wr = HwndWindowRect(win->hwndFrame);
@@ -5498,7 +5552,7 @@ static void ShowSavedAnnotationsNotification(HWND hwndParent, Str path) {
     NotificationCreateArgs nargs;
     nargs.hwndParent = hwndParent;
     nargs.font = GetDefaultGuiFont();
-    nargs.timeoutMs = 5000;
+    nargs.timeoutMs = kNotifDefaultTimeOut;
     nargs.msg = ToStr(msg);
     nargs.plainText = true; // `path` is not ours, don't parse it as tip markup
     ShowNotification(nargs);
@@ -7662,8 +7716,9 @@ static void SyncCaptionLayout(MainWindow* win) {
         win->captionBtn[id].id = id;
         win->captionBtn[id].visible = vis;
     };
-    setBtn(CB_SYSTEM_MENU, true, tabBtn);
+    setBtn(CB_SYSTEM_MENU, false, tabBtn);
     setBtn(CB_MENU, !twoRow, tabBtn);
+    setBtn(CB_HOME, true, tabBtn);
     setBtn(CB_MINIMIZE, true, winBtn);
     setBtn(CB_MAXIMIZE, !maximized, winBtn);
     setBtn(CB_RESTORE, maximized, winBtn);
@@ -7673,6 +7728,11 @@ static void SyncCaptionLayout(MainWindow* win) {
     SetVis(win->capTabsRow1, !twoRow);
     SetVis(win->capDrag1, twoRow);
     SetVis(win->capGap, !twoRow);
+    // the hamburger only exists in the single-row caption; keep its margins
+    // with it so the two-row menu bar stays flush as before
+    SetVis(win->capMenuPadL, !twoRow);
+    SetVis(win->capMenuHomeGap, !twoRow);
+    SetVis(win->capHomeTabsGap, !twoRow);
     SetVis(win->captionRow2, twoRow && hasFileTabs);
     SetVis(win->capTabsRow2, twoRow && hasFileTabs);
     SetVis(win->capRow2Lead, twoRow && hasFileTabs && isRtl);
@@ -7941,7 +8001,7 @@ static bool RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
     if (aiChatVisible) {
         aiChatDx = win->aiChatDx;
         if (aiChatDx <= 0) {
-            aiChatDx = rc.dx * 3 / 8;
+            aiChatDx = rc.dx * 3 / 10;
         }
         int availDx = rc.dx - (sidebarVisible ? sidebarDxApplied + kSplitterDx : 0);
         aiChatDx = limitValue(aiChatDx, kSidebarMinDx, availDx / 2);
@@ -8208,6 +8268,10 @@ static void FrameUpdateUi(MainWindow* win) {
         FindBarReposition(win);
         RepositionSelectionToolbar(win);
         RepositionAnnotEditToolbar(win);
+        // The bookmark sidebar can be opened, closed, or resized without
+        // moving the frame. Keep the floating toolbar attached to its saved
+        // sidebar position after the frame layout has been applied.
+        FloatingToolbarRelayout(win);
         if (win->presentation || win->isFullScreen) {
             Rect fullscreen = HwndGetFullscreenRect(win->hwndFrame);
             Rect rect = HwndWindowRect(win->hwndFrame);
@@ -9545,7 +9609,17 @@ static void OnFrameKeyEsc(MainWindow* win) {
     if (StopSelectTextWithKeyboard(win)) {
         return;
     }
-    if (CancelAnnotationPlacement(win)) {
+    if (IsPlacingAnnotation(win) || win->pdfAnnotationsToolbarEnabled) {
+        CancelAnnotationPlacement(win);
+        if (win->floatingEditPdfRevealedToolbar) {
+            win->floatingEditPdfRevealedToolbar = false;
+            win->isToolbarVisible = false;
+            if (win->hwndToolbar) {
+                ShowWindow(win->hwndToolbar, SW_HIDE);
+            }
+            ScheduleUiUpdate(win, kUiForceRelayout | kUiRelayout);
+        }
+        SetPdfAnnotationsToolbarEnabled(win, false);
         return;
     }
     if (CancelPlacingSignature(win)) {
@@ -10158,37 +10232,21 @@ static void NotifyUrlSelectionTruncated(WindowTab* tab) {
     ShowNotification(args);
 }
 
-static void LaunchBrowserWithSelection(WindowTab* tab, Str urlPattern) {
+static void OpenSearchSelectionWithPattern(WindowTab* tab, Str engineName, Str urlPattern) {
     if (!tab || !HasPermission(Perm::InternetAccess) || !HasPermission(Perm::CopySelection)) {
         return;
     }
-
-#if 0 // TODO: get selection from Chm
-    if (tab->AsChm()) {
-        tab->AsChm()->CopySelection();
-    } else if (tab->AsMarkdown()) {
-        tab->AsMarkdown()->CopySelection();
-        return;
-    }
-#endif
-
-    bool isTextOnlySelectionOut; // if false, a rectangular selection
+    bool isTextOnlySelectionOut;
     TempStr selText = GetSelectedTextTemp(tab, StrL("\n"), isTextOnlySelectionOut);
     if (len(selText) == 0) {
         return;
     }
-    // The budget is for the whole URL, so subtract the pattern around the
-    // selection. (There used to be a second, 1024-*byte* cut applied to the raw
-    // utf-8 before this, which both shortened the text far more than necessary
-    // and could slice a multi-byte character in half.)
     int budget = kMaxUrlEncodedLen - len(urlPattern);
     bool didTruncate = false;
     TempStr encodedSelection = URLEncodeMayTruncateTemp(selText, budget, &didTruncate);
     if (didTruncate) {
         NotifyUrlSelectionTruncated(tab);
     }
-    // ${userLang} and and ${selectin} are typed by user in settings file
-    // to be shomewhat resilient against typos, we'll accept a different case
     Str lang = trans::GetCurrentLangCode();
     if (str::Eq(lang, StrL("kr"))) {
         lang = StrL("ko");
@@ -10197,7 +10255,7 @@ static void LaunchBrowserWithSelection(WindowTab* tab, Str urlPattern) {
     TempStr uri = str::ReplaceNoCaseTemp(urlPattern, Str(kUserLangStr), contryCode);
     uri = str::ReplaceNoCaseTemp(uri, Str(kSelectionPositionStr), FormatSelectionPositionTemp(tab));
     uri = str::ReplaceNoCaseTemp(uri, Str(kSelectionStr), encodedSelection);
-    LaunchBrowser(uri);
+    OpenSearchSelectionInSidebar(tab->win, engineName, uri);
 }
 
 // Ctrl+C / Ctrl+X / Ctrl+Z are app accelerators, so they fire even while a text
@@ -11853,6 +11911,8 @@ static void UndoRedoInTab(WindowTab* tab, bool redo) {
         return;
     }
 
+    int activeToolCmdId = win->annotPlacement.cmdId;
+
     // an in-flight placement or drag would write to what we are about to undo
     CancelAnnotationPlacement(win);
     CancelDrag(win);
@@ -11870,6 +11930,11 @@ static void UndoRedoInTab(WindowTab* tab, bool redo) {
     // the wrapper deletes above mark the document modified; the journal knows better
     EngineMupdfRefreshModifiedState(engine);
     DeleteOldSelectionInfo(win, true);
+
+    if (activeToolCmdId != 0) {
+        StartAnnotationPlacement(win, activeToolCmdId);
+    }
+
     RefreshAnnotationLists(tab);
     NotifyAnnotationsChanged(tab);
     ToolbarUpdateStateForWindow(win, true);
@@ -12040,7 +12105,7 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             }
             auto method = ParseSelectionSendMethod(GetCommandStringArg(cmd, kCmdArgMethod, {}));
             if (method == SelectionSendMethod::Get) {
-                LaunchBrowserWithSelection(tab, url);
+                OpenSearchSelectionWithPattern(tab, StrL("Search"), url);
                 return 0;
             }
             if (!HasPermission(Perm::InternetAccess) || !HasPermission(Perm::CopySelection)) {
@@ -13152,7 +13217,7 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             break;
 
         case CmdSearchSelectionWithGoogle:
-            LaunchBrowserWithSelection(tab, StrL("https://www.google.com/search?q=${selection}"));
+            OpenSearchSelectionWithPattern(tab, StrL("Google"), StrL("https://www.google.com/search?q=${selection}"));
             break;
 
         case CmdSearchGoogleLens:
@@ -13182,15 +13247,15 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             break;
 
         case CmdSearchSelectionWithBing:
-            LaunchBrowserWithSelection(tab, StrL("https://www.bing.com/search?q=${selection}"));
+            OpenSearchSelectionWithPattern(tab, StrL("Bing"), StrL("https://m.bing.com/search?q=${selection}"));
             break;
 
         case CmdSearchSelectionWithWikipedia:
-            LaunchBrowserWithSelection(tab, StrL("https://wikipedia.org/w/index.php?search=${selection}"));
+            OpenSearchSelectionWithPattern(tab, StrL("Wikipedia"), StrL("https://wikipedia.org/w/index.php?search=${selection}"));
             break;
 
         case CmdSearchSelectionWithGoogleScholar:
-            LaunchBrowserWithSelection(tab, StrL("https://scholar.google.com/scholar?q=${selection}"));
+            OpenSearchSelectionWithPattern(tab, StrL("Google Scholar"), StrL("https://scholar.google.com/scholar?q=${selection}"));
             break;
 
         case CmdCopySelection:
@@ -13641,7 +13706,6 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
                     // not selected: that would take the next press, which is
                     // meant to select more text
                     StopSelectTextWithKeyboard(win);
-                    DeleteOldSelectionInfo(win, true);
                     RefreshAnnotationLists(tab);
                     MainWindowRerender(win);
                     ToolbarUpdateStateForWindow(win, true);
@@ -13666,6 +13730,9 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             AnnotCreateArgs args{annotType};
             SetAnnotCreateArgs(args, cmd);
             lastCreatedAnnot = MakeAnnotationsFromSelection(tab, &args);
+            if (lastCreatedAnnot) {
+                MainWindowRerender(win);
+            }
         } break;
 
             // Note: duplicated in OnWindowContextMenu because slightly different handling
@@ -13839,11 +13906,9 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
     MainWindowRerender(win);
     ToolbarUpdateStateForWindow(win, true);
 
-    // in Edit PDF a new annotation is selected, so it can be moved, resized, or
-    // edited from the property row; outside it selection is only a blue border
-    if (win->pdfAnnotationsToolbarEnabled) {
-        SetSelectedAnnotation(tab, lastCreatedAnnot);
-    }
+    // a new annotation is selected, so it can be moved, resized, or
+    // edited from the property row
+    SetSelectedAnnotation(tab, lastCreatedAnnot);
     // a new free text annotation is a box of placeholder text: put the caret
     // in it rather than make the user find it again. Not for a paste, which
     // brings the text it was copied from.
@@ -13914,6 +13979,10 @@ static void TrackCaptionPopupMenu(MainWindow* win, HMENU menu, Rect btnRect) {
 
 void OpenSystemMenu(MainWindow* win) {
     Rect r = win->captionBtn[CB_SYSTEM_MENU].rect;
+    if (r.IsEmpty()) {
+        // app icon button is hidden; anchor the menu at the frame's top-left
+        r = {0, 0, DpiScale(20), GetTabbarHeight(win->hwndFrame)};
+    }
     HMENU systemMenu = GetUpdatedSystemMenu(win->hwndFrame, false);
     TrackCaptionPopupMenu(win, systemMenu, r);
 }
@@ -13921,7 +13990,42 @@ void OpenSystemMenu(MainWindow* win) {
 static int CaptionButtonAt(MainWindow* win, Point pt) {
     UnmirrorRtl(win->hwndFrame, pt);
     for (int i = CB_BTN_FIRST; i < CB_BTN_COUNT; i++) {
-        if (win->captionBtn[i].visible && win->captionBtn[i].rect.Contains(pt)) {
+        Rect r = win->captionBtn[i].rect;
+        if (i == CB_MINIMIZE || i == CB_MAXIMIZE || i == CB_RESTORE || i == CB_CLOSE) {
+            r.y = 0;
+            if (win->captionRect.dy > 0) {
+                r.dy = win->captionRect.dy + 1;
+            }
+        }
+        if (i == CB_MINIMIZE) {
+            r.x -= DpiScale(7);
+            r.dx += DpiScale(14);
+        } else if (i == CB_MAXIMIZE || i == CB_RESTORE) {
+            r.x -= DpiScale(7);
+            r.dx += DpiScale(14);
+        } else if (i == CB_CLOSE) {
+            r.x -= DpiScale(7);
+            int clientDx = HwndClientRect(win->hwndFrame).dx;
+            r.dx = clientDx - r.x + 1;
+        } else if (i == CB_MENU) {
+            r.x = DpiScale(3);
+            if (win->captionBtn[CB_HOME].visible) {
+                int midMenuHome = (win->captionBtn[CB_MENU].rect.x + win->captionBtn[CB_MENU].rect.dx + win->captionBtn[CB_HOME].rect.x) / 2;
+                r.dx = std::max(midMenuHome - DpiScale(1) - r.x, 1);
+            } else {
+                r.dx += DpiScale(6);
+            }
+        } else if (i == CB_HOME) {
+            int midMenuHome = r.x;
+            if (win->captionBtn[CB_MENU].visible) {
+                midMenuHome = (win->captionBtn[CB_MENU].rect.x + win->captionBtn[CB_MENU].rect.dx + win->captionBtn[CB_HOME].rect.x) / 2;
+            }
+            r.x = midMenuHome + DpiScale(1);
+            int tabLeft = (win->capTabsRow1 && win->capTabsRow1->lastBounds.dx > 0) ? win->capTabsRow1->lastBounds.x : (win->captionBtn[CB_HOME].rect.x + win->captionBtn[CB_HOME].rect.dx + DpiScale(kCaptionMenuHomeGap));
+            int maxRight = std::max(tabLeft - DpiScale(3), r.x + 1);
+            r.dx = std::max(maxRight - r.x, 1);
+        }
+        if (win->captionBtn[i].visible && r.Contains(pt)) {
             return i;
         }
     }
@@ -14009,6 +14113,9 @@ static void HandleCaptionClick(MainWindow* win, int btnIdx) {
             break;
         case CB_SYSTEM_MENU:
             OpenSystemMenu(win);
+            break;
+        case CB_HOME:
+            OpenHomeTab(win);
             break;
     }
 }
@@ -14345,9 +14452,9 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
                 bgCol = GdiRgbFromColor(hotBg);
             }
             SolidBrush bgBr(bgCol);
-            int x = rButton.x;
+            int x = rButton.x - DpiScale(7);
             int y = rButton.y;
-            int w = rButton.dx;
+            int w = rButton.dx + DpiScale(14);
             int h = rButton.dy;
             // leave the frame-border pixel visible at the outer top corner;
             // only the outer edge borders the frame, the bottom is interior
@@ -14387,27 +14494,28 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
         int iconPx = DpiScale(kCaptionGlyphDip);
         DrawCaptionSysButtonGlyph(hdc, kind, rc, iconCol, iconPx);
     } else if (button == CB_MENU) {
-        SolidBrush bgBrMenu(GdiRgbFromColor(ThemeControlBackgroundColor()));
-        gfx.FillRectangle(&bgBrMenu, rButton.x, rButton.y, rButton.dx, rButton.dy);
+        Rect rcFill = rButton;
+        rcFill.x = DpiScale(3);
+        if (win->captionBtn[CB_HOME].visible) {
+            int midMenuHome = (win->captionBtn[CB_MENU].rect.x + win->captionBtn[CB_MENU].rect.dx + win->captionBtn[CB_HOME].rect.x) / 2;
+            rcFill.dx = std::max(midMenuHome - DpiScale(1) - rcFill.x, 1);
+        }
+        Color bgc = ThemeControlBackgroundColor();
+        SolidBrush bgBrMenu(GdiRgbFromColor(bgc));
+        gfx.FillRectangle(&bgBrMenu, rcFill.x, rcFill.y, rcFill.dx, rcFill.dy);
 
         if (win->isMenuOpen) {
             stateId = CBS_PUSHED;
         }
-        u8 buttonRGB = 1;
-        if (CBS_PUSHED == stateId) {
-            buttonRGB = 0;
-        } else if (CBS_HOT == stateId) {
-            buttonRGB = 255;
+        bool isHot = (stateId == CBS_HOT);
+        bool isPushed = (stateId == CBS_PUSHED);
+
+        if (isHot || isPushed) {
+            Color hotBg = isPushed ? AccentColor(bgc, 40) : AccentColor(bgc, 20);
+            SolidBrush bgBr(GdiRgbFromColor(hotBg));
+            gfx.FillRectangle(&bgBr, rcFill.x, rcFill.y, rcFill.dx, rcFill.dy);
         }
 
-        if (buttonRGB != 1) {
-            if (GetLightness(ThemeWindowTextColor()) > GetLightness(ThemeControlBackgroundColor())) {
-                buttonRGB ^= 0xff;
-            }
-            u8 buttonAlpha = u8((255 - abs((int)GetLightness(ThemeControlBackgroundColor()) - buttonRGB)) / 2);
-            SolidBrush br(Gdiplus::Color(buttonAlpha, buttonRGB, buttonRGB, buttonRGB));
-            gfx.FillRectangle(&br, rc.x, rc.y, rc.dx, rc.dy);
-        }
         Color c = ThemeWindowTextColor();
         u8 r, g, b;
         UnpackColor(c, r, g, b);
@@ -14426,6 +14534,40 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
         int x = rButton.x + ((rButton.dx - xIcon) / 2);
         int y = rButton.y + ((rButton.dy - yIcon) / 2);
         DrawIconEx(hdc, x, y, hIcon, xIcon, yIcon, 0, nullptr, DI_NORMAL);
+    } else if (button == CB_HOME) {
+        Rect rcFill = rButton;
+        int midMenuHome = rButton.x;
+        if (win->captionBtn[CB_MENU].visible) {
+            midMenuHome = (win->captionBtn[CB_MENU].rect.x + win->captionBtn[CB_MENU].rect.dx + win->captionBtn[CB_HOME].rect.x) / 2;
+        }
+        rcFill.x = midMenuHome + DpiScale(1);
+        int tabLeft = (win->capTabsRow1 && win->capTabsRow1->lastBounds.dx > 0) ? win->capTabsRow1->lastBounds.x : (win->captionBtn[CB_HOME].rect.x + win->captionBtn[CB_HOME].rect.dx + DpiScale(kCaptionMenuHomeGap));
+        int maxRight = std::max(tabLeft - DpiScale(3), rcFill.x + 1);
+        rcFill.dx = std::max(maxRight - rcFill.x, 1);
+
+        Color bgc = ThemeControlBackgroundColor();
+        SolidBrush bgBrHome(GdiRgbFromColor(bgc));
+        gfx.FillRectangle(&bgBrHome, rcFill.x, rcFill.y, rcFill.dx, rcFill.dy);
+
+        bool isHomeActive = win->IsCurrentTabAbout();
+        bool isHot = (stateId == CBS_HOT);
+        bool isPushed = (stateId == CBS_PUSHED);
+
+        if (isHot || isPushed || isHomeActive) {
+            Color hotBg = (isPushed || isHomeActive) ? AccentColor(bgc, 40) : AccentColor(bgc, 20);
+            SolidBrush bgBr(GdiRgbFromColor(hotBg));
+            gfx.FillRectangle(&bgBr, rcFill.x, rcFill.y, rcFill.dx, rcFill.dy);
+        }
+
+        int iconSize = DpiScale(20);
+        Color fg = ThemeWindowTextColor();
+        Pixmap* px = GetCachedPixmapForSvg(Str(gIconHome), iconSize, iconSize, fg, ThemeControlBackgroundColor());
+        if (px) {
+            int x = rButton.x + (rButton.dx - px->width) / 2;
+            int y = rButton.y + (rButton.dy - px->height) / 2;
+            GfxHdc hdcGfx(hdc);
+            hdcGfx.DrawPixmap(px, {x, y, px->width, px->height});
+        }
     }
 }
 
@@ -14949,9 +15091,11 @@ static LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPAR
                 // topmost popups and must be dismissed on minimize or they
                 // stick on the desktop (issue #5928).
                 win->DeleteToolTip();
+                OnSearchPopupFrameSize(win, (int)wp);
                 break;
             }
             if (win) {
+                OnSearchPopupFrameSize(win, (int)wp);
                 RememberDefaultWindowPosition(win);
                 // UIState.layout.rc remembers the last laid-out client size;
                 // the scheduled update relayouts only when the size actually
@@ -18547,18 +18691,23 @@ ContinueOpenWindow:
     }
 
     if (restoreSession) {
+        int maxToRestore = MaxSessionTabsToRestore();
         for (SessionData* data : *gInitialSessionData) {
             // create window hidden to avoid flashing the about page
             win = CreateAndShowMainWindow(data, false);
+            int totalTabStates = (int)len(*data->tabStates);
+            int startIdx = std::max(0, totalTabStates - maxToRestore);
             int nRestore = 0;
-            for (TabState* state : *data->tabStates) {
-                if (len(state->filePath) != 0) {
+            for (int i = startIdx; i < totalTabStates; i++) {
+                TabState* state = (*data->tabStates)[i];
+                if (state && len(state->filePath) != 0) {
                     nRestore++;
                 }
             }
             int restored = 0;
-            for (TabState* state : *data->tabStates) {
-                if (len(state->filePath) == 0) {
+            for (int i = startIdx; i < totalTabStates; i++) {
+                TabState* state = (*data->tabStates)[i];
+                if (!state || len(state->filePath) == 0) {
                     logf("WinMain: skipping RestoreTabOnStartup() because state->filePath is empty\n");
                     continue;
                 }
@@ -18600,15 +18749,19 @@ ContinueOpenWindow:
                         matchDocIdx = i;
                     }
                 }
-                if (matchDocIdx >= 0) {
-                    selectIdx = matchDocIdx;
-                } else if (want >= 1 && want <= nTabs && !tabs[want - 1]->IsAboutTab()) {
-                    // legacy: UI index including home
-                    selectIdx = want - 1;
-                } else if (firstDocIdx >= 0) {
-                    selectIdx = firstDocIdx;
+                if (want == 0) {
+                    OpenHomeTab(win);
+                } else {
+                    if (matchDocIdx >= 0) {
+                        selectIdx = matchDocIdx;
+                    } else if (want >= 1 && want <= nTabs && !tabs[want - 1]->IsAboutTab()) {
+                        // legacy: UI index including home
+                        selectIdx = want - 1;
+                    } else if (firstDocIdx >= 0) {
+                        selectIdx = firstDocIdx;
+                    }
+                    TabsSelect(win, selectIdx);
                 }
-                TabsSelect(win, selectIdx);
             }
             if (gSettings->lazyLoading) {
                 // trigger loading of the document

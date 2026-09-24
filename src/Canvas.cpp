@@ -1017,13 +1017,13 @@ static bool gWheelMsgRedirect = false;
 static bool gInMouseWheelScroll = false;
 
 static int ScrollLineAmount(int configuredAmount) {
-    return configuredAmount > 0 ? configuredAmount : 16;
+    return configuredAmount > 0 ? configuredAmount : 35;
 }
 
 #if IS_DEBUG
 bool Canvas_UnitTestScrollLineAmount() {
-    return ScrollLineAmount(16) == 16 && ScrollLineAmount(30) == 30 && ScrollLineAmount(1) == 1 &&
-           ScrollLineAmount(0) == 16 && ScrollLineAmount(-1) == 16;
+    return ScrollLineAmount(35) == 35 && ScrollLineAmount(30) == 30 && ScrollLineAmount(1) == 1 &&
+           ScrollLineAmount(0) == 35 && ScrollLineAmount(-1) == 35;
 }
 #endif
 
@@ -4005,7 +4005,7 @@ static bool DrawDocument(MainWindow* win, HDC hdc, Rect rcArea) {
     // when all-match painting was on (issue #5737).
     PaintAllFindMatches(win, &gfx);
     if (win->showSelection) {
-        PaintSelection(win, &gfx);
+        PaintSelection(win, &gfx, hdc);
     }
     // keep the floating selection toolbar aligned with the selection while
     // scrolling/zooming; hides itself when the selection is gone or off-screen
