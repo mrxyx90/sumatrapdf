@@ -66,6 +66,9 @@ bool HwndIsOnScreenKeyboard(HWND);
 bool HwndIsVisible(HWND hwnd);
 void HwndSetVisible(HWND hwnd, bool visible);
 void HwndToForeground(HWND hwnd);
+HWND FindTopLevelWindowByAppId(Str appId);
+bool MinimizeTopLevelWindowByAppId(Str appId);
+bool CloseTopLevelWindowByAppId(Str appId);
 
 //--- HWND: styles / RTL / chrome
 
