@@ -120,6 +120,8 @@ import { testit as issue6217 } from "./issue-6217.ts";
 import { testit as comicFitPageRelayout } from "./comic-fit-page-relayout.ts";
 import { testit as issue6225 } from "./issue-6225.ts";
 import { testit as issue6229 } from "./issue-6229.ts";
+import { testit as issue6245 } from "./issue-6245.ts";
+import { testit as issue6244 } from "./issue-6244.ts";
 import { testit as ghsaP2ph2rvmQ37m } from "./security-ghsa-p2ph-2rvm-q37m.ts";
 import { testit as issue4753 } from "./issue-4753.ts";
 import { testit as issue4055 } from "./issue-4055.ts";
@@ -255,6 +257,7 @@ import { testit as paletteDeleteAnnotation } from "./palette-delete-annotation.t
 import { testit as paletteCommandAvailability } from "./palette-command-availability.ts";
 import { testit as recentFilesMenu } from "./recent-files-menu.ts";
 import { testit as commandPaletteSettings } from "./command-palette-settings.ts";
+import { testit as commandPaletteTheme } from "./command-palette-theme.ts";
 import { testit as commandPaletteDeleteTab } from "./command-palette-delete-tab.ts";
 import { testit as issue6104 } from "./issue-6104.ts";
 import { testit as issue6106 } from "./issue-6106.ts";
@@ -333,6 +336,10 @@ import { testit as issue6184 } from "./issue-6184.ts";
 import { testit as issue6220 } from "./issue-6220.ts";
 import { testit as sessionRestoreTabState } from "./session-restore-tab-state.ts";
 import { testit as issue6239 } from "./issue-6239.ts";
+import { testit as toolPoster } from "./tool-poster.ts";
+import { testit as toolMerge } from "./tool-merge.ts";
+import { testit as reuseInstanceFullscreen } from "./reuse-instance-fullscreen.ts";
+import { testit as attachmentOpenExternal } from "./attachment-open-external.ts";
 
 async function annotationClipboardTests(): Promise<void> {
   beginSharedControlledSession();
@@ -367,6 +374,8 @@ export const tests: NamedTest[] = [
   ["comic-fit-page-relayout", comicFitPageRelayout],
   ["issue-6225", issue6225],
   ["issue-6229", issue6229],
+  ["issue-6245", issue6245],
+  ["issue-6244", issue6244],
   ["issue-6133", issue6133],
   ["issue-6184", issue6184],
   ["image-only-palette-items", imageOnlyPaletteItems],
@@ -613,6 +622,7 @@ export const tests: NamedTest[] = [
   ["palette-command-availability", paletteCommandAvailability],
   ["recent-files-menu", recentFilesMenu],
   ["command-palette-settings", commandPaletteSettings],
+  ["command-palette-theme", commandPaletteTheme],
   ["command-palette-delete-tab", commandPaletteDeleteTab],
   ["issue-6104", issue6104],
   ["issue-6106", issue6106],
@@ -662,6 +672,10 @@ export const tests: NamedTest[] = [
   ["issue-6220", issue6220],
   ["session-restore-tab-state", sessionRestoreTabState],
   ["issue-6239", issue6239],
+  ["tool-poster", toolPoster],
+  ["tool-merge", toolMerge],
+  ["reuse-instance-fullscreen", reuseInstanceFullscreen],
+  ["attachment-open-external", attachmentOpenExternal],
 ];
 
 export async function testit(opts?: SuiteOptions): Promise<void> {

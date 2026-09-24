@@ -2365,6 +2365,18 @@ static void UpdateUiForCurrentTab(MainWindow* win) {
     }
 }
 
+static bool showTocByDefault(Str path, EngineBase* engine) {
+    if (!gSettings->showToc) {
+        return false;
+    }
+    // comic book bookmarks are usually just the list of files: only show
+    // ones from ComicInfo.xml (#6244)
+    FileType kind = GuessFileTypeFromName(path);
+    if (!IsEngineCbxSupportedFileType(kind)) {
+        return true;
+    }
+    return EngineCbxHasComicInfoToc(engine);
+}
 
 static bool IsEbookFileType(FileType ft) {
     return ft == FileType::Epub || ft == FileType::Mobi || ft == FileType::Fb2 || ft == FileType::Fb2z ||
@@ -2522,8 +2534,8 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
     ScrollState ss(1, -1, -1);
     int rotation = 0;
     Str path = args->FilePath();
-    // Keep the bookmarks/ToC sidebar closed when opening a document.
-    bool showToc = false;
+    DisplayModel* dmForToc = ctrl ? ctrl->AsFixed() : nullptr;
+    bool showToc = showTocByDefault(path, dmForToc ? dmForToc->GetEngine() : nullptr);
     bool showAsFullScreen = WIN_STATE_FULLSCREEN == gSettings->windowState;
     int showType = SW_NORMAL;
     if (gSettings->windowState == WIN_STATE_MAXIMIZED || showAsFullScreen) {
@@ -3718,6 +3730,7 @@ void UpdateAfterThemeChange() {
         uint flags = RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN;
         RedrawWindow(win->hwndFrame, nullptr, nullptr, flags);
     }
+    CommandPaletteUpdateTheme();
     UpdateDocumentColors();
 }
 
@@ -15727,6 +15740,9 @@ static bool IsSimpleOpenCase(const Flags& i, bool isFirstWin) {
     if (i.search) {
         return false;
     }
+    if (i.enterPresentation || i.enterFullScreen) {
+        return false;
+    }
     return true;
 }
 
@@ -15819,6 +15835,10 @@ static void OpenUsingDDE(HWND targetHwnd, Str path, Flags& i, bool isFirstWin) {
         // TODO: quote if i.search has '"' in it
         cmd.Append(fmt("[Search(\"%s\",\"%s\")]", fullPath, i.search));
     }
+    if ((i.enterPresentation || i.enterFullScreen) && isFirstWin) {
+        Str name = i.enterPresentation ? StrL("Presentation") : StrL("FullScreen");
+        cmd.Append(fmt("[%s(\"%s\")]", name, fullPath));
+    }
 
     if (i.reuseDdeInstance) {
         targetHwnd = nullptr; // force DDEExecute
@@ -15826,15 +15846,20 @@ static void OpenUsingDDE(HWND targetHwnd, Str path, Flags& i, bool isFirstWin) {
     SendMyselfDDE(ToStr(cmd), targetHwnd);
 }
 
+// enters presentation or fullscreen, leaving the other one first
+void SwitchToFullScreen(MainWindow* win, bool presentation) {
+    if (presentation ? win->isFullScreen : win->presentation) {
+        ExitFullScreen(win);
+    }
+    EnterFullScreen(win, presentation);
+}
+
 static void FlagsEnterFullscreen(const Flags& flags, MainWindow* win) {
     if (!win || !win->IsDocLoaded()) {
         return;
     }
     if (flags.enterPresentation || flags.enterFullScreen) {
-        if (flags.enterPresentation && win->isFullScreen || flags.enterFullScreen && win->presentation) {
-            ExitFullScreen(win);
-        }
-        EnterFullScreen(win, flags.enterPresentation);
+        SwitchToFullScreen(win, flags.enterPresentation);
     }
 }
 
