@@ -433,6 +433,44 @@ void HwndToForeground(HWND hwnd) {
     SetForegroundWindow(hwnd);
 }
 
+struct AppWindowSearchCtx {
+    Str appId;
+    HWND result = nullptr;
+};
+
+static bool CommandLineHasAppId(Str cmdLine, Str appId) {
+    if (len(cmdLine) == 0 || len(appId) == 0) {
+        return false;
+    }
+    TempStr needle = fmt("--app-id=%s", appId);
+    return str::ContainsI(cmdLine, needle);
+}
+
+static BOOL CALLBACK FindTopLevelWindowByAppIdProc(HWND hwnd, LPARAM lp) {
+    auto* ctx = (AppWindowSearchCtx*)lp;
+    if (ctx->result || !IsWindowVisible(hwnd)) {
+        return TRUE;
+    }
+    if (GetWindowLongPtrW(hwnd, GWL_STYLE) & WS_CHILD) {
+        return TRUE;
+    }
+
+    TempStr cls = HwndGetClassName(hwnd);
+    if (!str::EqI(cls, StrL("Chrome_WidgetWin_1")) && !str::EqI(cls, StrL("Chrome_WidgetWin_2"))) {
+        return TRUE;
+    }
+
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (!pid) {
+        return TRUE;
+    }
+
+    // The process command line is resolved by the helper below. Keep the
+    // window enumeration separate so this remains an HWND-level operation.
+    return TRUE;
+}
+
 bool HwndIsVisible(HWND hwnd) {
     return ::IsWindowVisible(hwnd);
 }
