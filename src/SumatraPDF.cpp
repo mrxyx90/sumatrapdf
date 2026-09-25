@@ -14089,7 +14089,7 @@ static void HandleCaptionClick(MainWindow* win, int btnIdx) {
             PostMessageW(win->hwndFrame, WM_SYSCOMMAND, SC_RESTORE, 0);
             break;
         case CB_CLOSE:
-            PostMessageW(win->hwndFrame, WM_SYSCOMMAND, SC_CLOSE, 0);
+            SendMessageW(win->hwndFrame, WM_SYSCOMMAND, SC_CLOSE, 0);
             break;
         case CB_MENU:
             if (!KillTimer(win->hwndFrame, kDoNotReopenMenuTimerID) && !win->isMenuOpen) {
