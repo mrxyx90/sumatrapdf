@@ -3445,8 +3445,9 @@ void CreateToolbar(MainWindow* win) {
     args.className = kToolbarHostClass;
     args.initialSize = {100, ToolbarRowDy(iconSize)};
     args.bgColor = TbBgColor();
+    args.fillBackgroundBeforeFirstVisiblePaint = true;
     args.isRtl = IsUIRtl();
-    args.visible = true;
+    args.visible = false;
     // the old Win32 toolbar did not take the keyboard focus; a generic child
     // would, and then accelerators (Ctrl+W, …) never reached the frame
     args.noActivate = true;
