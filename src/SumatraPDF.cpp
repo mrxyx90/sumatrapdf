@@ -148,7 +148,7 @@ using Gdiplus::SolidBrush;
 
 constexpr const WCHAR* kCanvasClassName = L"SUMATRA_PDF_CANVAS";
 
-constexpr const char* kRestrictionsFileName = "sumatrapdfrestrict.ini";
+constexpr const char* kRestrictionsFileName = "apdfrestrict.ini";
 
 constexpr const char* kSumatraWindowTitle = kAppName;
 constexpr const WCHAR* kSumatraWindowTitleW = TEXT(kAppName);
@@ -3624,7 +3624,7 @@ static void MaybeShowDefaultAppNotification(MainWindow* win) {
 
     // "SumatraPDF is no longer the default app for opening [pdf](CmdFixDefaultApp .pdf), ..."
     str::Builder sb;
-    sb.Append(StrL("SumatraPDF is no longer the default app for opening "));
+    sb.Append(fmt("%s is no longer the default app for opening ", StrL(kAppName)));
     int nShow = std::min(len(missing), kMaxDefaultAppLinks);
     for (int i = 0; i < nShow; i++) {
         if (i > 0) {
@@ -10784,7 +10784,7 @@ static void ListPrintersShowResult(ListPrintersResult* d) {
 
     RemoveNotificationsForGroup(parent, kNotifActionResponse);
     // ShowTextInWindow copies text into the edit control before returning.
-    ShowTextInWindow(StrL("SumatraPDF - Printers"), text);
+    ShowTextInWindow(fmt("%s - Printers", StrL(kAppName)), text);
     str::Free(text);
 }
 
@@ -11448,7 +11448,7 @@ void LaunchDocumentation(Str docURI) {
         }
 
         SimpleBrowserCreateArgs args;
-        args.title = StrL("SumatraPDF Documentation");
+        args.title = fmt("%s Documentation", StrL(kAppName));
         args.url = localUrl;
         HWND parentFrame = ManualBrowserParentFrame();
         gManualBrowserParentHwnd = parentFrame;
@@ -16145,7 +16145,7 @@ static HWND FindExistingSumatraProcessHwnd(HANDLE* hMutex, bool* openInNewWindow
     TempStr combinedPath = str::JoinTemp(GetSelfExePathTemp(), StrL("|"), GetAppDataDirTemp());
     str::ToLowerInPlace(combinedPath);
     u32 hash = MurmurHash2(combinedPath);
-    TempStr mapId = fmt("SumatraPDF-%08x", hash);
+    TempStr mapId = fmt("%s-%08x", StrL(kAppName), hash);
 
     int retriesLeft = 3;
     HANDLE hMap = nullptr;
@@ -17905,11 +17905,11 @@ static void ShowCrashHandlerMessage() {
         return;
     }
 
-    Str msg = Tr("SumatraPDF crashed.\n\nPress 'Cancel' to see the crash report.");
+    Str msg = fmt(Tr("%s crashed.\n\nPress 'Cancel' to see the crash report.").s, StrL(kAppName));
     uint flags = MB_ICONERROR | MB_OK | MB_OKCANCEL | MbRtlReadingMaybe();
     flags |= MB_SETFOREGROUND | MB_TOPMOST;
 
-    int res = MsgBox(nullptr, msg, Tr("SumatraPDF crashed"), flags);
+    int res = MsgBox(nullptr, msg, fmt(Tr("%s crashed").s, StrL(kAppName)), flags);
     if (IDCANCEL != res) {
         log(StrL("ShowCrashHandlerMessage: res != IDCANCEL\n"));
         return;
@@ -18092,9 +18092,9 @@ static void InstallSumatraCrashHandler(bool localOnly) {
     TempStr crashInfoDir = GetCrashInfoDirTemp();
 
     CrashHandlerConfig cfg{};
-    cfg.crashDumpPath = path::JoinTemp(crashInfoDir, StrL("sumatrapdfcrash.dmp"));
+    cfg.crashDumpPath = path::JoinTemp(crashInfoDir, StrL("apdfcrash.dmp"));
     cfg.submitUrl = BuildSubmitUrlTemp();
-    cfg.fullDumpEnvVar = StrL("SUMATRAPDF_FULLDUMP");
+    cfg.fullDumpEnvVar = StrL("APDF_FULLDUMP");
     cfg.localOnly = localOnly;
     cfg.forTesting = gForTesting;
     // a debug build submits to a local test server (see kMinidumpSubmitUrl), so
