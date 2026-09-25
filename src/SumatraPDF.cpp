@@ -3351,6 +3351,20 @@ static void SetWindowBorderColor(HWND hwnd, Color color) {
     DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, &color, sizeof(color));
 }
 
+static bool SetWindowCloaked(HWND hwnd, bool cloaked) {
+    BOOL value = cloaked ? TRUE : FALSE;
+    return SUCCEEDED(DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, &value, sizeof(value)));
+}
+
+static void PaintWindowBackground(HWND hwnd) {
+    HDC hdc = GetDC(hwnd);
+    if (!hdc) {
+        return;
+    }
+    HdcFillRect(hdc, HwndClientRect(hwnd), ThemeMainWindowBackgroundColor());
+    ReleaseDC(hwnd, hdc);
+}
+
 static void SetWindowRoundedCorners(HWND hwnd, bool rounded) {
     auto cornerPref = rounded ? DWMWCP_ROUND : DWMWCP_DONOTROUND;
     DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &cornerPref, sizeof(cornerPref));
@@ -3540,6 +3554,10 @@ void ShowMainWindow(MainWindow* win, int windowState) {
     // lets DWM present its default background before the restored document is
     // ready, which appears as a white flash when reopening a previous PDF.
     bool wasVisible = HwndIsVisible(win->hwndFrame);
+    if (!wasVisible) {
+        // Keep DWM from presenting the temporary maximize/relayout surface.
+        SetWindowCloaked(win->hwndFrame, true);
+    }
 
     if (!wasVisible && (WIN_STATE_FULLSCREEN == windowState || WIN_STATE_MAXIMIZED == windowState)) {
         // Apply maximize while hidden, then explicitly hide again. This updates
@@ -3575,8 +3593,12 @@ void ShowMainWindow(MainWindow* win, int windowState) {
     HwndEnsureOnScreen(win->hwndFrame);
 
     if (!wasVisible) {
+        PaintWindowBackground(win->hwndFrame);
         RedrawWindow(win->hwndFrame, nullptr, nullptr,
                      RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_FRAME | RDW_UPDATENOW);
+        if (SetWindowCloaked(win->hwndFrame, false)) {
+            DwmFlush();
+        }
         // Only expose a startup/session-restored window after its final chrome
         // and document layout have been prepared. This prevents DWM from
         // presenting the frame background before the restored PDF is painted.
