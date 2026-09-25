@@ -1206,6 +1206,18 @@ struct HomeSearchEdit : Edit {
     MainWindow* win = nullptr;
 
     void WndProc(ControlBase::WndProcEvent* ev) {
+        if (ev->msg == WM_ERASEBKGND) {
+            HDC hdc = (HDC)ev->wparam;
+            RECT rc;
+            GetClientRect(ev->hwnd, &rc);
+            HBRUSH br = BackgroundBrush();
+            if (br) {
+                FillRect(hdc, &rc, br);
+            }
+            ev->result = 1;
+            ev->didHandle = true;
+            return;
+        }
         if (ev->msg == WM_KEYDOWN && ev->wparam == VK_DOWN) {
             // down from the search box moves into the file list (issue #1136),
             // restoring the column we left from when going up
@@ -1311,10 +1323,10 @@ static void EnsureHomeSearchCreated(MainWindow* win) {
     // Avoid a separate background erase before the themed EDIT paint; that
     // erase flashes under the Home-page search box.
     e->shouldEraseBackground = false;
+    e->SetColors(ThemeWindowTextColor(), ThemeControlBackgroundColor());
     e->Create(args);
     // Edit::Create wired Edit::WndProc; re-route to HomeSearchEdit for Esc/Down/wheel
     e->onWndProc = MkMethod1<HomeSearchEdit, ControlBase::WndProcEvent*, &HomeSearchEdit::WndProc>(e);
-    e->SetColors(ThemeWindowTextColor(), ThemeControlBackgroundColor());
     e->onTextChanged = MkFunc0(HomeSearchTextChanged, win);
     e->onFocus = MkFunc0(HomeSearchFocusChanged, win);
     e->onKillFocus = MkFunc0(HomeSearchFocusChanged, win);
