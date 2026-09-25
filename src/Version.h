@@ -58,3 +58,4 @@
 #define kPublisherStr      "Krzysztof Kowalczyk"
 
 #define kAppName        "Apdf"
+#define kExeName        "Apdf.exe"
