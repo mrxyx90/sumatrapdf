@@ -18733,23 +18733,15 @@ ContinueOpenWindow:
                     if (firstDocIdx < 0) {
                         firstDocIdx = i;
                     }
-                    docOrdinal++;
-                    if (docOrdinal == want) {
+                    if (++docOrdinal == want) {
                         matchDocIdx = i;
                     }
                 }
                 if (want == 0 && len(flags.fileNames) == 0) {
                     OpenHomeTab(win);
                 } else {
-                    if (len(flags.fileNames) > 0) {
-                        WindowTab* fileTab = FindTabByFile(flags.fileNames[0]);
-                        if (fileTab) {
-                            selectIdx = win->GetTabIdx(fileTab);
-                        } else if (matchDocIdx >= 0) {
-                            selectIdx = matchDocIdx;
-                        } else if (firstDocIdx >= 0) {
-                            selectIdx = firstDocIdx;
-                        }
+                    if (len(flags.fileNames) > 0 && FindTabByFile(flags.fileNames[0])) {
+                        selectIdx = win->GetTabIdx(FindTabByFile(flags.fileNames[0]));
                     } else if (matchDocIdx >= 0) {
                         selectIdx = matchDocIdx;
                     } else if (want >= 1 && want <= nTabs && !tabs[want - 1]->IsAboutTab()) {
