@@ -222,7 +222,13 @@ void TabCtrl::Paint(VirtPaintCtx& ctx) {
         textColor = IsLightColor(tabBgCol) ? MkRgb(0xC4, 0x1E, 0x1E) : MkRgb(0xFF, 0x6A, 0x6A);
     }
 
-    gfx->FillRect(r, tabBgCol);
+    if (IsSelected()) {
+        int radius = DpiScale(10);
+        gfx->FillRoundedRect(r, radius, tabBgCol);
+        gfx->FillRect({r.x, r.y + r.dy / 2, r.dx, r.dy - r.dy / 2}, tabBgCol);
+    } else {
+        gfx->FillRect(r, tabBgCol);
+    }
 
     if (!IsSelected() && tabsCtrl) {
         int idx = Idx();
