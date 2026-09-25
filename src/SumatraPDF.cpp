@@ -2798,6 +2798,7 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
     if (args->noPlaceWindow) {
         shouldPlace = false;
     }
+    bool deferShowWindow = false;
     if (shouldPlace) {
         bool fixedWindowPos = gCli && !gCli->windowPos.IsEmpty();
         if (!fixedWindowPos && args->isNewWindow && fs && !fs->windowPos.IsEmpty() && showType == SW_NORMAL) {
@@ -2808,15 +2809,19 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
             HwndMoveWindow(win->hwndFrame, &rect);
         }
         if (args->showWin) {
-            ShowWindow(win->hwndFrame, showType);
-            if (IsRunningOnWine()) {
-                Rect wr = HwndWindowRect(win->hwndFrame);
-                Rect cr = HwndClientRect(win->hwndFrame);
-                logf(
-                    "LoadDocument: showWin windowRect=(%d,%d,%d,%d) clientRect=(%d,%d,%d,%d) "
-                    "captionRect=(%d,%d,%d,%d)\n",
-                    wr.x, wr.y, wr.dx, wr.dy, cr.x, cr.y, cr.dx, cr.dy, win->captionRect.x, win->captionRect.y,
-                    win->captionRect.dx, win->captionRect.dy);
+            // Cold-start frames stay hidden until their document and sidebar state is final.
+            deferShowWindow = !HwndIsVisible(win->hwndFrame) && showType != SW_MINIMIZE;
+            if (!deferShowWindow) {
+                ShowWindow(win->hwndFrame, showType);
+                if (IsRunningOnWine()) {
+                    Rect wr = HwndWindowRect(win->hwndFrame);
+                    Rect cr = HwndClientRect(win->hwndFrame);
+                    logf(
+                        "LoadDocument: showWin windowRect=(%d,%d,%d,%d) clientRect=(%d,%d,%d,%d) "
+                        "captionRect=(%d,%d,%d,%d)\n",
+                        wr.x, wr.y, wr.dx, wr.dy, cr.x, cr.y, cr.dx, cr.dy, win->captionRect.x, win->captionRect.y,
+                        win->captionRect.dx, win->captionRect.dy);
+                }
             }
         }
 
@@ -2834,7 +2839,7 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
         }
 #endif
 
-        if (win) {
+        if (win && !deferShowWindow) {
             UpdateWindow(win->hwndFrame);
         }
         if (args->isNewWindow && win) {
@@ -2953,7 +2958,17 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
     ShowNotificationsForActiveTab(win->hwndCanvas, win->CurrentTab());
 
     // This should only happen after everything else is ready
-    if ((args->isNewWindow || args->placeWindow) && args->showWin && showAsFullScreen) {
+    bool shouldEnterFullScreen = (args->isNewWindow || args->placeWindow) && args->showWin && showAsFullScreen;
+    if (deferShowWindow) {
+        win->RedrawAll(false);
+        int windowState = WIN_STATE_NORMAL;
+        if (showAsFullScreen) {
+            windowState = WIN_STATE_FULLSCREEN;
+        } else if (showType == SW_MAXIMIZE) {
+            windowState = WIN_STATE_MAXIMIZED;
+        }
+        ShowMainWindow(win, windowState);
+    } else if (shouldEnterFullScreen) {
         EnterFullScreen(win);
     } else {
         win->RedrawAll(false);
@@ -3553,11 +3568,15 @@ void ShowMainWindow(MainWindow* win, int windowState) {
     // until they become visible. Force one relayout before the first paint.
     RelayoutFrame(win);
     RefreshTocTreeIfNeeded(win);
-    UpdateWindow(win->hwndFrame);
+    if (wasVisible) {
+        UpdateWindow(win->hwndFrame);
+    }
     UpdateToolbarFindText(win);
     HwndEnsureOnScreen(win->hwndFrame);
 
     if (!wasVisible) {
+        RedrawWindow(win->hwndFrame, nullptr, nullptr,
+                     RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_FRAME | RDW_UPDATENOW);
         // Only expose a startup/session-restored window after its final chrome
         // and document layout have been prepared. This prevents DWM from
         // presenting the frame background before the restored PDF is painted.
