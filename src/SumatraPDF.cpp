@@ -18761,7 +18761,9 @@ ContinueOpenWindow:
                 // trigger loading of the document
                 ReloadDocument(win, false);
             }
-            ShowMainWindow(win, data->windowState);
+            if (len(flags.fileNames) == 0 && len(gDdeOpenOnStartup) == 0) {
+                ShowMainWindow(win, data->windowState);
+            }
             // Docs were loaded while the frame was hidden (normal windowPos size).
             // After maximize / fullscreen, force DisplayModel to match the
             // final canvas so scroll isn't stuck on the pre-show viewport
@@ -18841,6 +18843,10 @@ ContinueOpenWindow:
     gIsStartup = false;
     if (win) {
         win->suppressHomePageUntilTabsRestored = false;
+        if (!HwndIsVisible(win->hwndFrame)) {
+            int winState = data ? data->windowState : gSettings->windowState;
+            ShowMainWindow(win, winState);
+        }
         if (win->IsCurrentTabAbout()) {
             HomePageRelayout(win);
         }
