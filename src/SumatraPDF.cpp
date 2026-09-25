@@ -13980,7 +13980,8 @@ void OpenSystemMenu(MainWindow* win) {
     TrackCaptionPopupMenu(win, systemMenu, r);
 }
 
-static int CaptionButtonAt(MainWindow* win, Point pt) {
+static int CaptionButtonAt(MainWindow* win, int mx, int my) {
+    Point pt{mx, my};
     UnmirrorRtl(win->hwndFrame, pt);
     for (int i = CB_BTN_FIRST; i < CB_BTN_COUNT; i++) {
         Rect r = win->captionBtn[i].rect;
@@ -14754,7 +14755,7 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
             // classified as HTTOPRIGHT before the close button ever sees the mouse.
             {
                 Point ptClient = HwndScreenToClient(hwnd, Point(x, y));
-                int btnIdx = CaptionButtonAt(win, ptClient);
+                int btnIdx = CaptionButtonAt(win, ptClient.x, ptClient.y);
                 if (btnIdx >= 0) {
                     if (btnIdx == CB_MAXIMIZE || btnIdx == CB_RESTORE) {
                         *callDef = false;
@@ -14855,7 +14856,7 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
 
         case WM_MOUSEMOVE: {
             Point ptm{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
-            int btnIdx = CaptionButtonAt(win, ptm);
+            int btnIdx = CaptionButtonAt(win, ptm.x, ptm.y);
             for (int i = CB_BTN_FIRST; i < CB_BTN_COUNT; i++) {
                 bool shouldHighlight = (i == btnIdx);
                 if (win->captionBtn[i].highlighted != shouldHighlight) {
@@ -14874,7 +14875,7 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
 
         case WM_LBUTTONDOWN: {
             Point ptd{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
-            int btnIdx = CaptionButtonAt(win, ptd);
+            int btnIdx = CaptionButtonAt(win, ptd.x, ptd.y);
             if (btnIdx >= 0) {
                 win->captionBtn[btnIdx].pressed = true;
                 RepaintButton(hwnd, btnIdx, win);
@@ -14898,7 +14899,7 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
                 ReleaseCapture();
             }
             Point ptu{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
-            int btnIdx = CaptionButtonAt(win, ptu);
+            int btnIdx = CaptionButtonAt(win, ptu.x, ptu.y);
             for (int i = CB_BTN_FIRST; i < CB_BTN_COUNT; i++) {
                 if (win->captionBtn[i].pressed) {
                     win->captionBtn[i].pressed = false;
@@ -14914,7 +14915,7 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
 
         case WM_LBUTTONDBLCLK: {
             Point ptdc{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
-            int btnIdx = CaptionButtonAt(win, ptdc);
+            int btnIdx = CaptionButtonAt(win, ptdc.x, ptdc.y);
             if (btnIdx == CB_SYSTEM_MENU) {
                 PostMessageW(hwnd, WM_SYSCOMMAND, SC_CLOSE, 0);
                 *callDef = false;
