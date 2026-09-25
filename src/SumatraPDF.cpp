@@ -14746,6 +14746,26 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
             int y = GET_Y_LPARAM(lp);
             Rect wrc = HwndWindowRect(hwnd);
 
+            // Caption buttons must win over the enlarged resize hit-test area.
+            // Otherwise a fast move into the top-right corner can be classified
+            // as HTTOPRIGHT and never enter the caption-button hover path.
+            {
+                Point ptClient = HwndScreenToClient(hwnd, Point(x, y));
+                int btnIdx = CaptionButtonAt(win, ptClient);
+                if (btnIdx == CB_MINIMIZE) {
+                    *callDef = false;
+                    return HTMINBUTTON;
+                }
+                if (btnIdx == CB_MAXIMIZE || btnIdx == CB_RESTORE) {
+                    *callDef = false;
+                    return HTMAXBUTTON;
+                }
+                if (btnIdx == CB_CLOSE) {
+                    *callDef = false;
+                    return HTCLOSE;
+                }
+            }
+
             // use a larger hit-test area than the visible border for easier resizing
             if (!IsZoomed(hwnd) && !win->isFullScreen && !win->presentation) {
                 int b = kFrameResizeHitTest;
@@ -14789,19 +14809,6 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
             }
 
             {
-                Point ptClient = HwndScreenToClient(hwnd, Point(x, y));
-                int btnIdx = CaptionButtonAt(win, ptClient);
-                if (btnIdx >= 0) {
-                    if (btnIdx == CB_MAXIMIZE || btnIdx == CB_RESTORE) {
-                        *callDef = false;
-                        return HTMAXBUTTON;
-                    }
-                    *callDef = false;
-                    return HTCLIENT;
-                }
-            }
-
-            {
                 Point pt{x, y};
                 Rect rClient = HwndMapRectToWindow(HwndClientRect(hwnd), hwnd, HWND_DESKTOP);
                 Rect rCaption = HwndMapRectToWindow(win->captionRect, hwnd, HWND_DESKTOP);
@@ -14813,34 +14820,52 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
         } break;
 
         case WM_NCLBUTTONDOWN:
-            if (wp == HTMAXBUTTON) {
+            if (wp == HTMINBUTTON || wp == HTMAXBUTTON || wp == HTCLOSE) {
                 *callDef = false;
                 return 0;
             }
             break;
 
         case WM_NCLBUTTONUP:
-            if (wp == HTMAXBUTTON) {
-                WPARAM cmd = IsZoomed(hwnd) ? SC_RESTORE : SC_MAXIMIZE;
-                PostMessageW(hwnd, WM_SYSCOMMAND, cmd, 0);
+            if (wp == HTMINBUTTON || wp == HTMAXBUTTON || wp == HTCLOSE) {
+                int btnIdx = -1;
+                if (wp == HTMINBUTTON) {
+                    btnIdx = CB_MINIMIZE;
+                } else if (wp == HTMAXBUTTON) {
+                    btnIdx = IsZoomed(hwnd) ? CB_RESTORE : CB_MAXIMIZE;
+                } else if (wp == HTCLOSE) {
+                    btnIdx = CB_CLOSE;
+                }
+                HandleCaptionClick(win, btnIdx);
                 *callDef = false;
                 return 0;
             }
             break;
 
         case WM_NCMOUSEMOVE: {
-            // WM_NCMOUSEMOVE is delivered for fast cursor movement into the
-            // non-client area. Hit-test the actual screen position so caption
-            // button hover is updated even when WM_MOUSEMOVE is skipped.
-            Point ptScreen{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
-            Point ptClient = HwndScreenToClient(hwnd, ptScreen);
-            int btnIdx = CaptionButtonAt(win, ptClient);
+            int btnIdx = -1;
+            if (wp == HTMINBUTTON) {
+                btnIdx = CB_MINIMIZE;
+            } else if (wp == HTMAXBUTTON) {
+                btnIdx = IsZoomed(hwnd) ? CB_RESTORE : CB_MAXIMIZE;
+            } else if (wp == HTCLOSE) {
+                btnIdx = CB_CLOSE;
+            }
+
             for (int i = CB_BTN_FIRST; i < CB_BTN_COUNT; i++) {
                 bool shouldHighlight = (i == btnIdx);
                 if (win->captionBtn[i].highlighted != shouldHighlight) {
                     win->captionBtn[i].highlighted = shouldHighlight;
                     RepaintButton(hwnd, i, win);
                 }
+            }
+
+            if (btnIdx >= 0) {
+                TRACKMOUSEEVENT ev{};
+                ev.cbSize = sizeof(ev);
+                ev.dwFlags = TME_LEAVE | TME_NONCLIENT;
+                ev.hwndTrack = hwnd;
+                TrackMouseEvent(&ev);
             }
         } break;
 
