@@ -1299,6 +1299,7 @@ static void EnsureHomeSearchCreated(MainWindow* win) {
 
     Edit::CreateArgs args;
     args.parent = parent;
+    args.isVisible = false;
     args.font = font;
     // the home page draws the box around it, so the edit has no border of its own
     auto* e = new HomeSearchEdit();

@@ -15010,6 +15010,9 @@ static void ApplyEmbeddedWindowChrome(MainWindow* win) {
 static LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     DpiScope dpiScope(hwnd);
     MainWindow* win = FindMainWindowByHwnd(hwnd);
+    if (win && msg == WM_PAINT && HwndIsVisible(hwnd)) {
+        win->needsInitialFrameBackground = false;
+    }
 
     // DbgLogMsg("frame:", hwnd, msg, wp, lp);
     // detect when an external host (e.g. Total Commander's lister) embeds us
@@ -15416,25 +15419,19 @@ static LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPAR
         case kWmTtsEvent:
             ReadAloudOnTtsEvent(win);
             return 0;
-        case WM_ERASEBKGND:
-            // not sure why it's needed but it causes
-            // flash of caption area in choco theme when resizing sidebar
-#if 0
-            LogRedraw("WM_ERASEBKGND", hwnd);
-            if (win && win->tabsInTitlebar && !IsCurrentThemeDefault()) {
+        case WM_ERASEBKGND: {
+            if (!win || win->needsInitialFrameBackground) {
                 HDC hdc = (HDC)wp;
-                HBRUSH br = CreateSolidBrush(ThemeMainWindowBackgroundColor());
-                HdcFillRect(hdc, HwndClientRect(hwnd), br);
-                DeleteObject(br);
-                if (!win->captionRect.IsEmpty()) {
-                    RECT rcCaption = ToRECT(win->captionRect);
-                    HBRUSH brCaption = CreateSolidBrush(ThemeControlBackgroundColor());
-                    HdcFillRect(hdc, ToRect(rcCaption), brCaption);
-                    DeleteObject(brCaption);
+                Rect client = HwndClientRect(hwnd);
+                HdcFillRect(hdc, client, ThemeMainWindowBackgroundColor());
+                if (win && win->tabsInTitlebar && !win->captionRect.IsEmpty()) {
+                    int captionBottom = limitValue(win->captionRect.y + win->captionRect.dy, 0, client.dy);
+                    Rect captionArea = {0, 0, client.dx, captionBottom};
+                    HdcFillRect(hdc, captionArea, ThemeControlBackgroundColor());
                 }
             }
-#endif
             return TRUE;
+        }
 
         default:
             return DefWindowProc(hwnd, msg, wp, lp);
