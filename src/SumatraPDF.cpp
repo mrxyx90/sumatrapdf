@@ -2798,7 +2798,6 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
     if (args->noPlaceWindow) {
         shouldPlace = false;
     }
-    bool deferShowWindow = false;
     if (shouldPlace) {
         bool fixedWindowPos = gCli && !gCli->windowPos.IsEmpty();
         if (!fixedWindowPos && args->isNewWindow && fs && !fs->windowPos.IsEmpty() && showType == SW_NORMAL) {
@@ -2809,19 +2808,15 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
             HwndMoveWindow(win->hwndFrame, &rect);
         }
         if (args->showWin) {
-            // Cold-start frames stay hidden until their document and sidebar state is final.
-            deferShowWindow = !HwndIsVisible(win->hwndFrame) && showType != SW_MINIMIZE;
-            if (!deferShowWindow) {
-                ShowWindow(win->hwndFrame, showType);
-                if (IsRunningOnWine()) {
-                    Rect wr = HwndWindowRect(win->hwndFrame);
-                    Rect cr = HwndClientRect(win->hwndFrame);
-                    logf(
-                        "LoadDocument: showWin windowRect=(%d,%d,%d,%d) clientRect=(%d,%d,%d,%d) "
-                        "captionRect=(%d,%d,%d,%d)\n",
-                        wr.x, wr.y, wr.dx, wr.dy, cr.x, cr.y, cr.dx, cr.dy, win->captionRect.x, win->captionRect.y,
-                        win->captionRect.dx, win->captionRect.dy);
-                }
+            ShowWindow(win->hwndFrame, showType);
+            if (IsRunningOnWine()) {
+                Rect wr = HwndWindowRect(win->hwndFrame);
+                Rect cr = HwndClientRect(win->hwndFrame);
+                logf(
+                    "LoadDocument: showWin windowRect=(%d,%d,%d,%d) clientRect=(%d,%d,%d,%d) "
+                    "captionRect=(%d,%d,%d,%d)\n",
+                    wr.x, wr.y, wr.dx, wr.dy, cr.x, cr.y, cr.dx, cr.dy, win->captionRect.x, win->captionRect.y,
+                    win->captionRect.dx, win->captionRect.dy);
             }
         }
 
@@ -2839,7 +2834,7 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
         }
 #endif
 
-        if (win && !deferShowWindow) {
+        if (win) {
             UpdateWindow(win->hwndFrame);
         }
         if (args->isNewWindow && win) {
@@ -2958,17 +2953,7 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
     ShowNotificationsForActiveTab(win->hwndCanvas, win->CurrentTab());
 
     // This should only happen after everything else is ready
-    bool shouldEnterFullScreen = (args->isNewWindow || args->placeWindow) && args->showWin && showAsFullScreen;
-    if (deferShowWindow) {
-        win->RedrawAll(false);
-        int windowState = WIN_STATE_NORMAL;
-        if (showAsFullScreen) {
-            windowState = WIN_STATE_FULLSCREEN;
-        } else if (showType == SW_MAXIMIZE) {
-            windowState = WIN_STATE_MAXIMIZED;
-        }
-        ShowMainWindow(win, windowState);
-    } else if (shouldEnterFullScreen) {
+    if ((args->isNewWindow || args->placeWindow) && args->showWin && showAsFullScreen) {
         EnterFullScreen(win);
     } else {
         win->RedrawAll(false);
@@ -3351,20 +3336,6 @@ static void SetWindowBorderColor(HWND hwnd, Color color) {
     DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, &color, sizeof(color));
 }
 
-static bool SetWindowCloaked(HWND hwnd, bool cloaked) {
-    BOOL value = cloaked ? TRUE : FALSE;
-    return SUCCEEDED(DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, &value, sizeof(value)));
-}
-
-static void PaintWindowBackground(HWND hwnd) {
-    HDC hdc = GetDC(hwnd);
-    if (!hdc) {
-        return;
-    }
-    HdcFillRect(hdc, HwndClientRect(hwnd), ThemeMainWindowBackgroundColor());
-    ReleaseDC(hwnd, hdc);
-}
-
 static void SetWindowRoundedCorners(HWND hwnd, bool rounded) {
     auto cornerPref = rounded ? DWMWCP_ROUND : DWMWCP_DONOTROUND;
     DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &cornerPref, sizeof(cornerPref));
@@ -3466,14 +3437,9 @@ static MainWindow* CreateMainWindow() {
     // if tabsInTitlebar, we use a rebar menu bar; otherwise native SetMenu
     win->brControlBgColor = CreateSolidBrush(ThemeControlBackgroundColor());
 
-    // Keep the entire window hierarchy hidden until startup layout and the
-    // initial document/home-page state are ready. Showing the child canvas here
-    // can cause Windows to paint the default background before ShowMainWindow()
-    // reveals the frame, producing the launch-time white flash.
-    //
-    // Do not use WM_SETREDRAW here either: DefWindowProc's handling of enabling
-    // redraw can show the hidden frame before the custom caption / maximized /
-    // fullscreen state is applied.
+    // Warm the child surface while the frame is hidden; its first erase uses
+    // the theme background instead of the unpainted white surface.
+    ShowWindow(win->hwndCanvas, SW_SHOW);
 
     Tooltip::CreateArgs args;
     args.parent = win->hwndCanvas;
@@ -3554,10 +3520,6 @@ void ShowMainWindow(MainWindow* win, int windowState) {
     // lets DWM present its default background before the restored document is
     // ready, which appears as a white flash when reopening a previous PDF.
     bool wasVisible = HwndIsVisible(win->hwndFrame);
-    if (!wasVisible) {
-        // Keep DWM from presenting the temporary maximize/relayout surface.
-        SetWindowCloaked(win->hwndFrame, true);
-    }
 
     if (!wasVisible && (WIN_STATE_FULLSCREEN == windowState || WIN_STATE_MAXIMIZED == windowState)) {
         // Apply maximize while hidden, then explicitly hide again. This updates
@@ -3586,19 +3548,11 @@ void ShowMainWindow(MainWindow* win, int windowState) {
     // until they become visible. Force one relayout before the first paint.
     RelayoutFrame(win);
     RefreshTocTreeIfNeeded(win);
-    if (wasVisible) {
-        UpdateWindow(win->hwndFrame);
-    }
+    UpdateWindow(win->hwndFrame);
     UpdateToolbarFindText(win);
     HwndEnsureOnScreen(win->hwndFrame);
 
     if (!wasVisible) {
-        PaintWindowBackground(win->hwndFrame);
-        RedrawWindow(win->hwndFrame, nullptr, nullptr,
-                     RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_FRAME | RDW_UPDATENOW);
-        if (SetWindowCloaked(win->hwndFrame, false)) {
-            DwmFlush();
-        }
         // Only expose a startup/session-restored window after its final chrome
         // and document layout have been prepared. This prevents DWM from
         // presenting the frame background before the restored PDF is painted.
