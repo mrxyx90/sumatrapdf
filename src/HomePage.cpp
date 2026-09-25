@@ -3204,9 +3204,6 @@ static bool HomePageShouldShow(MainWindow* win) {
     if (!win) {
         return false;
     }
-    if (win->suppressHomePageUntilTabsRestored) {
-        return false;
-    }
     if (!win->IsCurrentTabAbout()) {
         return false;
     }

@@ -241,8 +241,6 @@ struct MainWindow { // NOLINT(clang-analyzer-optin.performance.Padding)
     HWND hwndCanvas = nullptr;
     bool needsInitialCanvasBackground = true;
     bool needsInitialFrameBackground = true;
-    // Don't lay out the Home page in the temporary no-tab state while restoring a session.
-    bool suppressHomePageUntilTabsRestored = false;
     // ShowScrollBar sends WM_SIZE; ignore it until UpdateScrollbars finishes (issue #5969)
     bool suppressCanvasSizeUpdate = false;
     // popups in screen coords (find bar, overlay scrollbars, selection toolbar, ...)

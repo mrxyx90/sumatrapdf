@@ -3402,7 +3402,6 @@ static MainWindow* CreateMainWindow(bool restoringSession) {
 
     ReportIf(nullptr != FindMainWindowByHwnd(hwndFrame));
     MainWindow* win = new MainWindow(hwndFrame);
-    win->suppressHomePageUntilTabsRestored = restoringSession;
     win->frameDpi = RoundUp(posDpi, 4);
     DpiSet(win->frameDpi, win->frameDpi);
     UpdateWindowFrameBorderColor(win);
@@ -18739,10 +18738,19 @@ ContinueOpenWindow:
                         matchDocIdx = i;
                     }
                 }
-                if (want == 0) {
+                if (want == 0 && len(flags.fileNames) == 0) {
                     OpenHomeTab(win);
                 } else {
-                    if (matchDocIdx >= 0) {
+                    if (len(flags.fileNames) > 0) {
+                        WindowTab* fileTab = FindTabByFile(flags.fileNames[0]);
+                        if (fileTab) {
+                            selectIdx = win->GetTabIdx(fileTab);
+                        } else if (matchDocIdx >= 0) {
+                            selectIdx = matchDocIdx;
+                        } else if (firstDocIdx >= 0) {
+                            selectIdx = firstDocIdx;
+                        }
+                    } else if (matchDocIdx >= 0) {
                         selectIdx = matchDocIdx;
                     } else if (want >= 1 && want <= nTabs && !tabs[want - 1]->IsAboutTab()) {
                         // legacy: UI index including home
@@ -18753,7 +18761,6 @@ ContinueOpenWindow:
                     TabsSelect(win, selectIdx);
                 }
             }
-            win->suppressHomePageUntilTabsRestored = (len(flags.fileNames) > 0 || len(gDdeOpenOnStartup) > 0);
             if (win->IsCurrentTabAbout()) {
                 HomePageRelayout(win);
             }
@@ -18761,9 +18768,7 @@ ContinueOpenWindow:
                 // trigger loading of the document
                 ReloadDocument(win, false);
             }
-            if (len(flags.fileNames) == 0 && len(gDdeOpenOnStartup) == 0) {
-                ShowMainWindow(win, data->windowState);
-            }
+            ShowMainWindow(win, data->windowState);
             // Docs were loaded while the frame was hidden (normal windowPos size).
             // After maximize / fullscreen, force DisplayModel to match the
             // final canvas so scroll isn't stuck on the pre-show viewport
@@ -18842,11 +18847,6 @@ ContinueOpenWindow:
 
     gIsStartup = false;
     if (win) {
-        win->suppressHomePageUntilTabsRestored = false;
-        if (!HwndIsVisible(win->hwndFrame)) {
-            int winState = data ? data->windowState : gSettings->windowState;
-            ShowMainWindow(win, winState);
-        }
         if (win->IsCurrentTabAbout()) {
             HomePageRelayout(win);
         }
