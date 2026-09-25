@@ -154,12 +154,6 @@ TempStr GetExistingInstallationDirTemp() {
     TempStr regPathUninst = GetRegPathUninstTemp(StrL(kAppName));
     TempStr dir = LoggedReadRegStr2Temp(regPathUninst, StrL("InstallLocation"));
     if (len(dir) == 0) {
-        TempStr ownPath = GetSelfExePathTemp();
-        if (len(ownPath) > 0) {
-            dir = path::GetDirTemp(ownPath);
-        }
-    }
-    if (len(dir) == 0) {
         return {};
     }
     if (str::EndsWithI(dir, StrL(".exe"))) {
