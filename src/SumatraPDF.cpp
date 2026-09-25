@@ -18753,7 +18753,7 @@ ContinueOpenWindow:
                     TabsSelect(win, selectIdx);
                 }
             }
-            win->suppressHomePageUntilTabsRestored = false;
+            win->suppressHomePageUntilTabsRestored = (len(flags.fileNames) > 0 || len(gDdeOpenOnStartup) > 0);
             if (win->IsCurrentTabAbout()) {
                 HomePageRelayout(win);
             }
@@ -18839,6 +18839,12 @@ ContinueOpenWindow:
     }
 
     gIsStartup = false;
+    if (win) {
+        win->suppressHomePageUntilTabsRestored = false;
+        if (win->IsCurrentTabAbout()) {
+            HomePageRelayout(win);
+        }
+    }
 
     if (len(flags.fileNames) > 0 && !win) {
         // failed to create any window, even though there
