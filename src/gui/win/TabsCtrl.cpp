@@ -1000,6 +1000,9 @@ LRESULT TabsCtrl::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
 
         case WM_ERASEBKGND:
+            if (needsInitialBackground) {
+                HdcFillRect((HDC)wp, HwndClientRect(hwnd), GetColor(kColTabInactiveBg));
+            }
             return 1;
 
         case WM_PAINT: {
@@ -1028,6 +1031,7 @@ LRESULT TabsCtrl::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 HdcFillRect(hdc, clientRc, bgCol);
             }
             ReleaseDC(hwnd, hdc);
+            needsInitialBackground = false;
             return 0;
         }
 

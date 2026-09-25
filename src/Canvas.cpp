@@ -6208,9 +6208,9 @@ LRESULT CALLBACK WndProcCanvas(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 Rect rc = HwndClientRect(hwnd);
                 logf("redraw: WM_ERASEBKGND hwnd=0x%p (canvas) rc=(%d,%d,%d,%d)\n", hwnd, rc.x, rc.y, rc.dx, rc.dy);
             }
-            // markdown/CHM: fill now so leftover pixels from a previous tab
-            // cannot show through while WebView2 is resized
-            if (win && IsBrowserDocController(win->ctrl)) {
+            // Paint a theme-colored first surface; later fixed-page erases
+            // preserve the old pixels until WM_PAINT covers them.
+            if (!win || win->needsInitialCanvasBackground || IsBrowserDocController(win->ctrl)) {
                 HdcFillRect((HDC)wp, HwndClientRect(hwnd), ThemeMainWindowBackgroundColor());
                 return 1;
             }
@@ -6243,6 +6243,9 @@ LRESULT CALLBACK WndProcCanvas(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     // still deliver canvas messages; don't touch win->ctrl after that starts.
     if (win->isBeingClosed) {
         return DefWindowProc(hwnd, msg, wp, lp);
+    }
+    if (msg == WM_PAINT && HwndIsVisible(win->hwndFrame)) {
+        win->needsInitialCanvasBackground = false;
     }
 
     // reveal/hide the floating overlay toolbar as the mouse approaches the top;

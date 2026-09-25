@@ -3358,7 +3358,7 @@ static void UpdateWindowFrameBorderColor(MainWindow* win) {
 
 static void OnDpiChanged(MainWindow* win, RECT* suggested, int explicitDpi = 0, bool force = false);
 
-static MainWindow* CreateMainWindow() {
+static MainWindow* CreateMainWindow(bool restoringSession) {
     // -window-pos wins over both the remembered position and the default, and
     // skips the per-window shift below: a test asked for an exact rectangle
     bool fixedPos = gCli && !gCli->windowPos.IsEmpty();
@@ -3402,6 +3402,7 @@ static MainWindow* CreateMainWindow() {
 
     ReportIf(nullptr != FindMainWindowByHwnd(hwndFrame));
     MainWindow* win = new MainWindow(hwndFrame);
+    win->suppressHomePageUntilTabsRestored = restoringSession;
     win->frameDpi = RoundUp(posDpi, 4);
     DpiSet(win->frameDpi, win->frameDpi);
     UpdateWindowFrameBorderColor(win);
@@ -3437,14 +3438,9 @@ static MainWindow* CreateMainWindow() {
     // if tabsInTitlebar, we use a rebar menu bar; otherwise native SetMenu
     win->brControlBgColor = CreateSolidBrush(ThemeControlBackgroundColor());
 
-    // Keep the entire window hierarchy hidden until startup layout and the
-    // initial document/home-page state are ready. Showing the child canvas here
-    // can cause Windows to paint the default background before ShowMainWindow()
-    // reveals the frame, producing the launch-time white flash.
-    //
-    // Do not use WM_SETREDRAW here either: DefWindowProc's handling of enabling
-    // redraw can show the hidden frame before the custom caption / maximized /
-    // fullscreen state is applied.
+    // Warm the child surface while the frame is hidden; its first erase uses
+    // the theme background instead of the unpainted white surface.
+    ShowWindow(win->hwndCanvas, SW_SHOW);
 
     Tooltip::CreateArgs args;
     args.parent = win->hwndCanvas;
@@ -3507,8 +3503,7 @@ static MainWindow* CreateMainWindow() {
     // layout re-calculations from MainWindow and creation of windows
     win->UpdateCanvasSize();
     // session restore will select a document tab and never paint home first
-    bool restoring = gIsStartup && SettingsRestoreSession() && gInitialSessionData && len(*gInitialSessionData) > 0;
-    if (!restoring) {
+    if (!restoringSession) {
         HomePageRelayout(win);
     }
     DarkModeApplyToNewFrame(win);
@@ -3656,7 +3651,7 @@ static void MaybeShowDefaultAppNotification(MainWindow* win) {
 
 MainWindow* CreateAndShowMainWindow(SessionData* data, bool showWin) {
     int windowState = gSettings->windowState;
-    MainWindow* win = CreateMainWindow();
+    MainWindow* win = CreateMainWindow(data != nullptr);
     if (!win) {
         return nullptr;
     }
@@ -4990,6 +4985,12 @@ void LoadModelIntoTab(WindowTab* tab) {
     }
 
     MainWindow* win = tab->win;
+    // The search edit is a child of the shared canvas. Hide it before any early
+    // return when leaving Home (including LoadedPending); browser tabs may not
+    // send a canvas message that would hide it later.
+    if (!tab->IsAboutTab()) {
+        HomePageHideSearch(win);
+    }
     ReadingAutoScrollHideBar(win);
     ReadingBarCancelDrag(win);
     // Document content is about to change; drop any page-element / about-page tip
@@ -5078,14 +5079,6 @@ void LoadModelIntoTab(WindowTab* tab) {
         // tell UI Automation about content change
         win->uiaProvider->OnDocumentLoad(win->AsFixed());
     }
-    // the home page's search edit is a child of the shared canvas and is
-    // normally torn down lazily by the canvas WndProc. Over a webview tab the
-    // canvas may not receive a message for a long time, leaving the edit (and
-    // its "Search %d files" cue) floating over the document
-    if (!tab->IsAboutTab()) {
-        HomePageHideSearch(win);
-    }
-
     UpdateUiForCurrentTab(win);
     PickAnotherRandomPromotion();
 
@@ -15015,6 +15008,9 @@ static void ApplyEmbeddedWindowChrome(MainWindow* win) {
 static LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     DpiScope dpiScope(hwnd);
     MainWindow* win = FindMainWindowByHwnd(hwnd);
+    if (win && msg == WM_PAINT && HwndIsVisible(hwnd)) {
+        win->needsInitialFrameBackground = false;
+    }
 
     // DbgLogMsg("frame:", hwnd, msg, wp, lp);
     // detect when an external host (e.g. Total Commander's lister) embeds us
@@ -15421,25 +15417,19 @@ static LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPAR
         case kWmTtsEvent:
             ReadAloudOnTtsEvent(win);
             return 0;
-        case WM_ERASEBKGND:
-            // not sure why it's needed but it causes
-            // flash of caption area in choco theme when resizing sidebar
-#if 0
-            LogRedraw("WM_ERASEBKGND", hwnd);
-            if (win && win->tabsInTitlebar && !IsCurrentThemeDefault()) {
+        case WM_ERASEBKGND: {
+            if (!win || win->needsInitialFrameBackground) {
                 HDC hdc = (HDC)wp;
-                HBRUSH br = CreateSolidBrush(ThemeMainWindowBackgroundColor());
-                HdcFillRect(hdc, HwndClientRect(hwnd), br);
-                DeleteObject(br);
-                if (!win->captionRect.IsEmpty()) {
-                    RECT rcCaption = ToRECT(win->captionRect);
-                    HBRUSH brCaption = CreateSolidBrush(ThemeControlBackgroundColor());
-                    HdcFillRect(hdc, ToRect(rcCaption), brCaption);
-                    DeleteObject(brCaption);
+                Rect client = HwndClientRect(hwnd);
+                HdcFillRect(hdc, client, ThemeMainWindowBackgroundColor());
+                if (win && win->tabsInTitlebar && !win->captionRect.IsEmpty()) {
+                    int captionBottom = limitValue(win->captionRect.y + win->captionRect.dy, 0, client.dy);
+                    Rect captionArea = {0, 0, client.dx, captionBottom};
+                    HdcFillRect(hdc, captionArea, ThemeControlBackgroundColor());
                 }
             }
-#endif
             return TRUE;
+        }
 
         default:
             return DefWindowProc(hwnd, msg, wp, lp);
@@ -18762,6 +18752,10 @@ ContinueOpenWindow:
                     }
                     TabsSelect(win, selectIdx);
                 }
+            }
+            win->suppressHomePageUntilTabsRestored = false;
+            if (win->IsCurrentTabAbout()) {
+                HomePageRelayout(win);
             }
             if (gSettings->lazyLoading) {
                 // trigger loading of the document

@@ -239,6 +239,10 @@ struct MainWindow { // NOLINT(clang-analyzer-optin.performance.Padding)
 
     HWND hwndFrame = nullptr;
     HWND hwndCanvas = nullptr;
+    bool needsInitialCanvasBackground = true;
+    bool needsInitialFrameBackground = true;
+    // Don't lay out the Home page in the temporary no-tab state while restoring a session.
+    bool suppressHomePageUntilTabsRestored = false;
     // ShowScrollBar sends WM_SIZE; ignore it until UpdateScrollbars finishes (issue #5969)
     bool suppressCanvasSizeUpdate = false;
     // popups in screen coords (find bar, overlay scrollbars, selection toolbar, ...)
@@ -253,6 +257,7 @@ struct MainWindow { // NOLINT(clang-analyzer-optin.performance.Padding)
     Func1List<MainWindow*> floatingToolbarOnWindowMoved;
     HWND hwndMenuReBar = nullptr;
     HWND hwndMenuToolbar = nullptr;
+    bool needsInitialMenuToolbarBackground = true;
     // the search input of the active find UI (compact bar or floating window)
     DropDown* findEdit = nullptr;
     // optional "10-25" page-range field of the active find UI (issue #5694)
