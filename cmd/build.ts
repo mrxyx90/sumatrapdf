@@ -226,14 +226,18 @@ async function buildWindows(config: Config, win32: boolean, clean: boolean, ninj
     const { msbuildPath } = detectVisualStudio2026();
     await buildApp(msbuildPath, configName, platform, "SumatraPDF");
   }
-  printBinaries(outDir, new Set(["SumatraPDF.exe"]));
+  const mainExe = existsSync(join(outDir, "Apdf.exe")) ? "Apdf.exe" : "SumatraPDF.exe";
+  printBinaries(outDir, new Set([mainExe, "SumatraPDF.exe"]));
   if (config === "release") {
     const version = extractSumatraVersion();
     const arch = win32 ? "" : "-64";
-    const installerName = `SumatraPDF-${version}${arch}-install.exe`;
+    const installerName = `Apdf-${version}${arch}-install.exe`;
     const installerPath = join(outDir, installerName);
-    copyFileSync(join(outDir, "SumatraPDF.exe"), installerPath);
-    console.log(`installer: ${installerPath}`);
+    const srcExe = existsSync(join(outDir, "Apdf.exe")) ? join(outDir, "Apdf.exe") : join(outDir, "SumatraPDF.exe");
+    if (existsSync(srcExe)) {
+      copyFileSync(srcExe, installerPath);
+      console.log(`installer: ${installerPath}`);
+    }
   }
 }
 
