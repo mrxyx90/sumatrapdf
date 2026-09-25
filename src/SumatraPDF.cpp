@@ -14829,16 +14829,17 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
             break;
 
         case WM_NCMOUSEMOVE: {
-            int btnIdx = IsZoomed(hwnd) ? CB_RESTORE : CB_MAXIMIZE;
-            if (wp == HTMAXBUTTON) {
-                if (!win->captionBtn[btnIdx].highlighted) {
-                    win->captionBtn[btnIdx].highlighted = true;
-                    RepaintButton(hwnd, btnIdx, win);
-                }
-            } else {
-                if (win->captionBtn[btnIdx].highlighted) {
-                    win->captionBtn[btnIdx].highlighted = false;
-                    RepaintButton(hwnd, btnIdx, win);
+            // WM_NCMOUSEMOVE is delivered for fast cursor movement into the
+            // non-client area. Hit-test the actual screen position so caption
+            // button hover is updated even when WM_MOUSEMOVE is skipped.
+            Point ptScreen{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+            Point ptClient = HwndScreenToClient(hwnd, ptScreen);
+            int btnIdx = CaptionButtonAt(win, ptClient);
+            for (int i = CB_BTN_FIRST; i < CB_BTN_COUNT; i++) {
+                bool shouldHighlight = (i == btnIdx);
+                if (win->captionBtn[i].highlighted != shouldHighlight) {
+                    win->captionBtn[i].highlighted = shouldHighlight;
+                    RepaintButton(hwnd, i, win);
                 }
             }
         } break;
