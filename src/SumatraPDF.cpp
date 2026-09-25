@@ -14747,6 +14747,24 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
             int y = GET_Y_LPARAM(lp);
             Rect wrc = HwndWindowRect(hwnd);
 
+            // Test caption buttons from the current cursor position before resize hit-testing.
+            // This mirrors the robust CSD approach used by VLC: when the cursor lands directly
+            // on a caption button, the button must win even if that point is also inside the
+            // enlarged top resize zone. Otherwise a fast move to the top-right corner can be
+            // classified as HTTOPRIGHT before the close button ever sees the mouse.
+            {
+                Point ptClient = HwndScreenToClient(hwnd, Point(x, y));
+                int btnIdx = CaptionButtonAt(win, ptClient);
+                if (btnIdx >= 0) {
+                    if (btnIdx == CB_MAXIMIZE || btnIdx == CB_RESTORE) {
+                        *callDef = false;
+                        return HTMAXBUTTON;
+                    }
+                    *callDef = false;
+                    return HTCLIENT;
+                }
+            }
+
             // use a larger hit-test area than the visible border for easier resizing
             if (!IsZoomed(hwnd) && !win->isFullScreen && !win->presentation) {
                 int b = kFrameResizeHitTest;
@@ -14786,19 +14804,6 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
                 if (onBottom) {
                     *callDef = false;
                     return HTBOTTOM;
-                }
-            }
-
-            {
-                Point ptClient = HwndScreenToClient(hwnd, Point(x, y));
-                int btnIdx = CaptionButtonAt(win, ptClient);
-                if (btnIdx >= 0) {
-                    if (btnIdx == CB_MAXIMIZE || btnIdx == CB_RESTORE) {
-                        *callDef = false;
-                        return HTMAXBUTTON;
-                    }
-                    *callDef = false;
-                    return HTCLIENT;
                 }
             }
 
