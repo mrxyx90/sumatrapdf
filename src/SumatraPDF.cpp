@@ -6214,7 +6214,6 @@ void CloseWindow(MainWindow* win, bool quitIfLast, bool forceClose) {
     }
     // hide the window before tearing down (closing seems slightly faster that way)
     if (!lastWindow || quitIfLast) {
-        SendMessageW(win->hwndFrame, WM_SETREDRAW, FALSE, 0);
         ShowWindow(win->hwndFrame, SW_HIDE);
         // ShowWindow can pump messages. If the window is embedded (e.g. in Total Commander),
         // the host may react by sending WM_DESTROY, which triggers a reentrant CloseWindow()
