@@ -239,7 +239,7 @@ static void CreateUninstallerWindow() {
     HwndResizeClientSize(gHwndFrame, dx, dy);
 
     auto isRtl = IsUIRtl();
-    gButtonUninstaller = CreateDefaultButton(gHwndFrame, Tr("Uninstall SumatraPDF"), isRtl);
+    gButtonUninstaller = CreateDefaultButton(gHwndFrame, fmt(Tr("Uninstall %s").s, StrL(kAppName)), isRtl);
     gButtonUninstaller->onClick = MkFunc0Void(OnButtonUninstall);
 }
 
@@ -605,7 +605,7 @@ int RunUninstaller() {
         log(StrL("Previewer is installed\n"));
     }
 
-    gDefaultMsg = Tr("Are you sure you want to uninstall SumatraPDF?");
+    gDefaultMsg = fmt(Tr("Are you sure you want to uninstall %s?").s, StrL(kAppName));
 
     // unregister search filter and previewer to reduce
     // possibility of blocking

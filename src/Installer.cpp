@@ -1827,7 +1827,7 @@ static void CreateInstallerWindowControls(InstallerWnd* wnd, Flags* cli) {
     bool isRtl = IsUIRtl();
     bool showInstallButton = !cli->fastInstall;
 
-    wnd->btnInstall = CreateDefaultButton(hwnd, Tr("Install SumatraPDF"), isRtl);
+    wnd->btnInstall = CreateDefaultButton(hwnd, fmt(Tr("Install %s").s, StrL(kAppName)), isRtl);
     wnd->btnInstall->onClick = MkFunc0(OnButtonInstall, wnd);
     ShowAndEnable(wnd->btnInstall, showInstallButton);
 
@@ -1879,7 +1879,7 @@ static void CreateInstallerWindowControls(InstallerWnd* wnd, Flags* cli) {
     wnd->editInstallationDir->SetText(cli->installDir);
 
     wnd->staticInstDir = NewVirtText({
-        .s = Tr("Install SumatraPDF in &folder:"),
+        .s = fmt(Tr("Install %s in &folder:").s, StrL(kAppName)),
         .font = GetDefaultGuiFont(),
         .textColor = kColBlack,
         .isRtl = IsUIRtl(),
@@ -2067,7 +2067,7 @@ static bool CreateInstallerWnd(Flags* cli) {
 }
 
 static bool CreateInstallerWindow(Flags* cli) {
-    gDefaultMsg = Tr("Thank you for choosing SumatraPDF!");
+    gDefaultMsg = fmt(Tr("Thank you for choosing %s!").s, StrL(kAppName));
     if (!CreateInstallerWnd(cli)) {
         return false;
     }
@@ -2256,11 +2256,11 @@ static bool EnsureEnoughDiskSpaceForInstall(Str installDir, const lzma::SimpleAr
     }
     int freeMb = (int)(freeBytes / (1024ull * 1024ull));
     int needMb = (int)((need + (1024ll * 1024) - 1) / (1024ll * 1024));
-    NotifyFailed(fmt(Tr("Not enough free disk space to install SumatraPDF.\n\n"
+    NotifyFailed(fmt(Tr("Not enough free disk space to install %s.\n\n"
                         "Required: about %d MB free\nAvailable: %d MB\n\n"
                         "Free up space on this drive and try again.")
                          .s,
-                     needMb, freeMb));
+                     StrL(kAppName), needMb, freeMb));
     return false;
 }
 
