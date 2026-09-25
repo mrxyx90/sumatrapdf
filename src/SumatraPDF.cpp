@@ -13985,9 +13985,10 @@ static int CaptionButtonAt(MainWindow* win, Point pt) {
     for (int i = CB_BTN_FIRST; i < CB_BTN_COUNT; i++) {
         Rect r = win->captionBtn[i].rect;
         if (i == CB_MINIMIZE || i == CB_MAXIMIZE || i == CB_RESTORE || i == CB_CLOSE) {
-            r.y = 0;
+            // include 1px NC strip + resize border so fast slam to top edge still hits
+            r.y = -kFrameResizeHitTest;
             if (win->captionRect.dy > 0) {
-                r.dy = win->captionRect.dy + 1;
+                r.dy = win->captionRect.dy + kFrameResizeHitTest + 1;
             }
         }
         if (i == CB_MINIMIZE) {
@@ -14747,6 +14748,22 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
             int y = GET_Y_LPARAM(lp);
             Rect wrc = HwndWindowRect(hwnd);
 
+            // caption buttons must take priority over resize border,
+            // otherwise fast slam to top-right corner returns HTTOPRIGHT
+            // and hover red never shows
+            {
+                Point ptClient = HwndScreenToClient(hwnd, Point(x, y));
+                int btnIdx = CaptionButtonAt(win, ptClient);
+                if (btnIdx >= 0) {
+                    if (btnIdx == CB_MAXIMIZE || btnIdx == CB_RESTORE) {
+                        *callDef = false;
+                        return HTMAXBUTTON;
+                    }
+                    *callDef = false;
+                    return HTCLIENT;
+                }
+            }
+
             // use a larger hit-test area than the visible border for easier resizing
             if (!IsZoomed(hwnd) && !win->isFullScreen && !win->presentation) {
                 int b = kFrameResizeHitTest;
@@ -14786,19 +14803,6 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
                 if (onBottom) {
                     *callDef = false;
                     return HTBOTTOM;
-                }
-            }
-
-            {
-                Point ptClient = HwndScreenToClient(hwnd, Point(x, y));
-                int btnIdx = CaptionButtonAt(win, ptClient);
-                if (btnIdx >= 0) {
-                    if (btnIdx == CB_MAXIMIZE || btnIdx == CB_RESTORE) {
-                        *callDef = false;
-                        return HTMAXBUTTON;
-                    }
-                    *callDef = false;
-                    return HTCLIENT;
                 }
             }
 
