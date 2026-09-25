@@ -470,8 +470,14 @@ static void RelaunchMaybeElevatedFromTempDirectory(Flags* cli) {
         log(StrL("  already running from temp dir\n"));
         return;
     }
+    file::Delete(installerTempPath);
     logf("  copying installer '%s' to '%s'\n", ownPath, installerTempPath);
     bool ok = file::Copy(installerTempPath, ownPath, false);
+    if (!ok) {
+        Sleep(100);
+        file::Delete(installerTempPath);
+        ok = file::Copy(installerTempPath, ownPath, false);
+    }
     if (!ok) {
         logf("  failed to copy installer\n");
         return;
