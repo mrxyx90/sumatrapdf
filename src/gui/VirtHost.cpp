@@ -103,7 +103,7 @@ static LRESULT CALLBACK WndProcVirtHost(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
             host->Relayout();
             return 0;
         case WM_ERASEBKGND:
-            if (host->fillBackgroundBeforeFirstVisiblePaint && host->bgColor != kColorUnset) {
+            if (host->bgColor != kColorUnset) {
                 HdcFillRect((HDC)wp, HwndClientRect(hwnd), host->bgColor);
             }
             // WM_PAINT draws the whole client area into a back buffer
