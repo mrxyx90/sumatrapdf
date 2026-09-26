@@ -14764,6 +14764,15 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
                     *callDef = false;
                     return HTCLOSE;
                 }
+
+                // Home/Menu and the other custom caption controls are client UI.
+                // Keep them as HTCLIENT so their normal WM_LBUTTON* handlers
+                // continue to receive clicks. Only the system buttons above need
+                // special non-client hit-test codes.
+                if (btnIdx >= 0) {
+                    *callDef = false;
+                    return HTCLIENT;
+                }
             }
 
             // use a larger hit-test area than the visible border for easier resizing
