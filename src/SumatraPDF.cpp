@@ -6212,8 +6212,11 @@ void CloseWindow(MainWindow* win, bool quitIfLast, bool forceClose) {
         ScheduleSaveSettings();
         FlushScheduledSaveSettings();
     }
-    // hide the window before tearing down (closing seems slightly faster that way)
-    if (!lastWindow || quitIfLast) {
+    // Pre-hiding a maximized custom-framed window can trigger a separate
+    // DWM transition before DestroyWindow() runs, making the whole frame
+    // visibly move before the normal close animation.
+    bool skipPreHide = IsZoomed(win->hwndFrame);
+    if ((!lastWindow || quitIfLast) && !skipPreHide) {
         ShowWindow(win->hwndFrame, SW_HIDE);
         // ShowWindow can pump messages. If the window is embedded (e.g. in Total Commander),
         // the host may react by sending WM_DESTROY, which triggers a reentrant CloseWindow()
@@ -14089,7 +14092,7 @@ static void HandleCaptionClick(MainWindow* win, int btnIdx) {
             PostMessageW(win->hwndFrame, WM_SYSCOMMAND, SC_RESTORE, 0);
             break;
         case CB_CLOSE:
-            SendMessageW(win->hwndFrame, WM_SYSCOMMAND, SC_CLOSE, 0);
+            PostMessageW(win->hwndFrame, WM_SYSCOMMAND, SC_CLOSE, 0);
             break;
         case CB_MENU:
             if (!KillTimer(win->hwndFrame, kDoNotReopenMenuTimerID) && !win->isMenuOpen) {
