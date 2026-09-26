@@ -14092,6 +14092,13 @@ static void HandleCaptionClick(MainWindow* win, int btnIdx) {
             PostMessageW(win->hwndFrame, WM_SYSCOMMAND, SC_RESTORE, 0);
             break;
         case CB_CLOSE:
+            if (IsZoomed(win->hwndFrame)) {
+                // Test whether the unwanted maximized close movement is caused
+                // by DWM's transition animation rather than an actual window move.
+                BOOL disableDwmTransitions = TRUE;
+                DwmSetWindowAttribute(win->hwndFrame, DWMWA_TRANSITIONS_FORCEDISABLED,
+                                      &disableDwmTransitions, sizeof(disableDwmTransitions));
+            }
             PostMessageW(win->hwndFrame, WM_SYSCOMMAND, SC_CLOSE, 0);
             break;
         case CB_MENU:
