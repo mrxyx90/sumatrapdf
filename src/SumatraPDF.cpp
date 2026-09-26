@@ -14036,6 +14036,30 @@ static void RepaintButton(HWND hwnd, int btnIdx, MainWindow* win) {
     }
 }
 
+static void ResetMaximizedWindowRegion(HWND hwnd) {
+    if (!IsZoomed(hwnd)) {
+        SetWindowRgn(hwnd, nullptr, TRUE);
+        return;
+    }
+
+    HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO mi{};
+    mi.cbSize = sizeof(mi);
+    if (!monitor || !GetMonitorInfoW(monitor, &mi)) {
+        return;
+    }
+
+    RECT windowRect{};
+    GetWindowRect(hwnd, &windowRect);
+    RECT workRect = mi.rcWork;
+    OffsetRect(&workRect, -windowRect.left, -windowRect.top);
+
+    HRGN region = CreateRectRgnIndirect(&workRect);
+    if (region) {
+        SetWindowRgn(hwnd, region, TRUE);
+    }
+}
+
 static void ClearAllHighlights(MainWindow* win) {
     for (int i = CB_BTN_FIRST; i < CB_BTN_COUNT; i++) {
         if (win->captionBtn[i].highlighted || win->captionBtn[i].pressed) {
@@ -15129,6 +15153,9 @@ static LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPAR
             goto InitMouseWheelInfo;
 
         case WM_SIZE:
+            if (win && SIZE_MINIMIZED != wp) {
+                ResetMaximizedWindowRegion(hwnd);
+            }
             if (win && SIZE_MINIMIZED == wp) {
                 // Track-mode canvas tips (home file path, page links) are
                 // topmost popups and must be dismissed on minimize or they
