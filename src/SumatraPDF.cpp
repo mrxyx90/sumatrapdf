@@ -3553,6 +3553,9 @@ void ShowMainWindow(MainWindow* win, int windowState) {
         // and document layout have been prepared. This prevents DWM from
         // presenting the frame background before the restored PDF is painted.
         ShowWindow(win->hwndFrame, SW_SHOW);
+        if (WIN_STATE_FULLSCREEN == windowState) {
+            EnterFullScreen(win);
+        }
     }
 
     if (IsRunningOnWine()) {
