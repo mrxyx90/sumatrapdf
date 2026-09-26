@@ -6212,8 +6212,11 @@ void CloseWindow(MainWindow* win, bool quitIfLast, bool forceClose) {
         ScheduleSaveSettings();
         FlushScheduledSaveSettings();
     }
-    // hide the window before tearing down (closing seems slightly faster that way)
-    if (!lastWindow || quitIfLast) {
+    // Pre-hiding a maximized custom-framed window can trigger a separate
+    // DWM transition before DestroyWindow() runs, making the whole frame
+    // visibly move before the normal close animation.
+    bool skipPreHide = IsZoomed(win->hwndFrame);
+    if ((!lastWindow || quitIfLast) && !skipPreHide) {
         ShowWindow(win->hwndFrame, SW_HIDE);
         // ShowWindow can pump messages. If the window is embedded (e.g. in Total Commander),
         // the host may react by sending WM_DESTROY, which triggers a reentrant CloseWindow()
@@ -15038,6 +15041,25 @@ static LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPAR
     }
 
     // DbgLogMsg("frame:", hwnd, msg, wp, lp);
+    // Temporary diagnostics for maximized close-transition investigation.
+    if (msg == WM_SYSCOMMAND || msg == WM_SHOWWINDOW || msg == WM_WINDOWPOSCHANGING || msg == WM_WINDOWPOSCHANGED ||
+        msg == WM_MOVE || msg == WM_SIZE || msg == WM_NCCALCSIZE) {
+        Rect wr = HwndWindowRect(hwnd);
+        logf("frame transition: msg=0x%x wp=0x%llx zoomed=%d visible=%d wr=(%d,%d,%d,%d)\\n", msg,
+             (unsigned long long)wp, (int)IsZoomed(hwnd), (int)HwndIsVisible(hwnd), wr.x, wr.y, wr.dx, wr.dy);
+        if (msg == WM_WINDOWPOSCHANGING || msg == WM_WINDOWPOSCHANGED) {
+            auto* p = (WINDOWPOS*)lp;
+            if (p) {
+                logf("frame transition: WINDOWPOS flags=0x%x x=%d y=%d cx=%d cy=%d\\n", p->flags, p->x, p->y, p->cx, p->cy);
+            }
+        }
+        if (msg == WM_NCCALCSIZE) {
+            RECT* r = wp ? &((NCCALCSIZE_PARAMS*)lp)->rgrc[0] : (RECT*)lp;
+            if (r) {
+                logf("frame transition: NCCALCSIZE proposed=(%ld,%ld,%ld,%ld)\\n", r->left, r->top, r->right, r->bottom);
+            }
+        }
+    }
     // detect when an external host (e.g. Total Commander's lister) embeds us
     // by reparenting our window as WS_CHILD. Only set the flag here and post
     // chrome teardown: this handler can re-enter under EndDeferWindowPos.
