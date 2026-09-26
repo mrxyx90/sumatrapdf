@@ -6214,8 +6214,6 @@ LRESULT CALLBACK WndProcCanvas(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 HdcFillRect((HDC)wp, HwndClientRect(hwnd), ThemeMainWindowBackgroundColor());
                 return 1;
             }
-            // don't paint here; old content stays until WM_PAINT covers it
-            // (CS_HREDRAW|CS_VREDRAW removed so no transparent flash)
             return 1;
         }
 

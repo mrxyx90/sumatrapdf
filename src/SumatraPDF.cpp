@@ -148,10 +148,10 @@ using Gdiplus::SolidBrush;
 
 constexpr const WCHAR* kCanvasClassName = L"SUMATRA_PDF_CANVAS";
 
-constexpr const char* kRestrictionsFileName = "sumatrapdfrestrict.ini";
+constexpr const char* kRestrictionsFileName = "apdfrestrict.ini";
 
-constexpr const char* kSumatraWindowTitle = "Apdf";
-constexpr const WCHAR* kSumatraWindowTitleW = L"Apdf";
+constexpr const char* kSumatraWindowTitle = kAppName;
+constexpr const WCHAR* kSumatraWindowTitleW = TEXT(kAppName);
 
 // used to show it in debug, but is not very useful,
 // so always disable
@@ -3358,7 +3358,7 @@ static void UpdateWindowFrameBorderColor(MainWindow* win) {
 
 static void OnDpiChanged(MainWindow* win, RECT* suggested, int explicitDpi = 0, bool force = false);
 
-static MainWindow* CreateMainWindow() {
+static MainWindow* CreateMainWindow(bool restoringSession) {
     // -window-pos wins over both the remembered position and the default, and
     // skips the per-window shift below: a test asked for an exact rectangle
     bool fixedPos = gCli && !gCli->windowPos.IsEmpty();
@@ -3385,6 +3385,9 @@ static MainWindow* CreateMainWindow() {
     WStr clsName = WStr(kFrameClassName);
     WStr title = WStr(kSumatraWindowTitleW);
     DWORD style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
+    if (gSettings && gSettings->windowState == WIN_STATE_MAXIMIZED) {
+        style |= WS_MAXIMIZE;
+    }
     int x = windowPos.x;
     int y = windowPos.y;
     int dx = windowPos.dx;
@@ -3502,8 +3505,7 @@ static MainWindow* CreateMainWindow() {
     // layout re-calculations from MainWindow and creation of windows
     win->UpdateCanvasSize();
     // session restore will select a document tab and never paint home first
-    bool restoring = gIsStartup && SettingsRestoreSession() && gInitialSessionData && len(*gInitialSessionData) > 0;
-    if (!restoring) {
+    if (!restoringSession) {
         HomePageRelayout(win);
     }
     DarkModeApplyToNewFrame(win);
@@ -3515,52 +3517,29 @@ static MainWindow* CreateMainWindow() {
 }
 
 void ShowMainWindow(MainWindow* win, int windowState) {
-    // If this window was hidden during startup/session restore, complete all
-    // final geometry/layout work before exposing it. Showing the frame first
-    // lets DWM present its default background before the restored document is
-    // ready, which appears as a white flash when reopening a previous PDF.
     bool wasVisible = HwndIsVisible(win->hwndFrame);
 
-    if (!wasVisible && (WIN_STATE_FULLSCREEN == windowState || WIN_STATE_MAXIMIZED == windowState)) {
-        // Apply maximize while hidden, then explicitly hide again. This updates
-        // the final placement without presenting an intermediate frame.
-        ShowWindow(win->hwndFrame, SW_MAXIMIZE);
-        ShowWindow(win->hwndFrame, SW_HIDE);
-    }
-    // a hidden frame's GetDpiForWindow() can still be the primary-monitor
-    // DPI; after ShowWindow the monitor of the window rect is reliable
-    {
-        int dpi = RoundUp(DpiGetForHwnd(win->hwndFrame), 4);
-        if (dpi > 0 && dpi != win->frameDpi) {
-            OnDpiChanged(win, nullptr, dpi, true);
-        }
+    int dpi = RoundUp(DpiGetForHwnd(win->hwndFrame), 4);
+    if (dpi > 0 && dpi != win->frameDpi) {
+        OnDpiChanged(win, nullptr, dpi, true);
     }
 
-    // Fire the deferred SWP_FRAMECHANGED for custom caption (tabsInTitlebar).
-    // Must happen after ShowWindow so the shell sees a visible window and
-    // creates the taskbar button before we remove the standard frame.
     if (win->tabsInTitlebar) {
-        uint flags = SWP_FRAMECHANGED | SWP_NOZORDER | SWP_NOSIZE | SWP_NOMOVE;
+        uint flags = SWP_FRAMECHANGED | SWP_NOZORDER | SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE;
         SetWindowPos(win->hwndFrame, nullptr, 0, 0, 0, 0, flags);
     }
 
-    // Hidden startup windows can miss the final titlebar/menu-bar geometry.
-    // until they become visible. Force one relayout before the first paint.
     RelayoutFrame(win);
     RefreshTocTreeIfNeeded(win);
-    UpdateWindow(win->hwndFrame);
     UpdateToolbarFindText(win);
     HwndEnsureOnScreen(win->hwndFrame);
 
     if (!wasVisible) {
-        // Only expose a startup/session-restored window after its final chrome
-        // and document layout have been prepared. This prevents DWM from
-        // presenting the frame background before the restored PDF is painted.
         if (WIN_STATE_FULLSCREEN == windowState) {
             ShowWindow(win->hwndFrame, SW_SHOW);
             EnterFullScreen(win);
         } else if (WIN_STATE_MAXIMIZED == windowState) {
-            ShowWindow(win->hwndFrame, SW_MAXIMIZE);
+            ShowWindow(win->hwndFrame, SW_SHOWMAXIMIZED);
         } else {
             ShowWindow(win->hwndFrame, SW_SHOW);
         }
@@ -3624,7 +3603,7 @@ static void MaybeShowDefaultAppNotification(MainWindow* win) {
 
     // "SumatraPDF is no longer the default app for opening [pdf](CmdFixDefaultApp .pdf), ..."
     str::Builder sb;
-    sb.Append(StrL("SumatraPDF is no longer the default app for opening "));
+    sb.Append(fmt("%s is no longer the default app for opening ", StrL(kAppName)));
     int nShow = std::min(len(missing), kMaxDefaultAppLinks);
     for (int i = 0; i < nShow; i++) {
         if (i > 0) {
@@ -3651,7 +3630,7 @@ static void MaybeShowDefaultAppNotification(MainWindow* win) {
 
 MainWindow* CreateAndShowMainWindow(SessionData* data, bool showWin) {
     int windowState = gSettings->windowState;
-    MainWindow* win = CreateMainWindow();
+    MainWindow* win = CreateMainWindow(data != nullptr);
     if (!win) {
         return nullptr;
     }
@@ -3659,7 +3638,6 @@ MainWindow* CreateAndShowMainWindow(SessionData* data, bool showWin) {
     gSettings->windowState = windowState;
 
     if (data) {
-        windowState = data->windowState;
         Rect rect = ShiftRectToWorkArea(data->windowPos);
         HwndMoveWindow(win->hwndFrame, &rect);
         // TODO: also restore data->sidebarDx
@@ -4985,6 +4963,12 @@ void LoadModelIntoTab(WindowTab* tab) {
     }
 
     MainWindow* win = tab->win;
+    // The search edit is a child of the shared canvas. Hide it before any early
+    // return when leaving Home (including LoadedPending); browser tabs may not
+    // send a canvas message that would hide it later.
+    if (!tab->IsAboutTab()) {
+        HomePageHideSearch(win);
+    }
     ReadingAutoScrollHideBar(win);
     ReadingBarCancelDrag(win);
     // Document content is about to change; drop any page-element / about-page tip
@@ -5073,14 +5057,6 @@ void LoadModelIntoTab(WindowTab* tab) {
         // tell UI Automation about content change
         win->uiaProvider->OnDocumentLoad(win->AsFixed());
     }
-    // the home page's search edit is a child of the shared canvas and is
-    // normally torn down lazily by the canvas WndProc. Over a webview tab the
-    // canvas may not receive a message for a long time, leaving the edit (and
-    // its "Search %d files" cue) floating over the document
-    if (!tab->IsAboutTab()) {
-        HomePageHideSearch(win);
-    }
-
     UpdateUiForCurrentTab(win);
     PickAnotherRandomPromotion();
 
@@ -6215,8 +6191,10 @@ void CloseWindow(MainWindow* win, bool quitIfLast, bool forceClose) {
         ScheduleSaveSettings();
         FlushScheduledSaveSettings();
     }
-    // hide the window before tearing down (closing seems slightly faster that way)
-    if (!lastWindow || quitIfLast) {
+    // Pre-hiding a maximized custom-framed window can trigger a separate
+    // DWM transition before DestroyWindow(), causing the whole frame to move.
+    bool skipPreHide = IsZoomed(win->hwndFrame);
+    if ((!lastWindow || quitIfLast) && !skipPreHide) {
         ShowWindow(win->hwndFrame, SW_HIDE);
         // ShowWindow can pump messages. If the window is embedded (e.g. in Total Commander),
         // the host may react by sending WM_DESTROY, which triggers a reentrant CloseWindow()
@@ -10397,7 +10375,7 @@ TempStr GetSumatraDataDirTemp() {
     if (len(dir) == 0) {
         return {};
     }
-    return path::JoinTemp(dir, StrL("SumatraPDF-data"));
+    return path::JoinTemp(dir, StrL("Apdf-data"));
 }
 
 TempStr GetSumatraBuildSpecificDirTemp() {
@@ -10786,7 +10764,7 @@ static void ListPrintersShowResult(ListPrintersResult* d) {
 
     RemoveNotificationsForGroup(parent, kNotifActionResponse);
     // ShowTextInWindow copies text into the edit control before returning.
-    ShowTextInWindow(StrL("SumatraPDF - Printers"), text);
+    ShowTextInWindow(fmt("%s - Printers", StrL(kAppName)), text);
     str::Free(text);
 }
 
@@ -11450,7 +11428,7 @@ void LaunchDocumentation(Str docURI) {
         }
 
         SimpleBrowserCreateArgs args;
-        args.title = StrL("SumatraPDF Documentation");
+        args.title = fmt("%s Documentation", StrL(kAppName));
         args.url = localUrl;
         HWND parentFrame = ManualBrowserParentFrame();
         gManualBrowserParentHwnd = parentFrame;
@@ -14036,6 +14014,30 @@ static void RepaintButton(HWND hwnd, int btnIdx, MainWindow* win) {
     }
 }
 
+static void ResetMaximizedWindowRegion(HWND hwnd) {
+    if (!IsZoomed(hwnd)) {
+        SetWindowRgn(hwnd, nullptr, TRUE);
+        return;
+    }
+
+    HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO mi{};
+    mi.cbSize = sizeof(mi);
+    if (!monitor || !GetMonitorInfoW(monitor, &mi)) {
+        return;
+    }
+
+    RECT windowRect{};
+    GetWindowRect(hwnd, &windowRect);
+    RECT workRect = mi.rcWork;
+    OffsetRect(&workRect, -windowRect.left, -windowRect.top);
+
+    HRGN region = CreateRectRgnIndirect(&workRect);
+    if (region) {
+        SetWindowRgn(hwnd, region, TRUE);
+    }
+}
+
 static void ClearAllHighlights(MainWindow* win) {
     for (int i = CB_BTN_FIRST; i < CB_BTN_COUNT; i++) {
         if (win->captionBtn[i].highlighted || win->captionBtn[i].pressed) {
@@ -14092,6 +14094,12 @@ static void HandleCaptionClick(MainWindow* win, int btnIdx) {
             PostMessageW(win->hwndFrame, WM_SYSCOMMAND, SC_RESTORE, 0);
             break;
         case CB_CLOSE:
+            if (IsZoomed(win->hwndFrame)) {
+                // Keep the custom caption during normal use. Apply the
+                // maximized work-area region only for the native close
+                // transition so DWM animates the same geometry Sumatra shows.
+                ResetMaximizedWindowRegion(win->hwndFrame);
+            }
             PostMessageW(win->hwndFrame, WM_SYSCOMMAND, SC_CLOSE, 0);
             break;
         case CB_MENU:
@@ -14749,6 +14757,35 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
             int y = GET_Y_LPARAM(lp);
             Rect wrc = HwndWindowRect(hwnd);
 
+            // Caption buttons must win over the enlarged resize hit-test area.
+            // Otherwise a fast move into the top-right corner can be classified
+            // as HTTOPRIGHT and never enter the caption-button hover path.
+            {
+                Point ptClient = HwndScreenToClient(hwnd, Point(x, y));
+                int btnIdx = CaptionButtonAt(win, ptClient);
+                if (btnIdx == CB_MINIMIZE) {
+                    *callDef = false;
+                    return HTMINBUTTON;
+                }
+                if (btnIdx == CB_MAXIMIZE || btnIdx == CB_RESTORE) {
+                    *callDef = false;
+                    return HTMAXBUTTON;
+                }
+                if (btnIdx == CB_CLOSE) {
+                    *callDef = false;
+                    return HTCLOSE;
+                }
+
+                // Home/Menu and the other custom caption controls are client UI.
+                // Keep them as HTCLIENT so their normal WM_LBUTTON* handlers
+                // continue to receive clicks. Only the system buttons above need
+                // special non-client hit-test codes.
+                if (btnIdx >= 0) {
+                    *callDef = false;
+                    return HTCLIENT;
+                }
+            }
+
             // use a larger hit-test area than the visible border for easier resizing
             if (!IsZoomed(hwnd) && !win->isFullScreen && !win->presentation) {
                 int b = kFrameResizeHitTest;
@@ -14792,19 +14829,6 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
             }
 
             {
-                Point ptClient = HwndScreenToClient(hwnd, Point(x, y));
-                int btnIdx = CaptionButtonAt(win, ptClient);
-                if (btnIdx >= 0) {
-                    if (btnIdx == CB_MAXIMIZE || btnIdx == CB_RESTORE) {
-                        *callDef = false;
-                        return HTMAXBUTTON;
-                    }
-                    *callDef = false;
-                    return HTCLIENT;
-                }
-            }
-
-            {
                 Point pt{x, y};
                 Rect rClient = HwndMapRectToWindow(HwndClientRect(hwnd), hwnd, HWND_DESKTOP);
                 Rect rCaption = HwndMapRectToWindow(win->captionRect, hwnd, HWND_DESKTOP);
@@ -14816,33 +14840,52 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
         } break;
 
         case WM_NCLBUTTONDOWN:
-            if (wp == HTMAXBUTTON) {
+            if (wp == HTMINBUTTON || wp == HTMAXBUTTON || wp == HTCLOSE) {
                 *callDef = false;
                 return 0;
             }
             break;
 
         case WM_NCLBUTTONUP:
-            if (wp == HTMAXBUTTON) {
-                WPARAM cmd = IsZoomed(hwnd) ? SC_RESTORE : SC_MAXIMIZE;
-                PostMessageW(hwnd, WM_SYSCOMMAND, cmd, 0);
+            if (wp == HTMINBUTTON || wp == HTMAXBUTTON || wp == HTCLOSE) {
+                int btnIdx = -1;
+                if (wp == HTMINBUTTON) {
+                    btnIdx = CB_MINIMIZE;
+                } else if (wp == HTMAXBUTTON) {
+                    btnIdx = IsZoomed(hwnd) ? CB_RESTORE : CB_MAXIMIZE;
+                } else if (wp == HTCLOSE) {
+                    btnIdx = CB_CLOSE;
+                }
+                HandleCaptionClick(win, btnIdx);
                 *callDef = false;
                 return 0;
             }
             break;
 
         case WM_NCMOUSEMOVE: {
-            int btnIdx = IsZoomed(hwnd) ? CB_RESTORE : CB_MAXIMIZE;
-            if (wp == HTMAXBUTTON) {
-                if (!win->captionBtn[btnIdx].highlighted) {
-                    win->captionBtn[btnIdx].highlighted = true;
-                    RepaintButton(hwnd, btnIdx, win);
+            int btnIdx = -1;
+            if (wp == HTMINBUTTON) {
+                btnIdx = CB_MINIMIZE;
+            } else if (wp == HTMAXBUTTON) {
+                btnIdx = IsZoomed(hwnd) ? CB_RESTORE : CB_MAXIMIZE;
+            } else if (wp == HTCLOSE) {
+                btnIdx = CB_CLOSE;
+            }
+
+            for (int i = CB_BTN_FIRST; i < CB_BTN_COUNT; i++) {
+                bool shouldHighlight = (i == btnIdx);
+                if (win->captionBtn[i].highlighted != shouldHighlight) {
+                    win->captionBtn[i].highlighted = shouldHighlight;
+                    RepaintButton(hwnd, i, win);
                 }
-            } else {
-                if (win->captionBtn[btnIdx].highlighted) {
-                    win->captionBtn[btnIdx].highlighted = false;
-                    RepaintButton(hwnd, btnIdx, win);
-                }
+            }
+
+            if (btnIdx >= 0) {
+                TRACKMOUSEEVENT ev{};
+                ev.cbSize = sizeof(ev);
+                ev.dwFlags = TME_LEAVE | TME_NONCLIENT;
+                ev.hwndTrack = hwnd;
+                TrackMouseEvent(&ev);
             }
         } break;
 
@@ -16147,7 +16190,7 @@ static HWND FindExistingSumatraProcessHwnd(HANDLE* hMutex, bool* openInNewWindow
     TempStr combinedPath = str::JoinTemp(GetSelfExePathTemp(), StrL("|"), GetAppDataDirTemp());
     str::ToLowerInPlace(combinedPath);
     u32 hash = MurmurHash2(combinedPath);
-    TempStr mapId = fmt("SumatraPDF-%08x", hash);
+    TempStr mapId = fmt("%s-%08x", StrL(kAppName), hash);
 
     int retriesLeft = 3;
     HANDLE hMap = nullptr;
@@ -17907,11 +17950,11 @@ static void ShowCrashHandlerMessage() {
         return;
     }
 
-    Str msg = Tr("SumatraPDF crashed.\n\nPress 'Cancel' to see the crash report.");
+    Str msg = fmt(Tr("%s crashed.\n\nPress 'Cancel' to see the crash report.").s, StrL(kAppName));
     uint flags = MB_ICONERROR | MB_OK | MB_OKCANCEL | MbRtlReadingMaybe();
     flags |= MB_SETFOREGROUND | MB_TOPMOST;
 
-    int res = MsgBox(nullptr, msg, Tr("SumatraPDF crashed"), flags);
+    int res = MsgBox(nullptr, msg, fmt(Tr("%s crashed").s, StrL(kAppName)), flags);
     if (IDCANCEL != res) {
         log(StrL("ShowCrashHandlerMessage: res != IDCANCEL\n"));
         return;
@@ -18094,9 +18137,9 @@ static void InstallSumatraCrashHandler(bool localOnly) {
     TempStr crashInfoDir = GetCrashInfoDirTemp();
 
     CrashHandlerConfig cfg{};
-    cfg.crashDumpPath = path::JoinTemp(crashInfoDir, StrL("sumatrapdfcrash.dmp"));
+    cfg.crashDumpPath = path::JoinTemp(crashInfoDir, StrL("apdfcrash.dmp"));
     cfg.submitUrl = BuildSubmitUrlTemp();
-    cfg.fullDumpEnvVar = StrL("SUMATRAPDF_FULLDUMP");
+    cfg.fullDumpEnvVar = StrL("APDF_FULLDUMP");
     cfg.localOnly = localOnly;
     cfg.forTesting = gForTesting;
     // a debug build submits to a local test server (see kMinidumpSubmitUrl), so
@@ -18736,15 +18779,16 @@ ContinueOpenWindow:
                     if (firstDocIdx < 0) {
                         firstDocIdx = i;
                     }
-                    docOrdinal++;
-                    if (docOrdinal == want) {
+                    if (++docOrdinal == want) {
                         matchDocIdx = i;
                     }
                 }
-                if (want == 0) {
+                if (want == 0 && len(flags.fileNames) == 0) {
                     OpenHomeTab(win);
                 } else {
-                    if (matchDocIdx >= 0) {
+                    if (len(flags.fileNames) > 0 && FindTabByFile(flags.fileNames[0])) {
+                        selectIdx = win->GetTabIdx(FindTabByFile(flags.fileNames[0]));
+                    } else if (matchDocIdx >= 0) {
                         selectIdx = matchDocIdx;
                     } else if (want >= 1 && want <= nTabs && !tabs[want - 1]->IsAboutTab()) {
                         // legacy: UI index including home
@@ -18754,6 +18798,9 @@ ContinueOpenWindow:
                     }
                     TabsSelect(win, selectIdx);
                 }
+            }
+            if (win->IsCurrentTabAbout()) {
+                HomePageRelayout(win);
             }
             if (gSettings->lazyLoading) {
                 // trigger loading of the document
@@ -18837,6 +18884,11 @@ ContinueOpenWindow:
     }
 
     gIsStartup = false;
+    if (win) {
+        if (win->IsCurrentTabAbout()) {
+            HomePageRelayout(win);
+        }
+    }
 
     if (len(flags.fileNames) > 0 && !win) {
         // failed to create any window, even though there

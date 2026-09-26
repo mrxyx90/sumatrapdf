@@ -3647,9 +3647,13 @@ static Edit* ToolbarCreateLocationEdit(MainWindow* win, PlatformFont* font, int 
     args.centerTextVert = true;
     args.marginLeft = PageEditPadL();
     args.marginRight = PageEditPadR();
+    args.isVisible = false;
     auto* e = new Edit();
+    // Avoid a separate erase-then-paint pass under the native page-number field.
+    e->shouldEraseBackground = false;
     e->SetColors(TbTextColor(), ThemeWindowControlBackgroundColor());
     e->Create(args);
+    e->SetIsVisible(true);
     // the toolbar tree arranges itself right-to-left (HBox.rtl), so its bounds
     // are offsets from the physical left; don't let the RTL host mirror them
     e->mapRtlX = true;
@@ -3692,13 +3696,13 @@ static bool OnCtlColor(MainWindow* win, VirtHostNativeMsg* ev) {
         return false;
     }
     HDC hdc = (HDC)ev->wp;
+    Color bg = ThemeWindowControlBackgroundColor();
     SetTextColor(hdc, TbTextColor());
-    SetBkColor(hdc, ThemeWindowControlBackgroundColor());
-    if (IsCurrentThemeDefault() && !ThemeColorizeControls() && !ThemeUsesHighContrastColors()) {
-        ev->res = (LRESULT)GetStockObject(WHITE_BRUSH);
-    } else {
-        ev->res = (LRESULT)win->brControlBgColor;
+    SetBkColor(hdc, bg);
+    if (!win->brControlBgColor) {
+        win->brControlBgColor = CreateSolidBrush(bg);
     }
+    ev->res = (LRESULT)win->brControlBgColor;
     return true;
 }
 

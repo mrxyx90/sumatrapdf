@@ -222,7 +222,13 @@ void TabCtrl::Paint(VirtPaintCtx& ctx) {
         textColor = IsLightColor(tabBgCol) ? MkRgb(0xC4, 0x1E, 0x1E) : MkRgb(0xFF, 0x6A, 0x6A);
     }
 
-    gfx->FillRect(r, tabBgCol);
+    if (IsSelected()) {
+        int radius = DpiScale(10);
+        gfx->FillRoundedRect(r, radius, tabBgCol);
+        gfx->FillRect({r.x, r.y + r.dy / 2, r.dx, r.dy - r.dy / 2}, tabBgCol);
+    } else {
+        gfx->FillRect(r, tabBgCol);
+    }
 
     if (!IsSelected() && tabsCtrl) {
         int idx = Idx();
@@ -1000,6 +1006,9 @@ LRESULT TabsCtrl::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
 
         case WM_ERASEBKGND:
+            if (needsInitialBackground) {
+                HdcFillRect((HDC)wp, HwndClientRect(hwnd), GetColor(kColTabInactiveBg));
+            }
             return 1;
 
         case WM_PAINT: {
@@ -1028,6 +1037,7 @@ LRESULT TabsCtrl::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 HdcFillRect(hdc, clientRc, bgCol);
             }
             ReleaseDC(hwnd, hdc);
+            needsInitialBackground = false;
             return 0;
         }
 

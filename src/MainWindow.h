@@ -255,6 +255,7 @@ struct MainWindow { // NOLINT(clang-analyzer-optin.performance.Padding)
     Func1List<MainWindow*> floatingToolbarOnWindowMoved;
     HWND hwndMenuReBar = nullptr;
     HWND hwndMenuToolbar = nullptr;
+    bool needsInitialMenuToolbarBackground = true;
     // the search input of the active find UI (compact bar or floating window)
     DropDown* findEdit = nullptr;
     // optional "10-25" page-range field of the active find UI (issue #5694)
