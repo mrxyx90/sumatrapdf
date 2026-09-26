@@ -3358,7 +3358,7 @@ static void UpdateWindowFrameBorderColor(MainWindow* win) {
 
 static void OnDpiChanged(MainWindow* win, RECT* suggested, int explicitDpi = 0, bool force = false);
 
-static MainWindow* CreateMainWindow(bool restoringSession, int windowState) {
+static MainWindow* CreateMainWindow(bool restoringSession) {
     // -window-pos wins over both the remembered position and the default, and
     // skips the per-window shift below: a test asked for an exact rectangle
     bool fixedPos = gCli && !gCli->windowPos.IsEmpty();
@@ -3385,7 +3385,7 @@ static MainWindow* CreateMainWindow(bool restoringSession, int windowState) {
     WStr clsName = WStr(kFrameClassName);
     WStr title = WStr(kSumatraWindowTitleW);
     DWORD style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
-    if (windowState == WIN_STATE_MAXIMIZED) {
+    if (gSettings && gSettings->windowState == WIN_STATE_MAXIMIZED) {
         style |= WS_MAXIMIZE;
     }
     int x = windowPos.x;
@@ -3630,11 +3630,7 @@ static void MaybeShowDefaultAppNotification(MainWindow* win) {
 
 MainWindow* CreateAndShowMainWindow(SessionData* data, bool showWin) {
     int windowState = gSettings->windowState;
-    if (data) {
-        windowState = data->windowState;
-    }
-
-    MainWindow* win = CreateMainWindow(data != nullptr, windowState);
+    MainWindow* win = CreateMainWindow(data != nullptr);
     if (!win) {
         return nullptr;
     }
