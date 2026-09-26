@@ -3514,52 +3514,38 @@ static MainWindow* CreateMainWindow(bool restoringSession) {
 }
 
 void ShowMainWindow(MainWindow* win, int windowState) {
-    // If this window was hidden during startup/session restore, complete all
-    // final geometry/layout work before exposing it. Showing the frame first
-    // lets DWM present its default background before the restored document is
-    // ready, which appears as a white flash when reopening a previous PDF.
     bool wasVisible = HwndIsVisible(win->hwndFrame);
 
-    if (!wasVisible && (WIN_STATE_FULLSCREEN == windowState || WIN_STATE_MAXIMIZED == windowState)) {
-        // Apply maximize while hidden, then explicitly hide again. This updates
-        // the final placement without presenting an intermediate frame.
-        ShowWindow(win->hwndFrame, SW_MAXIMIZE);
-        ShowWindow(win->hwndFrame, SW_HIDE);
-    }
-    // a hidden frame's GetDpiForWindow() can still be the primary-monitor
-    // DPI; after ShowWindow the monitor of the window rect is reliable
-    {
-        int dpi = RoundUp(DpiGetForHwnd(win->hwndFrame), 4);
-        if (dpi > 0 && dpi != win->frameDpi) {
-            OnDpiChanged(win, nullptr, dpi, true);
+    if (!wasVisible && WIN_STATE_MAXIMIZED == windowState) {
+        WINDOWPLACEMENT wp{};
+        wp.length = sizeof(wp);
+        if (GetWindowPlacement(win->hwndFrame, &wp)) {
+            wp.showCmd = SW_SHOWMAXIMIZED;
+            SetWindowPlacement(win->hwndFrame, &wp);
         }
     }
 
-    // Fire the deferred SWP_FRAMECHANGED for custom caption (tabsInTitlebar).
-    // Must happen after ShowWindow so the shell sees a visible window and
-    // creates the taskbar button before we remove the standard frame.
+    int dpi = RoundUp(DpiGetForHwnd(win->hwndFrame), 4);
+    if (dpi > 0 && dpi != win->frameDpi) {
+        OnDpiChanged(win, nullptr, dpi, true);
+    }
+
     if (win->tabsInTitlebar) {
-        uint flags = SWP_FRAMECHANGED | SWP_NOZORDER | SWP_NOSIZE | SWP_NOMOVE;
+        uint flags = SWP_FRAMECHANGED | SWP_NOZORDER | SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE;
         SetWindowPos(win->hwndFrame, nullptr, 0, 0, 0, 0, flags);
     }
 
-    // Hidden startup windows can miss the final titlebar/menu-bar geometry.
-    // until they become visible. Force one relayout before the first paint.
     RelayoutFrame(win);
     RefreshTocTreeIfNeeded(win);
-    UpdateWindow(win->hwndFrame);
     UpdateToolbarFindText(win);
     HwndEnsureOnScreen(win->hwndFrame);
 
     if (!wasVisible) {
-        // Only expose a startup/session-restored window after its final chrome
-        // and document layout have been prepared. This prevents DWM from
-        // presenting the frame background before the restored PDF is painted.
         if (WIN_STATE_FULLSCREEN == windowState) {
             ShowWindow(win->hwndFrame, SW_SHOW);
             EnterFullScreen(win);
         } else if (WIN_STATE_MAXIMIZED == windowState) {
-            ShowWindow(win->hwndFrame, SW_MAXIMIZE);
+            ShowWindow(win->hwndFrame, SW_SHOWMAXIMIZED);
         } else {
             ShowWindow(win->hwndFrame, SW_SHOW);
         }
