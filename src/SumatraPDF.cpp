@@ -3516,6 +3516,8 @@ static MainWindow* CreateMainWindow(bool restoringSession) {
     return win;
 }
 
+static void ResetMaximizedWindowRegion(HWND hwnd);
+
 void ShowMainWindow(MainWindow* win, int windowState) {
     // If this window was hidden during startup/session restore, complete all
     // final geometry/layout work before exposing it. Showing the frame first
@@ -3549,12 +3551,14 @@ void ShowMainWindow(MainWindow* win, int windowState) {
     HwndEnsureOnScreen(win->hwndFrame);
 
     if (!wasVisible) {
-        // Only expose a startup/session-restored window after its final chrome
-        // and document layout have been prepared. This prevents DWM from
-        // presenting the frame background before the restored PDF is painted.
-        ShowWindow(win->hwndFrame, SW_SHOW);
         if (WIN_STATE_FULLSCREEN == windowState) {
+            ShowWindow(win->hwndFrame, SW_SHOW);
             EnterFullScreen(win);
+        } else if (WIN_STATE_MAXIMIZED == windowState) {
+            ResetMaximizedWindowRegion(win->hwndFrame);
+            ShowWindow(win->hwndFrame, SW_SHOWMAXIMIZED);
+        } else {
+            ShowWindow(win->hwndFrame, SW_SHOW);
         }
     }
 
@@ -14102,9 +14106,11 @@ static void HandleCaptionClick(MainWindow* win, int btnIdx) {
             PostMessageW(win->hwndFrame, WM_SYSCOMMAND, SC_MINIMIZE, 0);
             break;
         case CB_MAXIMIZE:
+            ResetMaximizedWindowRegion(win->hwndFrame);
             PostMessageW(win->hwndFrame, WM_SYSCOMMAND, SC_MAXIMIZE, 0);
             break;
         case CB_RESTORE:
+            SetWindowRgn(win->hwndFrame, nullptr, TRUE);
             PostMessageW(win->hwndFrame, WM_SYSCOMMAND, SC_RESTORE, 0);
             break;
         case CB_CLOSE:
