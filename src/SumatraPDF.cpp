@@ -14033,6 +14033,30 @@ static void RepaintButton(HWND hwnd, int btnIdx, MainWindow* win) {
     }
 }
 
+static void ResetMaximizedWindowRegion(HWND hwnd) {
+    if (!IsZoomed(hwnd)) {
+        SetWindowRgn(hwnd, nullptr, TRUE);
+        return;
+    }
+
+    HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO mi{};
+    mi.cbSize = sizeof(mi);
+    if (!monitor || !GetMonitorInfoW(monitor, &mi)) {
+        return;
+    }
+
+    RECT windowRect{};
+    GetWindowRect(hwnd, &windowRect);
+    RECT workRect = mi.rcWork;
+    OffsetRect(&workRect, -windowRect.left, -windowRect.top);
+
+    HRGN region = CreateRectRgnIndirect(&workRect);
+    if (region) {
+        SetWindowRgn(hwnd, region, TRUE);
+    }
+}
+
 static void ClearAllHighlights(MainWindow* win) {
     for (int i = CB_BTN_FIRST; i < CB_BTN_COUNT; i++) {
         if (win->captionBtn[i].highlighted || win->captionBtn[i].pressed) {
@@ -14089,6 +14113,12 @@ static void HandleCaptionClick(MainWindow* win, int btnIdx) {
             PostMessageW(win->hwndFrame, WM_SYSCOMMAND, SC_RESTORE, 0);
             break;
         case CB_CLOSE:
+            if (IsZoomed(win->hwndFrame)) {
+                // Keep the custom caption during normal use. Apply the
+                // maximized work-area region only for the native close
+                // transition so DWM animates the same geometry Sumatra shows.
+                ResetMaximizedWindowRegion(win->hwndFrame);
+            }
             PostMessageW(win->hwndFrame, WM_SYSCOMMAND, SC_CLOSE, 0);
             break;
         case CB_MENU:
