@@ -3358,7 +3358,7 @@ static void UpdateWindowFrameBorderColor(MainWindow* win) {
 
 static void OnDpiChanged(MainWindow* win, RECT* suggested, int explicitDpi = 0, bool force = false);
 
-static MainWindow* CreateMainWindow(bool restoringSession) {
+static MainWindow* CreateMainWindow(bool restoringSession, int windowState) {
     // -window-pos wins over both the remembered position and the default, and
     // skips the per-window shift below: a test asked for an exact rectangle
     bool fixedPos = gCli && !gCli->windowPos.IsEmpty();
@@ -3385,6 +3385,9 @@ static MainWindow* CreateMainWindow(bool restoringSession) {
     WStr clsName = WStr(kFrameClassName);
     WStr title = WStr(kSumatraWindowTitleW);
     DWORD style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
+    if (windowState == WIN_STATE_MAXIMIZED) {
+        style |= WS_MAXIMIZE;
+    }
     int x = windowPos.x;
     int y = windowPos.y;
     int dx = windowPos.dx;
@@ -3516,15 +3519,6 @@ static MainWindow* CreateMainWindow(bool restoringSession) {
 void ShowMainWindow(MainWindow* win, int windowState) {
     bool wasVisible = HwndIsVisible(win->hwndFrame);
 
-    if (!wasVisible && WIN_STATE_MAXIMIZED == windowState) {
-        WINDOWPLACEMENT wp{};
-        wp.length = sizeof(wp);
-        if (GetWindowPlacement(win->hwndFrame, &wp)) {
-            wp.showCmd = SW_SHOWMAXIMIZED;
-            SetWindowPlacement(win->hwndFrame, &wp);
-        }
-    }
-
     int dpi = RoundUp(DpiGetForHwnd(win->hwndFrame), 4);
     if (dpi > 0 && dpi != win->frameDpi) {
         OnDpiChanged(win, nullptr, dpi, true);
@@ -3636,7 +3630,11 @@ static void MaybeShowDefaultAppNotification(MainWindow* win) {
 
 MainWindow* CreateAndShowMainWindow(SessionData* data, bool showWin) {
     int windowState = gSettings->windowState;
-    MainWindow* win = CreateMainWindow(data != nullptr);
+    if (data) {
+        windowState = data->windowState;
+    }
+
+    MainWindow* win = CreateMainWindow(data != nullptr, windowState);
     if (!win) {
         return nullptr;
     }
@@ -3644,7 +3642,6 @@ MainWindow* CreateAndShowMainWindow(SessionData* data, bool showWin) {
     gSettings->windowState = windowState;
 
     if (data) {
-        windowState = data->windowState;
         Rect rect = ShiftRectToWorkArea(data->windowPos);
         HwndMoveWindow(win->hwndFrame, &rect);
         // TODO: also restore data->sidebarDx
