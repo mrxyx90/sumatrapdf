@@ -3385,6 +3385,9 @@ static MainWindow* CreateMainWindow(bool restoringSession) {
     WStr clsName = WStr(kFrameClassName);
     WStr title = WStr(kSumatraWindowTitleW);
     DWORD style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
+    if (gSettings && gSettings->windowState == WIN_STATE_MAXIMIZED) {
+        style |= WS_MAXIMIZE;
+    }
     int x = windowPos.x;
     int y = windowPos.y;
     int dx = windowPos.dx;
