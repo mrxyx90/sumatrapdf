@@ -14093,11 +14093,13 @@ static void HandleCaptionClick(MainWindow* win, int btnIdx) {
             break;
         case CB_CLOSE:
             if (IsZoomed(win->hwndFrame)) {
-                // Test whether the unwanted maximized close movement is caused
-                // by DWM's transition animation rather than an actual window move.
+                // DWM's maximized close transition moves the custom-framed
+                // window visually before the normal close animation. Suppress
+                // that transition and use a short fade instead.
                 BOOL disableDwmTransitions = TRUE;
                 DwmSetWindowAttribute(win->hwndFrame, DWMWA_TRANSITIONS_FORCEDISABLED,
                                       &disableDwmTransitions, sizeof(disableDwmTransitions));
+                AnimateWindow(win->hwndFrame, 140, AW_HIDE | AW_BLEND);
             }
             PostMessageW(win->hwndFrame, WM_SYSCOMMAND, SC_CLOSE, 0);
             break;
@@ -15048,25 +15050,6 @@ static LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPAR
     }
 
     // DbgLogMsg("frame:", hwnd, msg, wp, lp);
-    // Temporary diagnostics for maximized close-transition investigation.
-    if (msg == WM_SYSCOMMAND || msg == WM_SHOWWINDOW || msg == WM_WINDOWPOSCHANGING || msg == WM_WINDOWPOSCHANGED ||
-        msg == WM_MOVE || msg == WM_SIZE || msg == WM_NCCALCSIZE) {
-        Rect wr = HwndWindowRect(hwnd);
-        logf("frame transition: msg=0x%x wp=0x%llx zoomed=%d visible=%d wr=(%d,%d,%d,%d)\\n", msg,
-             (unsigned long long)wp, (int)IsZoomed(hwnd), (int)HwndIsVisible(hwnd), wr.x, wr.y, wr.dx, wr.dy);
-        if (msg == WM_WINDOWPOSCHANGING || msg == WM_WINDOWPOSCHANGED) {
-            auto* p = (WINDOWPOS*)lp;
-            if (p) {
-                logf("frame transition: WINDOWPOS flags=0x%x x=%d y=%d cx=%d cy=%d\\n", p->flags, p->x, p->y, p->cx, p->cy);
-            }
-        }
-        if (msg == WM_NCCALCSIZE) {
-            RECT* r = wp ? &((NCCALCSIZE_PARAMS*)lp)->rgrc[0] : (RECT*)lp;
-            if (r) {
-                logf("frame transition: NCCALCSIZE proposed=(%ld,%ld,%ld,%ld)\\n", r->left, r->top, r->right, r->bottom);
-            }
-        }
-    }
     // detect when an external host (e.g. Total Commander's lister) embeds us
     // by reparenting our window as WS_CHILD. Only set the flag here and post
     // chrome teardown: this handler can re-enter under EndDeferWindowPos.
