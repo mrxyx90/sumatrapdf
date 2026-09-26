@@ -3157,21 +3157,9 @@ static LRESULT CALLBACK MenuBarReBarWndProc(HWND hWnd, UINT uMsg, WPARAM wParam,
 
 static LRESULT CALLBACK MenuBarToolbarWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass,
                                               DWORD_PTR dwRefData) {
-    auto* win = (MainWindow*)dwRefData;
     if (WM_ERASEBKGND == uMsg) {
-        // Paint the initial surface with the theme color; later erases stay
-        // suppressed to avoid flicker while resizing.
-        if (win && win->needsInitialMenuToolbarBackground) {
-            HdcFillRect((HDC)wParam, HwndClientRect(hWnd), ThemeControlBackgroundColor());
-        }
+        HdcFillRect((HDC)wParam, HwndClientRect(hWnd), ThemeControlBackgroundColor());
         return 1;
-    }
-    if (WM_PAINT == uMsg) {
-        LRESULT res = DefSubclassProc(hWnd, uMsg, wParam, lParam);
-        if (win && HwndIsVisible(hWnd)) {
-            win->needsInitialMenuToolbarBackground = false;
-        }
-        return res;
     }
     if (WM_NCDESTROY == uMsg) {
         RemoveWindowSubclass(hWnd, MenuBarToolbarWndProc, uIdSubclass);

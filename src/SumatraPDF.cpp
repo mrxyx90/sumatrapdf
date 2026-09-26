@@ -15463,15 +15463,13 @@ static LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPAR
             ReadAloudOnTtsEvent(win);
             return 0;
         case WM_ERASEBKGND: {
-            if (!win || win->needsInitialFrameBackground) {
-                HDC hdc = (HDC)wp;
-                Rect client = HwndClientRect(hwnd);
-                HdcFillRect(hdc, client, ThemeMainWindowBackgroundColor());
-                if (win && win->tabsInTitlebar && !win->captionRect.IsEmpty()) {
-                    int captionBottom = limitValue(win->captionRect.y + win->captionRect.dy, 0, client.dy);
-                    Rect captionArea = {0, 0, client.dx, captionBottom};
-                    HdcFillRect(hdc, captionArea, ThemeControlBackgroundColor());
-                }
+            HDC hdc = (HDC)wp;
+            Rect client = HwndClientRect(hwnd);
+            HdcFillRect(hdc, client, ThemeMainWindowBackgroundColor());
+            if (win && win->tabsInTitlebar && !win->captionRect.IsEmpty()) {
+                int captionBottom = limitValue(win->captionRect.y + win->captionRect.dy, 0, client.dy);
+                Rect captionArea = {0, 0, client.dx, captionBottom};
+                HdcFillRect(hdc, captionArea, ThemeControlBackgroundColor());
             }
             return TRUE;
         }

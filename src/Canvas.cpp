@@ -6208,14 +6208,7 @@ LRESULT CALLBACK WndProcCanvas(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 Rect rc = HwndClientRect(hwnd);
                 logf("redraw: WM_ERASEBKGND hwnd=0x%p (canvas) rc=(%d,%d,%d,%d)\n", hwnd, rc.x, rc.y, rc.dx, rc.dy);
             }
-            // Paint a theme-colored first surface; later fixed-page erases
-            // preserve the old pixels until WM_PAINT covers them.
-            if (!win || win->needsInitialCanvasBackground || IsBrowserDocController(win->ctrl)) {
-                HdcFillRect((HDC)wp, HwndClientRect(hwnd), ThemeMainWindowBackgroundColor());
-                return 1;
-            }
-            // don't paint here; old content stays until WM_PAINT covers it
-            // (CS_HREDRAW|CS_VREDRAW removed so no transparent flash)
+            HdcFillRect((HDC)wp, HwndClientRect(hwnd), ThemeMainWindowBackgroundColor());
             return 1;
         }
 

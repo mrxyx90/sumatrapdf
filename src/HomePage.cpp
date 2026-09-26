@@ -1325,6 +1325,7 @@ static void EnsureHomeSearchCreated(MainWindow* win) {
     e->shouldEraseBackground = false;
     e->SetColors(ThemeWindowTextColor(), ThemeControlBackgroundColor());
     e->Create(args);
+    SetWindowTheme(e->hwnd, L"", L"");
     // Edit::Create wired Edit::WndProc; re-route to HomeSearchEdit for Esc/Down/wheel
     e->onWndProc = MkMethod1<HomeSearchEdit, ControlBase::WndProcEvent*, &HomeSearchEdit::WndProc>(e);
     e->onTextChanged = MkFunc0(HomeSearchTextChanged, win);
