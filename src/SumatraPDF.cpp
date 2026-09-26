@@ -3523,12 +3523,6 @@ void ShowMainWindow(MainWindow* win, int windowState) {
     // ready, which appears as a white flash when reopening a previous PDF.
     bool wasVisible = HwndIsVisible(win->hwndFrame);
 
-    if (!wasVisible && (WIN_STATE_FULLSCREEN == windowState || WIN_STATE_MAXIMIZED == windowState)) {
-        // Apply maximize while hidden, then explicitly hide again. This updates
-        // the final placement without presenting an intermediate frame.
-        ShowWindow(win->hwndFrame, SW_MAXIMIZE);
-        ShowWindow(win->hwndFrame, SW_HIDE);
-    }
     // a hidden frame's GetDpiForWindow() can still be the primary-monitor
     // DPI; after ShowWindow the monitor of the window rect is reliable
     {
@@ -3558,14 +3552,7 @@ void ShowMainWindow(MainWindow* win, int windowState) {
         // Only expose a startup/session-restored window after its final chrome
         // and document layout have been prepared. This prevents DWM from
         // presenting the frame background before the restored PDF is painted.
-        if (WIN_STATE_FULLSCREEN == windowState) {
-            ShowWindow(win->hwndFrame, SW_SHOW);
-            EnterFullScreen(win);
-        } else if (WIN_STATE_MAXIMIZED == windowState) {
-            ShowWindow(win->hwndFrame, SW_MAXIMIZE);
-        } else {
-            ShowWindow(win->hwndFrame, SW_SHOW);
-        }
+        ShowWindow(win->hwndFrame, SW_SHOW);
     }
 
     if (IsRunningOnWine()) {
