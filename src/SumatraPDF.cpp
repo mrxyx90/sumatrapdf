@@ -14116,6 +14116,12 @@ static void HandleCaptionClick(MainWindow* win, int btnIdx) {
             PostMessageW(win->hwndFrame, WM_SYSCOMMAND, SC_RESTORE, 0);
             break;
         case CB_CLOSE:
+            if (IsZoomed(win->hwndFrame)) {
+                // Apply the maximized work-area region only for the native
+                // close transition. Keeping it installed during normal use
+                // interferes with the custom caption hit-testing/layout.
+                ResetMaximizedWindowRegion(win->hwndFrame);
+            }
             PostMessageW(win->hwndFrame, WM_SYSCOMMAND, SC_CLOSE, 0);
             break;
         case CB_MENU:
@@ -15153,9 +15159,6 @@ static LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPAR
             goto InitMouseWheelInfo;
 
         case WM_SIZE:
-            if (win && SIZE_MINIMIZED != wp) {
-                ResetMaximizedWindowRegion(hwnd);
-            }
             if (win && SIZE_MINIMIZED == wp) {
                 // Track-mode canvas tips (home file path, page links) are
                 // topmost popups and must be dismissed on minimize or they
