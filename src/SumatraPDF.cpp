@@ -15414,6 +15414,9 @@ static LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPAR
             if (!win) {
                 logf("WM_CLOSE to 0x%p, but didn't find MainWindow for it\n", hwnd);
             }
+            if (win && IsZoomed(win->hwndFrame)) {
+                ResetMaximizedWindowRegion(win->hwndFrame);
+            }
             if (CanCloseWindow(win)) {
                 CloseWindow(win, true, false);
             }
